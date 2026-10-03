@@ -33,6 +33,8 @@ real KVM/QEMU and passes OCI scenario A plus an init-failure case.
 
 **T12 is complete.** `internal/network` adds an application DNS resolver and UDP/TCP server (all four Kubernetes service names resolve, NXDOMAIN for in-zone misses, REFUSED rather than acting as an open resolver), a Service registry with a dedicated VIP pool, a readiness-aware round-robin balancer and TCP service proxy, and an Ingress matcher/reverse proxy with segment-aware Prefix, Exact, sanitized forwarded headers, and bounded backend timeouts. `golang.org/x/net` (dnsmessage) is now a pinned dependency.
 
+**T13 is complete.** `internal/observe` provides a sequenced event stream (reusing the state journal's rotation and sequence IDs) with `Follow` and gap detection, a bounded log spool with follow, `/proc`-based resource snapshots with CPU deltas, and exec/HTTP/TCP probes with startup/readiness/liveness roles, thresholds, injected-clock scheduling, and nonoverlapping ticks. A bounded exit watcher emits an event only on container state change.
+
 Hosted CI has not yet been executed.
 
 ## Task status
@@ -52,7 +54,7 @@ Hosted CI has not yet been executed.
 | T10 | Storage manager | DONE | `internal/storage` + guest shares; `make test-t10` (scenario G) PASS on real KVM |
 | T11 | Production rootless networking and IPAM | DONE | `internal/network`; `make test-netns` PASS (pasta egress, isolation, management denied) |
 | T12 | DNS, Service proxy, and Ingress | DONE | `internal/network` DNS/UDP/TCP, Service balancer/proxy, Ingress; four-name, balancing, readiness, timeout, path-segment tests |
-| T13 | Observability and probes | TODO | T05, T07, T12 |
+| T13 | Observability and probes | DONE | `internal/observe`; events/spool/metrics/probes; startup gating, thresholds, fake-clock, timeout-kill, slow-consumer tests |
 | T14 | Planner, reconciler, and updates | TODO | T08–T13 |
 | T15 | Local API and daemon lifetime | TODO | T14 |
 | T16 | Native-runtime CLI | TODO | T15 |
@@ -757,6 +759,43 @@ historical evidence only.
   proxy. VIPs are allocated but not yet attached to sandbox interfaces. Localhost
   Ingress fallback and TLS are T14. No SRV `_proto` variants beyond TCP.
 - **Next task:** T13 (observability and probes) depends on T05/T07/T12.
+
+## T13 observability and probes — 2026-10-03
+
+- **Task:** T13 — observability and probes
+- **Status:** DONE
+- **Dependencies verified:** T05 (state journal), T07 (guest agent), T12
+  (Service/probe context) complete.
+- **Files and contracts changed:** `internal/observe` (`events.go`,
+  `spool.go`, `metrics.go`, `probe.go`, `guest_prober.go`, `exitwatch.go`) and
+  `internal/state` (optional `Source`/`Reason`/`Fields` on journal events).
+- **Decisions/ADRs:** None required. Events reuse the state journal so sequence
+  IDs, rotation, and truncation recovery are shared; probes are in
+  `internal/observe`; exec probes for containers delegate to the guest agent
+  (`GuestProber`) so they run in the right network context.
+- **Tests run:** `make check` PASS (fmt, vet, test, race, scripts, build,
+  audit); `go test -race -count=2 ./internal/observe ./internal/state` PASS.
+  Coverage: emit/list/filter/follow and gap detection; log append/list/follow
+  and line truncation; `/proc` sampling and CPU deltas; startup gating readiness
+  and liveness; success/failure thresholds; startup failure; injected-clock
+  ticks; nonoverlapping scheduling (one probe per tick); direct exec probe
+  timeout killing its child (verified with `kill(pid, 0)`); HTTP and TCP probes;
+  liveness callback firing only for the intended container; readiness changing
+  state without restart; a slow follower not blocking the producer; an event
+  carrying a source mapping; and the exit watcher emitting once per transition.
+- **Tests NOT run and why:** No live guest-attached probe run (the runner is
+  exercised with a scripted prober and the `GuestProber` adapter is unit-sized);
+  the reconcile loop that actually restarts a container on liveness failure is
+  T14. Metrics are per-process via `/proc`, not cgroup aggregation. Hosted CI has
+  not run.
+- **Integration evidence:** Repository-local; the direct exec timeout test uses a
+  real process tree and confirms no surviving child.
+- **Known limitations:** CPU accounting assumes `USER_HZ=100`; source mapping is
+  a passthrough string populated by callers from IR locations; `Follow` polls the
+  journal, so there is a bounded delivery latency. Metric gaps are reported by
+  omission (no zero snapshots), not yet by an explicit unavailable reason.
+- **Next task:** T14 (daemon, reconcile, API) depends on several tasks; T15/T16
+  and the pure frontends T17/T20 remain.
 
 ## Updating this file
 

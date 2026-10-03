@@ -21,11 +21,14 @@ const (
 
 // Event is one append-only journal record with a persistent sequence ID.
 type Event struct {
-	Sequence uint64    `json:"seq"`
-	Time     time.Time `json:"time"`
-	Kind     string    `json:"kind"`
-	Resource string    `json:"resource,omitempty"`
-	Message  string    `json:"message,omitempty"`
+	Sequence uint64            `json:"seq"`
+	Time     time.Time         `json:"time"`
+	Kind     string            `json:"kind"`
+	Resource string            `json:"resource,omitempty"`
+	Source   string            `json:"source,omitempty"`
+	Message  string            `json:"message,omitempty"`
+	Reason   string            `json:"reason,omitempty"`
+	Fields   map[string]string `json:"fields,omitempty"`
 }
 
 // JournalOptions bounds the journal. Zero values use the defaults.
