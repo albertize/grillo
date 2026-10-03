@@ -174,7 +174,7 @@ func (a *Agent) status(ctx context.Context) (any, *guestproto.Error) {
 	if a.started {
 		state = "running"
 	}
-	return guestproto.StatusResult{State: state, Containers: a.containerStatusesLocked(ctx)}, nil
+	return guestproto.StatusResult{State: state, Zombies: countZombies(), Containers: a.containerStatusesLocked(ctx)}, nil
 }
 
 func (a *Agent) containerStatusesLocked(ctx context.Context) []guestproto.ContainerStatus {
@@ -182,15 +182,20 @@ func (a *Agent) containerStatusesLocked(ctx context.Context) []guestproto.Contai
 	for _, c := range a.sandbox.Containers {
 		state := a.containers[c.Name]
 		status := state.status
+		pid := 0
 		if !c.Init && status == "running" {
-			if rs, err := a.Runtime.State(ctx, c.Name); err == nil && rs.Status != "" {
-				status = rs.Status
+			if rs, err := a.Runtime.State(ctx, c.Name); err == nil {
+				if rs.Status != "" {
+					status = rs.Status
+				}
+				pid = rs.PID
 			}
 		}
 		out = append(out, guestproto.ContainerStatus{
 			Name:     c.Name,
 			State:    status,
 			ExitCode: state.exit.ExitCode,
+			PID:      pid,
 		})
 	}
 	return out

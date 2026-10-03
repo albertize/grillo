@@ -16,7 +16,12 @@
 
 **T06 is complete.** `internal/guestproto` implements the bounded, versioned, authenticated host/guest protocol and its documented wire format in [api/guest-protocol.md](../api/guest-protocol.md). The framing codec is independent of the transport; an AF_VSOCK dialer/listener and an in-memory plain-conn test transport are provided. The real guest agent (PID 1, OCI runtime) is still T07.
 
-**T07 is in progress.** The guest PID 1 agent and its building blocks exist: cgroup/filesystem setup, single-owner child reaping, OCI bundle generation, a runc adapter, an artifact manifest, and a lifecycle handler that serves `start`/`stop`/`status`/`exec`/`probe` over the T06 protocol. The guest image is not assembled and the real KVM scenario A has not been run, so T07 is not complete.
+**T07 is complete.** The guest PID 1 agent (`cmd/grillo-agent`) and its runtime
+live in `internal/guest`: cgroup/filesystem setup, single-owner child reaping,
+OCI bundle generation, a runc adapter, an artifact manifest, and a lifecycle
+handler that serves `start`/`stop`/`status`/`exec`/`probe` over the T06 protocol.
+The guest image is built by `make t07-guest`, and `make test-t07` boots it under
+real KVM/QEMU and passes OCI scenario A plus an init-failure case.
 
 Hosted CI has not yet been executed.
 
@@ -31,7 +36,7 @@ Hosted CI has not yet been executed.
 | T04 | IR, diagnostics, and capabilities | DONE | `internal/model` + `internal/source`; goldens, version/reference/cycle/overflow, import-boundary tests |
 | T05 | State, secrets, and recovery primitives | DONE | `internal/state` + `internal/secrets`; lock, atomic snapshots, journal, migration, secret GC tests |
 | T06 | Guest protocol and testable client | DONE | `internal/guestproto` + `api/guest-protocol.md`; framing/handshake/client/server, fuzz, partial-I/O, overflow, backpressure, timeout, auth tests |
-| T07 | Guest PID 1 and OCI runtime | IN_PROGRESS | Foundation only: `internal/guest` + `cmd/grillo-agent`; guest image and real scenario A not yet run |
+| T07 | Guest PID 1 and OCI runtime | DONE | `internal/guest` + `cmd/grillo-agent`; `make test-t07` PASS on real KVM (scenario A, init failure, distinct PIDs, no zombies) |
 | T08 | Backend lifecycle and process supervision | TODO | T05, T07 |
 | T09 | OCI registry and CAS | TODO | T04, T03 |
 | T10 | Storage manager | TODO | T05, T08, T09 |
@@ -502,49 +507,52 @@ historical evidence only.
   yet (T07). The per-boot key delivery mechanism is specified, not implemented.
 - **Next task:** T07 (guest PID 1 and OCI runtime) depends on T06 and T03.
 
-## T07 guest PID 1 and OCI runtime (in progress) — 2026-10-03
+## T07 guest PID 1 and OCI runtime — 2026-10-03
 
 - **Task:** T07 — guest PID 1 and OCI runtime
-- **Status:** IN_PROGRESS (foundation delivered; guest image assembly and the
-  real A/start/exec/stop gate remain)
+- **Status:** DONE
 - **Dependencies verified:** T06 complete; the T03 QEMU/vhost-vsock kernel and
-  transport are available.
+  transport are available; real `/dev/kvm` present.
 - **Files and contracts changed:** `internal/guest` (`oci.go` OCI bundle and
   config generation, `reaper_linux.go` single-owner `wait4` reaping,
   `runtime_linux.go` runc adapter, `agent_linux.go` lifecycle handler,
-  `mounts_linux.go`, `cgroup_linux.go`, `manifest.go`),
-  `cmd/grillo-agent` (real PID 1 replacing the T00 scaffold),
-  `internal/guestproto` (`SandboxSpec`/`ContainerSpec` and `StartRequest.Sandbox`,
-  `ExecRequest.Container`, `ProbeRequest.Container`), `guest/README.md`.
+  `mounts_linux.go`, `cgroup_linux.go`, `proc_linux.go` zombie count,
+  `manifest.go`), `cmd/grillo-agent` (real PID 1 replacing the T00 scaffold),
+  `internal/guestproto` (`SandboxSpec`/`ContainerSpec`, `StartRequest.Sandbox`,
+  `ExecRequest.Container`, `ProbeRequest.Container`, `StatusResult.Zombies`),
+  `guest/README.md`, `guest/build-image.sh`, `guest/manifest`, and the
+  `t07-guest` / `test-t07` Makefile targets.
 - **Decisions/ADRs:** None required. The OCI config subset deliberately avoids
   adding `runtime-spec` as a dependency (not in the plan's allowed module list);
   the cgroup helper mirrors the enforced subset without importing the protocol.
 - **Tests run:** `make check` PASS (fmt, vet, test, race, scripts, build,
-  audit). `go test -race -count=5 ./internal/guest` PASS. Coverage includes OCI
-  config generation (shared network/IPC, separate PID/mount/UTS/cgroup,
-  capabilities, no-new-privileges, resource mapping, mount conversion), sandbox
-  and container validation, bundle file permissions, the reaper against real
-  host processes (exit codes, SIGKILL, late wait, concurrent children), the
-  artifact manifest (deterministic ordering, hashing, tamper detection), and the
-  agent lifecycle over the real T06 protocol with a scripted runtime (init
-  ordering, init failure blocks apps, exec streaming, status, probe, stop).
-- **Tests NOT run and why:** The real end-to-end scenario A is not run: no guest
-  initramfs bundling the agent with runc and a busybox rootfs has been assembled,
-  and no KVM/QEMU boot drives the agent. The runc adapter and the mount/cgroup
-  code are therefore not exercised against a real runc or guest kernel. TTY,
-  resize, stdin, live log streaming, and signal forwarding are not implemented.
-- **Integration evidence:** Repository-local only, plus real host child processes
-  for the reaper. The agent lifecycle tests use a scripted `Runtime`; the runc
-  implementation is not yet integration-tested.
+  audit); `go test -race -count=5 ./internal/guest` PASS; `make test-t07` PASS
+  (real KVM/QEMU, two independent boots). `TestKVMAgentScenarioA` boots the real
+  image and verifies an init container writes `/shared/ready` visible to the app,
+  the sidecar reaches the app over shared localhost (`wget
+  http://127.0.0.1:8080/`), roots stay separate (an app-created marker is absent
+  in the sidecar), the app and sidecar have distinct non-zero PIDs, the guest
+  reports zero zombies, and stop leaves no running container.
+  `TestKVMAgentInitFailure` verifies a failing init container blocks application
+  containers. Unit coverage also includes OCI config generation, sandbox and
+  container validation, bundle permissions, the reaper against real host
+  processes, the artifact manifest, and the agent lifecycle over the real T06
+  protocol with a scripted runtime.
+- **Tests NOT run and why:** TTY, resize, stdin, live (incremental) log
+  streaming, and signal forwarding are not implemented (T13). No multi-connection
+  session multiplexing. Hosted CI has not run; no cold-cache benchmark.
+- **Integration evidence:** Real KVM/QEMU boot of the built initramfs containing
+  the agent, static runc, and busybox root filesystems; scenario A and the
+  init-failure case asserted through the production T06 client over AF_VSOCK. The
+  artifact manifest records SHA-256 and size for the agent, runc, kernel, and
+  initramfs.
 - **Known limitations:** One in-flight request per connection; exec and run
   output is captured to files and sent after completion (no live streaming);
   container rootfs materialization is T09; probes run in the guest or target
-  container but without the readiness/liveness model (T13); shutdown uses
-  `reboot(LINUX_REBOOT_CMD_RESTART)` per ADR 0003.
-- **Remaining subtasks:** (a) assemble and checksum the guest image; (b) KVM
-  scenario A — init container writes a shared file, app and sidecar share
-  localhost/IPC with distinct roots, plus exec/TTY/signals/exit; (c) init-failure
-  and no-zombie assertions; (d) wire logs and probes to T13.
+  container without the readiness/liveness model (T13); shutdown uses
+  `reboot(LINUX_REBOOT_CMD_RESTART)` per ADR 0003; the per-boot key is baked into
+  the experiment initramfs and production must deliver it per boot over a private
+  channel.
 - **Next task:** T08 (backend lifecycle) depends on T05/T07; T09 depends on T04.
 
 ## Updating this file

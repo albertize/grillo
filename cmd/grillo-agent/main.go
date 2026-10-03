@@ -42,7 +42,7 @@ func run() error {
 	workDir := flag.String("work-dir", "/run/grillo", "agent work directory")
 	runcPath := flag.String("runc", "/runc", "runc binary")
 	runcRoot := flag.String("runc-root", "/run/runc", "runc state root")
-	keyFile := flag.String("key-file", "/run/grillo/key", "file containing the base64 per-boot key")
+	keyFile := flag.String("key-file", "/etc/grillo/key", "file containing the base64 per-boot key")
 	sandboxID := flag.String("sandbox", "", "expected sandbox id (optional)")
 	flag.Parse()
 

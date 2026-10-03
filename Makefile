@@ -6,7 +6,7 @@ GOVULNCHECK_VERSION := v1.8.0
 
 # Check formatting without modifying source files.
 fmt:
-	@files=$$(gofmt -l cmd internal experiments/boot) || exit 1; \
+	@files=$$(gofmt -l cmd internal guest experiments/boot) || exit 1; \
 		test -z "$$files" || { printf '%s\n' "$$files"; exit 1; }
 
 vet:
@@ -75,8 +75,17 @@ qemu-guest:
 test-qemu: qemu-guest oci-guest
 	go test -tags kvm -count=1 -v -run 'TestKVMQEMU' ./experiments/boot/qemu/run/ ./experiments/boot/oci/
 
+# T07 guest image: real agent + static runc + busybox rootfs + key + manifest.
+t07-guest:
+	bash guest/build-image.sh
+
+# Real KVM scenario A for the guest agent (init container, sidecar localhost,
+# separate roots, status, stop). Missing /dev/kvm or artifacts is a SKIP.
+test-t07: t07-guest
+	go test -tags kvm -count=1 -v -run TestKVMAgent ./internal/guest/
+
 # Full T02/T03 real hardware evidence. No downloads or preexisting volume deletion.
-.PHONY: f0-guest test-f0
+.PHONY: f0-guest test-f0 t07-guest test-t07
 f0-guest:
 	bash experiments/boot/qemu/build-kernel.sh
 	bash experiments/boot/qemu/build-f0-guest.sh

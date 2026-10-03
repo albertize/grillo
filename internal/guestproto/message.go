@@ -155,6 +155,7 @@ type ContainerStatus struct {
 type StatusResult struct {
 	State      string            `json:"state"`
 	UptimeMS   int64             `json:"uptimeMs,omitempty"`
+	Zombies    int               `json:"zombies"`
 	Containers []ContainerStatus `json:"containers,omitempty"`
 }
 

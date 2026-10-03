@@ -10,7 +10,7 @@ runtime code lives in `internal/guest`; the PID 1 entry point is
 /init                grillo-agent (PID 1, static, CGO_ENABLED=0)
 /runc                static runc used for OCI containers
 /rootfs/<container>  per-container root filesystems (busybox or OCI layers)
-/run/grillo/key      base64 per-boot handshake key (delivered by the host)
+/etc/grillo/key      base64 per-boot handshake key (delivered by the host)
 /run/grillo/...      bundles, logs, and runc state (created at runtime)
 ```
 
@@ -26,16 +26,26 @@ The agent is built by the repository build target:
 make build          # produces bin/grillo and bin/grillo-agent
 ```
 
-A full initramfs assembly and the KVM scenario-A run are **not implemented yet**
-(T07 remains in progress; see `docs/progress.md`). The intended steps, mirroring
-`experiments/boot/build-oci-guest.sh`, are:
+The full guest image is built from the T02 OCI fixture (pinned static runc and
+busybox rootfs):
 
-1. build `bin/grillo-agent` statically;
-2. copy it to `/init` in an initramfs together with a pinned static `runc` and a
-   busybox rootfs;
-3. hash every component into `manifest.json`;
-4. boot with QEMU `microvm` + `vhost-vsock` and drive the agent through the T06
-   protocol.
+```sh
+make oci-guest      # fetch runc + busybox rootfs (T02 fixture, cached)
+make t07-guest      # build experiments/artifacts/t07/{initramfs-agent.cpio.gz,key,manifest.json}
+make test-t07       # real KVM/QEMU scenario A against the built image
+```
+
+`make t07-guest` builds the static agent, packs it as `/init` with `/runc`, one
+busybox rootfs per container (`/rootfs-setup`, `/rootfs-app`, `/rootfs-sidecar`),
+a `/shared` directory, and a per-boot key at `/etc/grillo/key`, then writes the
+artifact manifest. `make test-t07` boots the image with QEMU `microvm` and
+`vhost-vsock` and drives scenario A through the T06 client. A missing `/dev/kvm`
+or qemu is a documented SKIP, never a pass.
+
+The key is baked in for the local experiment because the host controls the
+image. A production backend must deliver a fresh key per boot over a private
+channel (for example a virtio device or fw_cfg), never on the kernel command
+line or in logs.
 
 ## Artifact manifest
 
