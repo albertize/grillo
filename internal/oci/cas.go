@@ -91,6 +91,16 @@ func (c *CAS) Open(digest string) (io.ReadCloser, error) {
 	return f, err
 }
 
+// Read returns a stored blob's bytes.
+func (c *CAS) Read(digest string) ([]byte, error) {
+	f, err := c.Open(digest)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	return io.ReadAll(f)
+}
+
 // Commit writes a blob, verifying its size and digest before the atomic rename.
 // maxBytes bounds the read (<=0 means no bound).
 func (c *CAS) Commit(expectedDigest string, r io.Reader, expectedSize, maxBytes int64) error {

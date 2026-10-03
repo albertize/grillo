@@ -151,3 +151,26 @@ func layoutBlobPath(dir, digest string) (string, error) {
 	}
 	return filepath.Join(dir, "blobs", "sha256", hexPart), nil
 }
+
+// LoadPulled reconstructs a resolved image from a manifest digest already in
+// the CAS. It lets locally built images be used as build bases or run without a
+// registry round trip.
+func LoadPulled(cas *CAS, manifestDigest string) (PulledImage, error) {
+	manifestData, err := cas.Read(manifestDigest)
+	if err != nil {
+		return PulledImage{}, err
+	}
+	manifest, err := ParseManifest(manifestData)
+	if err != nil {
+		return PulledImage{}, err
+	}
+	configData, err := cas.Read(manifest.Config.Digest)
+	if err != nil {
+		return PulledImage{}, err
+	}
+	config, err := ParseImageConfig(configData)
+	if err != nil {
+		return PulledImage{}, err
+	}
+	return PulledImage{Manifest: manifest, ManifestDigest: manifestDigest, Config: config}, nil
+}
