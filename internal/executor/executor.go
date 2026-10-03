@@ -19,6 +19,8 @@ import (
 
 	"grillo.local/grillo/internal/guestproto"
 	"grillo.local/grillo/internal/model"
+	"grillo.local/grillo/internal/netns"
+	"grillo.local/grillo/internal/network"
 	"grillo.local/grillo/internal/observe"
 	"grillo.local/grillo/internal/plan"
 	"grillo.local/grillo/internal/sandbox"
@@ -50,6 +52,14 @@ type Config struct {
 	VCPU         int
 	Images       ImageResolver
 	Dial         func(ctx context.Context, cid, port uint32) (*guestproto.Client, error)
+
+	// Networking (optional). When EnableNetwork is set, each application runs a
+	// network supervisor and sandboxes receive IPAM addresses on its bridge.
+	EnableNetwork bool
+	QEMU          string
+	NetnsBinary   string
+	Pasta         string
+	RuntimeDir    string
 }
 
 // Executor applies sandbox and volume actions.
@@ -60,12 +70,17 @@ type Executor struct {
 	desired  map[string]model.Application
 	runtimes map[string]*sandboxRuntime // by backend sandbox ID
 	nextCID  uint32
+
+	launchMu    sync.Mutex
+	supervisors map[string]*netns.Helper
+	ipams       map[string]*network.IPAM
 }
 
 type sandboxRuntime struct {
 	id     string
 	app    string
 	cid    uint32
+	ip     string
 	guest  *guestproto.Client
 	runner *observe.Runner
 	cancel context.CancelFunc
@@ -96,10 +111,12 @@ func New(cfg Config) (*Executor, error) {
 		cfg.MemoryMiB = 512
 	}
 	return &Executor{
-		cfg:      cfg,
-		desired:  map[string]model.Application{},
-		runtimes: map[string]*sandboxRuntime{},
-		nextCID:  cfg.VsockCIDBase,
+		cfg:         cfg,
+		desired:     map[string]model.Application{},
+		runtimes:    map[string]*sandboxRuntime{},
+		supervisors: map[string]*netns.Helper{},
+		ipams:       map[string]*network.IPAM{},
+		nextCID:     cfg.VsockCIDBase,
 	}, nil
 }
 
@@ -150,6 +167,12 @@ func (e *Executor) Ensure(ctx context.Context, application string, descriptor pl
 	if err != nil {
 		return err
 	}
+	ip := ""
+	if e.cfg.EnableNetwork {
+		if allocated, allocErr := e.allocateIP(application, descriptor.ID); allocErr == nil {
+			ip = allocated
+		}
+	}
 	if _, err := e.cfg.Backend.Create(ctx, spec, sandbox.OperationID("ensure-"+spec.ID)); err != nil {
 		return err
 	}
@@ -168,7 +191,7 @@ func (e *Executor) Ensure(ctx context.Context, application string, descriptor pl
 		return fmt.Errorf("executor: start containers: %w", err)
 	}
 	e.mu.Lock()
-	e.runtimes[spec.ID] = &sandboxRuntime{id: spec.ID, app: application, cid: spec.VsockCID, guest: client}
+	e.runtimes[spec.ID] = &sandboxRuntime{id: spec.ID, app: application, cid: spec.VsockCID, ip: ip, guest: client}
 	rt := e.runtimes[spec.ID]
 	e.mu.Unlock()
 	if runner, cancel, ok := e.startProbes(client, *workload); ok {
@@ -234,6 +257,7 @@ func (e *Executor) Stop(ctx context.Context, application string, descriptor plan
 	if err := e.cfg.Backend.Stop(ctx, sandbox.Handle{ID: sandboxID}, 0); err != nil {
 		return err
 	}
+	e.releaseIP(application, descriptor.ID)
 	return e.detachVolumes(ctx, application, sandboxID)
 }
 
@@ -340,7 +364,19 @@ func (e *Executor) buildSpecs(ctx context.Context, application string, app model
 		VsockPort:  e.cfg.VsockPort,
 		GuestKey:   e.cfg.GuestKey,
 	}
+	guestIP := ""
+	if e.cfg.EnableNetwork {
+		ip, err := e.allocateIP(application, descriptor.ID)
+		if err != nil {
+			return sandbox.Spec{}, guestproto.SandboxSpec{}, err
+		}
+		guestIP = ip
+		spec.Application = application
+	}
 	guestSpec := guestproto.SandboxSpec{ID: sandboxID, Hostname: workload.Template.Hostname}
+	if guestIP != "" {
+		guestSpec.Network = &guestproto.NetworkConfig{Interface: "eth0", Address: guestIP, PrefixLen: bridgePrefix, Gateway: bridgeGateway}
+	}
 
 	// Volumes referenced by this template.
 	volumeTargets := map[string]string{}
@@ -379,7 +415,7 @@ func (e *Executor) buildSpecs(ctx context.Context, application string, app model
 		containersCopy.Init = i < len(workload.Template.InitContainers)
 		guestSpec.Containers = append(guestSpec.Containers, containersCopy)
 	}
-	guestSpec.DNS = dnsConfig(app, workload)
+	guestSpec.DNS = e.dnsConfig(app, workload)
 	if guestSpec.DNS != nil {
 		guestSpec.Nameservers = []string{"127.0.0.1"}
 	}
@@ -387,14 +423,21 @@ func (e *Executor) buildSpecs(ctx context.Context, application string, app model
 }
 
 // dnsConfig builds the guest resolver records for Services selecting this
-// workload. In the single-guest model a service resolves to the guest itself.
-func dnsConfig(app model.Application, workload model.Workload) *guestproto.DNSConfig {
+// workload. With networking each service resolves to its sandboxes' addresses;
+// without it, a service resolves to the guest itself.
+func (e *Executor) dnsConfig(app model.Application, workload model.Workload) *guestproto.DNSConfig {
 	var records []guestproto.DNSRecord
 	for _, service := range app.Services {
 		if !selectorMatches(service.Selector, workload.Labels) {
 			continue
 		}
-		records = append(records, guestproto.DNSRecord{Name: service.Name, Namespace: app.Identity.Namespace, IPs: []string{"127.0.0.1"}})
+		ips := []string{"127.0.0.1"}
+		if e.cfg.EnableNetwork {
+			if resolved := e.serviceIPs(app, service.Selector); len(resolved) > 0 {
+				ips = resolved
+			}
+		}
+		records = append(records, guestproto.DNSRecord{Name: service.Name, Namespace: app.Identity.Namespace, IPs: ips})
 	}
 	if len(records) == 0 {
 		return nil

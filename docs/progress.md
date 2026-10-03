@@ -29,9 +29,9 @@ real KVM/QEMU and passes OCI scenario A plus an init-failure case.
 
 **T10 is complete.** `internal/storage` manages volumes with validated bind paths, managed/PVC/ephemeral lifecycles, leases with owner/operation records, access modes, explicit UID/GID mapping, crash-safe lease reconciliation, and deletion that never touches bind or external data. The guest agent mounts virtiofs and block shares before starting containers, and `make test-t10` passes acceptance scenario G on real KVM: live bind sharing both ways and enforced read-only. A KVM test also attaches a raw ext4 image as `virtio-blk-device` and persists a file across two sandboxes (the same-disk attachment is exclusive).
 
-**T11 is complete.** `internal/network` provides IPAM with persistent owner-bound leases and reconciliation, host loopback port reservations with privileged-port and collision rejection, application isolation policy, a rootless publishing proxy, and a supervised pasta helper that runs a child in a fresh user+network namespace. `make test-netns` verifies egress, distinct namespaces, mutually isolated same-port binds, and host-loopback management unreachability with real pasta, and asserts each sandbox receives its own IPAM address via `pasta -a`.
+**T11 is complete.** `internal/network` provides IPAM with persistent owner-bound leases and reconciliation, host loopback port reservations with privileged-port and collision rejection, application isolation policy, a rootless publishing proxy, and a supervised pasta helper that runs a child in a fresh user+network namespace. `make test-netns` verifies egress, distinct namespaces, mutually isolated same-port binds, and host-loopback management unreachability with real pasta, and asserts each sandbox receives its own IPAM address via `pasta -a`. The production backend now runs each application in a dedicated `internal/netns` supervisor: one pasta user+network namespace, a bridge with the application gateway, one TAP per sandbox, and nftables forwarding with masqueraded egress. `make test-bridged` verifies cross-VM reachability, real DNS addresses, guest egress, and application isolation on real KVM.
 
-**T12 is complete.** `internal/network` adds an application DNS resolver and UDP/TCP server (all four Kubernetes service names resolve, NXDOMAIN for in-zone misses, REFUSED rather than acting as an open resolver), a Service registry with a dedicated VIP pool, a readiness-aware round-robin balancer and TCP service proxy, and an Ingress matcher/reverse proxy with segment-aware Prefix, Exact, sanitized forwarded headers, and bounded backend timeouts. `golang.org/x/net` (dnsmessage) is now a pinned dependency. The resolver runs inside the guest: the sandbox spec carries service records, the agent serves them on 127.0.0.1:53 and writes `/etc/resolv.conf`, every container bind-mounts it, and the four Kubernetes names resolve end to end on real KVM.
+**T12 is complete.** `internal/network` adds an application DNS resolver and UDP/TCP server (all four Kubernetes service names resolve, NXDOMAIN for in-zone misses, REFUSED rather than acting as an open resolver), a Service registry with a dedicated VIP pool, a readiness-aware round-robin balancer and TCP service proxy, and an Ingress matcher/reverse proxy with segment-aware Prefix, Exact, sanitized forwarded headers, and bounded backend timeouts. `golang.org/x/net` (dnsmessage) is now a pinned dependency. The resolver runs inside the guest: the sandbox spec carries service records, the agent serves them on 127.0.0.1:53 and writes `/etc/resolv.conf`, every container bind-mounts it, and the four Kubernetes names resolve end to end on real KVM. With the production bridge, service records carry the real per-replica sandbox addresses, so replicas resolve and reach each other across VMs.
 
 **T13 is complete.** `internal/observe` provides a sequenced event stream (reusing the state journal's rotation and sequence IDs) with `Follow` and gap detection, a bounded log spool with follow, `/proc`-based resource snapshots with CPU deltas, and exec/HTTP/TCP probes with startup/readiness/liveness roles, thresholds, injected-clock scheduling, and nonoverlapping ticks. A bounded exit watcher emits an event only on container state change. The executor wires the probes and restarts a container whose liveness probe fails, verified on real KVM by a PID change.
 
@@ -58,8 +58,8 @@ Hosted CI has not yet been executed.
 | T08 | Backend lifecycle and process supervision | DONE | `internal/sandbox` + `internal/platform/linux` + `internal/backend/qemu`; `make test-t08` 100 cycles, no leaks |
 | T09 | OCI registry and CAS | DONE | `internal/oci`; unit + adversarial + concurrent-dedup tests, and `make test-netreg` live digest-pinned pull PASS |
 | T10 | Storage manager | DONE | `internal/storage`; `make test-t10` (scenario G) and a `virtio-blk` ext4 persistence test PASS on real KVM |
-| T11 | Production rootless networking and IPAM | DONE | `internal/network`; `make test-netns` PASS (egress, unique addresses, isolation, host-loopback denied) |
-| T12 | DNS, Service proxy, and Ingress | DONE | `internal/network` + in-guest resolver; four-name resolve on real KVM, balancing, readiness, timeout, path-segment tests |
+| T11 | Production rootless networking and IPAM | DONE | `internal/network` + `internal/netns`; `make test-netns` and `make test-bridged` PASS (egress, unique addresses, isolation, cross-VM, host-loopback denied) |
+| T12 | DNS, Service proxy, and Ingress | DONE | `internal/network` + in-guest resolver with real replica addresses; cross-VM resolve/reach, balancing, readiness, timeout, path-segment tests |
 | T13 | Observability and probes | DONE | `internal/observe` + executor probe wiring; startup gating, thresholds, fake-clock, timeout-kill, liveness-restart KVM test |
 | T14 | Planner, reconciler, and updates | DONE | `internal/plan` + `internal/reconcile` + `internal/executor`; diff/recreate/route-only, retries, crash replay, idempotent down, bounded workers, `make test-executor` end-to-end on KVM |
 | T15 | Local API and daemon lifetime | DONE | `internal/api` + `cmd/grillod`; peer UID, async ops, status/exec endpoints, SSE cursors, disconnect/leak tests |
@@ -716,10 +716,9 @@ historical evidence only.
   namespaces; kernel netns inodes differ from the host and from each other;
   same loopback port binds in both; egress to `1.1.1.1:443` succeeds; a host
   canary listener is unreachable from inside.
-- **Known limitations:** Blocked/deny egress policy beyond "no inbound
-  forwarding" is not implemented; TLS and hostname management are out of scope.
-  Cross-VM routing uses pasta's namespace rather than a per-application TAP
-  bridge.
+- **Known limitations:** Per-port egress allow/deny policy is a blanket forward
+  to the uplink (no per-destination policy yet); TLS and hostname management are
+  out of scope.
 - **Next task:** T12 (DNS, Service proxy, Ingress) depends on T11/T04.
 
 ## T12 DNS, Service proxy, and Ingress — 2026-10-03
@@ -748,11 +747,10 @@ historical evidence only.
   reverse-proxy forwarding; client-supplied `X-Forwarded-For` being overwritten;
   a slow backend returning 502 within the configured response-header timeout;
   and no-match/unavailable status codes.
-- **Tests NOT run and why:** Service VIPs are not yet attached to sandbox
-  interfaces, and the Service proxy target is not pointed at guest endpoints
-  through a relay. External forwarding is not implemented (REFUSED), and
-  IPv6/AAAA, headless Services beyond A records, and wildcard Ingress hosts are
-  out of scope.
+- **Tests NOT run and why:** TCP Service load balancing is exposed as a proxy
+  and DNS; the VIP is not yet programmed as a guest interface alias. External
+  forwarding is not implemented (REFUSED), and IPv6/AAAA, headless Services
+  beyond A records, and wildcard Ingress hosts are out of scope.
 - **Integration evidence:** Real UDP and TCP DNS servers exercised with the
   `dnsmessage` client; the in-guest resolver answers the four Kubernetes names on
   real KVM (`make test-executor`); real TCP backends and a real reverse proxy with an
@@ -916,6 +914,39 @@ historical evidence only.
   panes, no topology SVG, no local TLS or dev CA.
 - **Next task:** Complete T23 views and wire the browser console to the running
   bridge; T17/T20 frontends remain.
+
+## Production rootless network topology - 2026-10-03
+
+- **Task:** close the remaining T11/T12 networking limitation (Service/VIP
+  datapath and cross-VM routing).
+- **Status:** DONE
+- **Files and contracts changed:** `internal/netns` (supervisor + client:
+  bridge, gateway, per-sandbox TAP, nftables forwarding/masquerade, launch
+  protocol), `cmd/grillo-netns` (supervisor entry point), `internal/backend/qemu`
+  (optional `Config.Launch` to start the VMM through the supervisor, external
+  process tracking), `internal/executor` (per-application supervisor, IPAM
+  addresses, `NetworkConfig`, real service DNS addresses, `SandboxInfo`/`ExecRuntime`),
+  `internal/guestproto` (`NetworkConfig`), and `internal/guest` (agent configures
+  the interface with busybox `ip`).
+- **Decisions/ADRs:** Implements the T03 F0 topology in production: one pasta
+  namespace per application, a bridge with the application gateway, one TAP per
+  sandbox, `virtual-net-device`, and nftables. Depends on ADR 0005.
+- **Tests run:** `make check` PASS; `make test-bridged` PASS (real KVM + pasta):
+  two replicas get distinct IPAM addresses, one fetches the other's page across
+  the bridge, DNS returns both real addresses, the guest dials `1.1.1.1:443` via
+  the agent probe (egress), and a second application at the same address cannot
+  reach the first (isolation). `make test-t07`, `make test-executor`,
+  `make test-netns`, `make test-netreg`, and the block-device test all PASS.
+- **Tests NOT run and why:** No per-destination egress policy test beyond the
+  blanket uplink forward; no VIP interface-alias test (services are reached via
+  DNS/proxy). Hosted CI has not run.
+- **Integration evidence:** Real QEMU microVMs inside a pasta namespace, on a
+  bridge, doing cross-VM HTTP and DNS resolution with IPAM addresses.
+- **Known limitations:** The bridge subnet is fixed at `10.77.0.0/24` per
+  application (isolated namespaces); egress is a blanket uplink forward; TAP
+  setup uses `ip`/`nft` binaries; the guest interface is configured by the agent,
+  not the kernel.
+- **Next task:** T17 (Compose parser and compiler).
 
 ## Updating this file
 

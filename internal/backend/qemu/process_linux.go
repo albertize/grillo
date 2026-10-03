@@ -42,6 +42,16 @@ func startProcess(path string, log *os.File, args ...string) (*process, error) {
 	return p, nil
 }
 
+// externalProcess wraps a process started outside this process (by the network
+// supervisor) using its identity only.
+func externalProcess(pid int) (*process, error) {
+	id, err := linux.Identify(pid)
+	if err != nil {
+		return nil, err
+	}
+	return &process{id: id}, nil
+}
+
 func (p *process) alive() bool { return p != nil && p.id.Alive() }
 
 func processID(p *process) *persistedProcess {
@@ -69,6 +79,23 @@ func (p *process) stop(grace time.Duration) error {
 	if p == nil {
 		return nil
 	}
+	if p.done == nil {
+		if !p.id.Alive() {
+			return nil
+		}
+		if _, err := linux.SignalGroup(p.id, syscall.SIGTERM); err != nil {
+			return err
+		}
+		deadline := time.Now().Add(grace)
+		for time.Now().Before(deadline) && p.id.Alive() {
+			time.Sleep(50 * time.Millisecond)
+		}
+		if p.id.Alive() {
+			_, err := linux.SignalGroup(p.id, syscall.SIGKILL)
+			return err
+		}
+		return nil
+	}
 	select {
 	case <-p.done:
 		return nil
@@ -94,6 +121,20 @@ func (p *process) stop(grace time.Duration) error {
 func (p *process) wait(ctx context.Context, timeout time.Duration) error {
 	if p == nil {
 		return nil
+	}
+	if p.done == nil {
+		deadline := time.Now().Add(timeout)
+		for time.Now().Before(deadline) {
+			if !p.id.Alive() {
+				return nil
+			}
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-time.After(50 * time.Millisecond):
+			}
+		}
+		return context.DeadlineExceeded
 	}
 	tctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()

@@ -40,6 +40,7 @@ type Network struct {
 // Spec is the resolved configuration for one sandbox.
 type Spec struct {
 	ID           string
+	Application  string
 	Kernel       string
 	Initramfs    string
 	KernelArgs   string

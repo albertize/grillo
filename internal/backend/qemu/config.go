@@ -39,6 +39,9 @@ type Config struct {
 	// DialGuest connects and handshakes with the guest agent. It defaults to the
 	// AF_VSOCK guestproto client. Tests may substitute it.
 	DialGuest func(ctx context.Context, spec sandbox.Spec) (GuestConn, error)
+	// Launch, when set, starts the VMM inside a network namespace (the
+	// supervisor) and returns its PID. When nil, the VMM is started directly.
+	Launch func(ctx context.Context, spec sandbox.Spec, args []string, logPath string) (int, error)
 }
 
 // GuestConn is the subset of the guest protocol client the backend uses.

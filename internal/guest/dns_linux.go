@@ -8,6 +8,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"os/exec"
 	"strings"
 
 	"grillo.local/grillo/internal/guestproto"
@@ -65,4 +66,30 @@ func writeResolvConf(search []string) error {
 		return err
 	}
 	return os.WriteFile(resolvConfPath, []byte(builder.String()), 0o644)
+}
+
+// SetupNetwork configures the sandbox interface from the spec. It uses busybox
+// `ip`, which the guest image provides.
+func SetupNetwork(cfg *guestproto.NetworkConfig) error {
+	if cfg == nil {
+		return nil
+	}
+	iface := cfg.Interface
+	if iface == "" {
+		iface = "eth0"
+	}
+	commands := [][]string{
+		{"link", "set", iface, "up"},
+		{"addr", "add", fmt.Sprintf("%s/%d", cfg.Address, cfg.PrefixLen), "dev", iface},
+	}
+	if cfg.Gateway != "" {
+		commands = append(commands, []string{"route", "add", "default", "via", cfg.Gateway, "dev", iface})
+	}
+	for _, args := range commands {
+		cmd := exec.Command("/bin/busybox", append([]string{"ip"}, args...)...)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			return fmt.Errorf("guest: configure network %s: %w: %s", strings.Join(args, " "), err, out)
+		}
+	}
+	return nil
 }

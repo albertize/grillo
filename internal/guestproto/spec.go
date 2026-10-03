@@ -17,8 +17,17 @@ type SandboxSpec struct {
 	Hostname    string          `json:"hostname,omitempty"`
 	Nameservers []string        `json:"nameservers,omitempty"`
 	DNS         *DNSConfig      `json:"dns,omitempty"`
+	Network     *NetworkConfig  `json:"network,omitempty"`
 	Shares      []ShareSpec     `json:"shares,omitempty"`
 	Containers  []ContainerSpec `json:"containers"`
+}
+
+// NetworkConfig is the sandbox interface configuration applied by the agent.
+type NetworkConfig struct {
+	Interface string `json:"interface,omitempty"`
+	Address   string `json:"address"`
+	PrefixLen int    `json:"prefixLen"`
+	Gateway   string `json:"gateway,omitempty"`
 }
 
 // DNSConfig is the guest resolver configuration: service records the agent

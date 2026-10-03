@@ -196,10 +196,24 @@ func (b *Backend) Start(ctx context.Context, handle sandbox.Handle) error {
 		}
 	}
 
-	qemu, err := startProcess(b.cfg.QEMU, vmmLog, qemuArgs(spec, b.cfg, dir, serialLogPath(dir), shareSockets)...)
-	if err != nil {
-		stopHelpers()
-		return fmt.Errorf("qemu: start vmm: %w", err)
+	var qemu *process
+	if b.cfg.Launch != nil {
+		pid, launchErr := b.cfg.Launch(ctx, spec, qemuArgs(spec, b.cfg, dir, serialLogPath(dir), shareSockets), vmmLogPath(dir))
+		if launchErr != nil {
+			stopHelpers()
+			return fmt.Errorf("qemu: launch vmm: %w", launchErr)
+		}
+		qemu, err = externalProcess(pid)
+		if err != nil {
+			stopHelpers()
+			return fmt.Errorf("qemu: track vmm: %w", err)
+		}
+	} else {
+		qemu, err = startProcess(b.cfg.QEMU, vmmLog, qemuArgs(spec, b.cfg, dir, serialLogPath(dir), shareSockets)...)
+		if err != nil {
+			stopHelpers()
+			return fmt.Errorf("qemu: start vmm: %w", err)
+		}
 	}
 	guest, err := b.waitGuest(ctx, spec)
 	if err != nil {

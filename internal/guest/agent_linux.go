@@ -91,6 +91,9 @@ func (a *Agent) start(ctx context.Context, req guestproto.Message) (any, *guestp
 	if err := MountShares(a.sandbox.Shares); err != nil {
 		return nil, guestproto.Errorf(guestproto.CodeInternal, "%v", err)
 	}
+	if err := SetupNetwork(a.sandbox.Network); err != nil {
+		return nil, guestproto.Errorf(guestproto.CodeInternal, "%v", err)
+	}
 	if err := a.startDNS(a.sandbox.DNS); err != nil {
 		return nil, guestproto.Errorf(guestproto.CodeInternal, "%v", err)
 	}

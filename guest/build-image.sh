@@ -41,7 +41,15 @@ trap 'rm -rf -- "$stage"' EXIT
 root=$stage/root
 mkdir -p -- "$root"/{proc,sys,dev,tmp,run/grillo,sys/fs/cgroup,shared,etc/grillo}
 
+mkdir -p "$root/bin"
 install -m 0755 -- "$out/bin/grillo-agent" "$root/init"
+install -m 0755 -- "$t02/rootfs/bin/busybox" "$root/bin/busybox"
+# busybox is dynamically linked; the agent uses it to configure the interface.
+for libdir in lib lib64 usr/lib usr/lib64; do
+    if [[ -d $t02/rootfs/$libdir ]]; then
+        cp -a -- "$t02/rootfs/$libdir" "$root/"
+    fi
+done
 install -m 0755 -- "$t02/runc" "$root/runc"
 cp -- "$out/key" "$root/etc/grillo/key"
 
@@ -51,6 +59,7 @@ for name in setup app sidecar; do
     cp -al -- "$t02/rootfs" "$root/rootfs-$name"
 done
 mkdir -p -- "$root/rootfs-app/www"
+rm -f -- "$root/rootfs-app/www/index.html"
 printf 'grillo-agent-localhost-ok\n' > "$root/rootfs-app/www/index.html"
 
 echo "build-image: packing $out/initramfs-agent.cpio.gz" >&2
