@@ -39,6 +39,10 @@ func main() {
 		fmt.Fprintln(os.Stderr, "grillo-t01: filesystem setup failed:", err)
 		os.Exit(1)
 	}
+	if err := bringUpLoopback(); err != nil {
+		// Not fatal for T01 (no networking); required for the T02 localhost test.
+		fmt.Fprintln(os.Stderr, "grillo-t01: loopback setup failed:", err)
+	}
 	fmt.Printf("grillo-t01: guest init started, proto=%s agent=%s\n", protoVer, agentVer)
 
 	ln, err := listenVsock(vsockPort)
@@ -63,21 +67,62 @@ func main() {
 // setupFilesystems mounts the pseudo-filesystems the guest needs. The initramfs
 // provides /proc, /sys, and /dev directories; devtmpfs is auto-mounted by the
 // kernel when CONFIG_DEVTMPFS_MOUNT is set, but we mount explicitly to keep the
-// experiment independent of that default.
+// experiment independent of that default. The cgroup2/devpts/shm mounts are only
+// needed for the T02 OCI experiment but are harmless for T01.
 func setupFilesystems() error {
-	mounts := []struct{ target, fstype string }{
+	base := []struct{ target, fstype string }{
 		{"/proc", "proc"},
 		{"/sys", "sysfs"},
 		{"/dev", "devtmpfs"},
 	}
-	for _, m := range mounts {
-		if err := unix.Mount(m.fstype, m.target, m.fstype, 0, ""); err != nil {
-			// EBUSY means it is already mounted correctly (e.g. devtmpfs auto-mount).
-			if errors.Is(err, unix.EBUSY) {
-				continue
-			}
-			return fmt.Errorf("mount %s: %w", m.target, err)
+	for _, m := range base {
+		if err := mountOne(m.target, m.fstype, ""); err != nil {
+			return err
 		}
+	}
+	extra := []struct{ target, fstype, data string }{
+		{"/sys/fs/cgroup", "cgroup2", ""},
+		{"/dev/pts", "devpts", "newinstance,ptmxmode=0666,mode=0620"},
+		{"/dev/shm", "tmpfs", "mode=1777"},
+		{"/run", "tmpfs", "mode=0755"},
+	}
+	for _, m := range extra {
+		if err := os.MkdirAll(m.target, 0o755); err != nil {
+			return fmt.Errorf("mkdir %s: %w", m.target, err)
+		}
+		if err := mountOne(m.target, m.fstype, m.data); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func mountOne(target, fstype, data string) error {
+	if err := unix.Mount(fstype, target, fstype, 0, data); err != nil {
+		// EBUSY means it is already mounted correctly (e.g. devtmpfs auto-mount).
+		if errors.Is(err, unix.EBUSY) {
+			return nil
+		}
+		return fmt.Errorf("mount %s: %w", target, err)
+	}
+	return nil
+}
+
+// bringUpLoopback enables the loopback interface. Containers that share the
+// guest network namespace (as the T02 spike does) need it for 127.0.0.1.
+func bringUpLoopback() error {
+	fd, err := unix.Socket(unix.AF_INET, unix.SOCK_DGRAM|unix.SOCK_CLOEXEC, 0)
+	if err != nil {
+		return fmt.Errorf("socket: %w", err)
+	}
+	defer unix.Close(fd)
+	ifr, err := unix.NewIfreq("lo")
+	if err != nil {
+		return fmt.Errorf("ifreq: %w", err)
+	}
+	ifr.SetUint16(ifr.Uint16() | unix.IFF_UP)
+	if err := unix.IoctlIfreq(fd, unix.SIOCSIFFLAGS, ifr); err != nil {
+		return fmt.Errorf("set lo up: %w", err)
 	}
 	return nil
 }
@@ -141,6 +186,16 @@ func serve(conn io.ReadWriteCloser) {
 				continue
 			}
 			runExec(conn, mu, fields[1], fields[2:])
+		case "EXECD":
+			// Detached start: the child's stdio is /dev/null so it cannot hold
+			// the management channel open (needed for `runc run -d`).
+			if len(fields) < 2 || fields[1] == "" {
+				mu.Lock()
+				_, _ = fmt.Fprint(conn, "EXIT\t-1\n")
+				mu.Unlock()
+				continue
+			}
+			runDetached(conn, mu, fields[1], fields[2:])
 		case "STOP":
 			mu.Lock()
 			_, _ = fmt.Fprint(conn, "BYE\n")
@@ -220,5 +275,25 @@ func stream(wg *sync.WaitGroup, conn io.Writer, mu *sync.Mutex, kind string, r i
 func writeExit(conn io.Writer, mu *sync.Mutex, code int) {
 	mu.Lock()
 	_, _ = fmt.Fprintf(conn, "EXIT\t%d\n", code)
+	mu.Unlock()
+}
+
+// runDetached starts a process with /dev/null stdio and reaps it in the
+// background, replying immediately with its pid. This mirrors how a real agent
+// gives detached containers their own stdio instead of the control channel.
+func runDetached(conn io.Writer, mu *sync.Mutex, path string, args []string) {
+	cmd := exec.Command(path, args...)
+	// Left nil on purpose: os/exec connects nil stdio to os.DevNull.
+	if err := cmd.Start(); err != nil {
+		mu.Lock()
+		_, _ = fmt.Fprintf(conn, "ERR\t%s\n", base64.StdEncoding.EncodeToString([]byte("start: "+err.Error())))
+		_, _ = fmt.Fprint(conn, "EXIT\t-1\n")
+		mu.Unlock()
+		return
+	}
+	go func() { _ = cmd.Wait() }()
+	mu.Lock()
+	_, _ = fmt.Fprintf(conn, "PID\t%d\n", cmd.Process.Pid)
+	_, _ = fmt.Fprint(conn, "EXIT\t0\n")
 	mu.Unlock()
 }

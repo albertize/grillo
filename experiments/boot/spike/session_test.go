@@ -6,7 +6,7 @@
 // artifacts. They are excluded from ordinary builds and run only under the kvm
 // build tag (see the test-kvm Make target). A skip because /dev/kvm is missing
 // is NOT a passed hardware gate.
-package main
+package spike
 
 import (
 	"context"
@@ -33,6 +33,15 @@ func requireKVM(t *testing.T) {
 	}
 }
 
+func requireFiles(t *testing.T, paths map[string]string) {
+	t.Helper()
+	for name, path := range paths {
+		if _, err := os.Stat(path); err != nil {
+			t.Fatalf("missing %s artifact %q; run 'make guest': %v", name, path, err)
+		}
+	}
+}
+
 func baseOptions(t *testing.T, logW *os.File) Options {
 	t.Helper()
 	root := repoRoot(t)
@@ -42,11 +51,7 @@ func baseOptions(t *testing.T, logW *os.File) Options {
 		Initramfs:   filepath.Join(root, "experiments/artifacts/t01/initramfs.cpio.gz"),
 		Log:         logW,
 	}
-	for name, path := range map[string]string{"firecracker": opts.Firecracker, "kernel": opts.Kernel, "initramfs": opts.Initramfs} {
-		if _, err := os.Stat(path); err != nil {
-			t.Fatalf("missing %s artifact %q; run 'make guest': %v", name, path, err)
-		}
-	}
+	requireFiles(t, map[string]string{"firecracker": opts.Firecracker, "kernel": opts.Kernel, "initramfs": opts.Initramfs})
 	return opts
 }
 

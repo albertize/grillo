@@ -4,7 +4,9 @@
 
 **T00 is implemented and locally verified.** The repository contains a Go module, tested command scaffolding, build/check targets, and CI configuration.
 
-**T01 is complete.** A real Firecracker microVM boots as the user, completes a vsock handshake, executes a guest command, streams output, and stops cleanly across 30 measured cycles (boot median 260 ms, total median 391 ms). A rootless networking helper (pasta) was also verified to give a new user+network namespace an address, default route, DNS, and egress. There is still no workload runtime, OCI execution, or release.
+**T01 is complete.** A real Firecracker microVM boots as the user, completes a vsock handshake, executes a guest command, streams output, and stops cleanly across 30 measured cycles (boot median 260 ms, total median 391 ms). A rootless networking helper (pasta) was also verified to give a new user+network namespace an address, default route, DNS, and egress.
+
+**T02 is BLOCKED on the live-bind gate.** OCI image execution and two-container localhost co-location pass on real KVM with a pinned static runc and a busybox image. Live read/write host-directory binds cannot pass: Firecracker v1.17.0 exposes no virtio-fs or 9p device. Per the plan this forces a backend comparison before T03. There is still no workload runtime or release.
 
 No application-networking, storage-sharing, or OCI experiments have been performed. Hosted CI has not yet been executed.
 
@@ -14,7 +16,7 @@ No application-networking, storage-sharing, or OCI experiments have been perform
 |---|---|---|---|
 | T00 | Repository scaffold and conventions | DONE | Local checks, clean-source builds, audit, and command smoke tests; evidence below |
 | T01 | Rootless VMM and minimal guest spike | DONE | Real boot/exec/stop 30/30, rootless userns/TAP + pasta egress; two T01 reports |
-| T02 | OCI, filesystem, and application-network spike | TODO | T01 |
+| T02 | OCI, filesystem, and application-network spike | BLOCKED | A/B pass on real KVM; G fails (no shared-fs device); C not attempted; see ADR 0004 |
 | T03 | F0 gate and platform ADR | TODO | T02 and measured evidence |
 | T04 | IR, diagnostics, and capabilities | TODO | T00 |
 | T05 | State, secrets, and recovery primitives | TODO | T04 |
@@ -209,6 +211,38 @@ Task contracts and full acceptance criteria live in [IMPLEMENTATION_PLAN.md](../
   port forwarding and multi-VM routing untested.
 - **Next task:** T02 — OCI execution through guest runc, two-VM application
   networking, and live bind mounts, with the backend still provisional.
+
+## T02 spike — 2026-10-03
+
+- **Task:** T02 — OCI, filesystem, and application-network spike
+- **Status:** BLOCKED (scenario A + B pass; scenario G fails; scenario C not attempted)
+- **Dependencies verified:** T01 complete; bootstrap and OCI fixtures present;
+  `make check` passes.
+- **Files and contracts changed:** `experiments/boot/spike/` (reusable session),
+  `run/` rewritten as a CLI, `guestinit` (cgroup2/devpts/shm/run mounts, loopback,
+  detached-start command), `fetch-oci.sh`, `build-oci-guest.sh`, `storage-probe.sh`,
+  `oci/` harness + kvm test, `Makefile` (`oci-guest`, `storage-probe`, extended
+  `test-kvm`). Report: [t02-oci-and-storage](experiments/t02-oci-and-storage.md).
+- **Decisions/ADRs:** [0004](adr/0004-shared-filesystem-backend-comparison.md)
+  (proposed): compare QEMU microvm + virtiofsd and Cloud Hypervisor + virtiofs
+  before T03; Firecracker has no shared-filesystem device.
+- **Tests run:** `make test-kvm` PASS — `TestKVMExecBootStop`,
+  `TestKVMExecMissingCommand`, `TestKVMOCIScenarios` (scenarios A and B) on real
+  KVM; `make check` PASS; `make storage-probe` exits 3 (BLOCKED, expected);
+  `git diff --check` PASS. OCI runtime static runc v1.5.2; image
+  `busybox:1.37@sha256:bdf5...`.
+- **Tests NOT run and why:** scenario C (two-VM DNS/egress/host publishing,
+  management isolation) not attempted — needs a namespace/TAP/helper harness;
+  live-bind and filesystem-overhead measurements impossible with Firecracker.
+- **Integration evidence:** real guest runc start/state/exec/TERM/delete and a
+  client container reaching a server container on `127.0.0.1`
+  (`grillo-oci-localhost-ok`).
+- **Known limitations:** Firecracker cannot do live host-directory binds; guest
+  PID 1 does not yet reap orphaned children (spike uses `runc delete --force`);
+  detached stdio and `--no-pivot` requirements recorded for T07; containers run
+  as guest root; protocol/bundles are experiment-only.
+- **Next task:** T03 — backend comparison and platform ADR (do not start
+  storage/backend-dependent tasks first). Pure IR work (T04/T17/T20) is independent.
 
 ## Updating this file
 

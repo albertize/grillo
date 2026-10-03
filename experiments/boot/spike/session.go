@@ -2,12 +2,11 @@
 
 // SPDX-License-Identifier: Apache-2.0
 
-// Command run is the T01 host-side feasibility harness. It boots a single
-// Firecracker microVM as the calling user, performs a vsock handshake, executes
-// a guest command, streams the output, and stops the VM. It is an experiment,
-// not the Grillo runtime: it speaks a throwaway protocol and does not create a
-// Pod, reconcile state, or run any OCI runtime.
-package main
+// Package spike holds the reusable T01/T02 feasibility session: it boots one
+// Firecracker microVM as the calling user and exposes a vsock exec/stop session.
+// It is experiment code, not the Grillo runtime, and speaks a throwaway protocol
+// that T06 replaces.
+package spike
 
 import (
 	"bufio"
@@ -16,7 +15,6 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
-	"flag"
 	"fmt"
 	"io"
 	"net"
@@ -24,42 +22,30 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"sort"
 	"strings"
 	"syscall"
 	"time"
 )
 
-// Options configures one boot/exec/stop cycle.
+// Options configures one microVM session.
 type Options struct {
 	Firecracker string        // path to the firecracker binary
 	Kernel      string        // path to an uncompressed vmlinux
 	Initramfs   string        // path to a gzip-compressed cpio initramfs
-	WorkDir     string        // parent for the per-cycle temporary directory
+	WorkDir     string        // parent for the per-session temporary directory
 	VsockPort   uint32        // guest port the agent listens on
 	GuestCID    uint32        // vsock guest context id
 	VCPU        uint32        // vCPU count
 	MemMiB      uint32        // guest memory
 	BootTimeout time.Duration // boot + handshake deadline
 	StopTimeout time.Duration // graceful-stop deadline before SIGKILL
-	Command     string        // guest binary to execute
+	Command     string        // guest binary executed by RunOnce
 	Args        []string      // arguments for Command
 	Log         io.Writer     // firecracker console/API log sink
 }
 
-// Result captures the observable outcome and timings of one cycle.
-type Result struct {
-	BootDuration time.Duration // process start to valid handshake
-	ExecDuration time.Duration // EXEC sent to EXIT received
-	StopDuration time.Duration // STOP sent to process exit
-	Total        time.Duration
-	Stdout       string
-	Stderr       string
-	ExitCode     int
-}
-
-func (o *Options) withDefaults() Options {
-	out := *o
+func (o Options) withDefaults() Options {
+	out := o
 	if out.VsockPort == 0 {
 		out.VsockPort = 1024
 	}
@@ -88,57 +74,131 @@ func (o *Options) withDefaults() Options {
 	return out
 }
 
-// RunOnce performs a full boot/handshake/exec/stop cycle and always attempts to
-// terminate the VM process and remove its temporary directory.
-func RunOnce(ctx context.Context, raw Options) (res Result, err error) {
+// Result captures the outcome and timings of one RunOnce cycle.
+type Result struct {
+	BootDuration time.Duration
+	ExecDuration time.Duration
+	StopDuration time.Duration
+	Total        time.Duration
+	Stdout       string
+	Stderr       string
+	ExitCode     int
+}
+
+// Session is a booted microVM with a connected vsock channel.
+type Session struct {
+	opts     Options
+	dir      string
+	vm       *firecracker
+	conn     *vsockConn
+	bootTime time.Duration
+	stopped  bool
+}
+
+// Boot starts Firecracker, configures it, and waits for the guest handshake.
+func Boot(ctx context.Context, raw Options) (s *Session, err error) {
 	opts := raw.withDefaults()
 	start := time.Now()
-	dir, err := os.MkdirTemp(opts.WorkDir, "grillo-t01-")
+	dir, err := os.MkdirTemp(opts.WorkDir, "grillo-spike-")
 	if err != nil {
-		return res, fmt.Errorf("create work dir: %w", err)
+		return nil, fmt.Errorf("create work dir: %w", err)
 	}
-	defer os.RemoveAll(dir)
-
 	vm, err := startFirecracker(opts, dir)
 	if err != nil {
-		return res, err
+		_ = os.RemoveAll(dir)
+		return nil, err
 	}
-	// Stop/cleanup must run even on early error paths.
+	s = &Session{opts: opts, dir: dir, vm: vm}
+	// Ensure cleanup on any post-start error.
 	defer func() {
-		stopErr := vm.shutdown(opts.StopTimeout)
-		if err == nil && stopErr != nil {
-			err = stopErr
+		if err != nil {
+			_ = s.Close()
 		}
 	}()
 
 	vsockPath := filepath.Join(dir, "vsock.sock")
 	if err := vm.configure(ctx, opts, vsockPath); err != nil {
-		return res, err
+		return nil, err
 	}
-
 	conn, err := waitVsockHandshake(ctx, vsockPath, opts.VsockPort, opts.BootTimeout)
+	if err != nil {
+		return nil, err
+	}
+	s.conn = conn
+	s.bootTime = time.Since(start)
+	return s, nil
+}
+
+// BootDuration reports the time from process start to a valid handshake.
+func (s *Session) BootDuration() time.Duration { return s.bootTime }
+
+// Exec runs one guest binary and returns its streams and exit status.
+func (s *Session) Exec(path string, args ...string) (stdout, stderr string, code int, err error) {
+	return s.conn.exec(path, args...)
+}
+
+// ExecDetached starts a guest binary with /dev/null stdio and returns once it
+// has started, so long-lived processes do not hold the control channel open.
+func (s *Session) ExecDetached(path string, args ...string) (stdout, stderr string, code int, err error) {
+	return s.conn.execDetached(path, args...)
+}
+
+// Stop requests a guest shutdown and waits for the VM process to exit.
+func (s *Session) Stop() error {
+	if s.stopped {
+		return nil
+	}
+	s.stopped = true
+	stopErr := s.conn.stop()
+	shutdownErr := s.vm.shutdown(s.opts.StopTimeout)
+	_ = s.conn.Close()
+	removeErr := os.RemoveAll(s.dir)
+	return errors.Join(stopErr, shutdownErr, removeErr)
+}
+
+// Close force-stops the VM and removes the work directory if Stop was not called.
+func (s *Session) Close() error {
+	if s.stopped {
+		return nil
+	}
+	s.stopped = true
+	var err error
+	if s.conn != nil {
+		_ = s.conn.Close()
+	}
+	if s.vm != nil {
+		err = s.vm.shutdown(s.opts.StopTimeout)
+	}
+	return errors.Join(err, os.RemoveAll(s.dir))
+}
+
+// RunOnce boots, executes Options.Command, stops, and returns timings. It is the
+// T01 convenience path.
+func RunOnce(ctx context.Context, raw Options) (res Result, err error) {
+	start := time.Now()
+	s, err := Boot(ctx, raw)
 	if err != nil {
 		return res, err
 	}
-	defer conn.Close()
-	res.BootDuration = time.Since(start)
+	defer func() {
+		if err == nil {
+			return
+		}
+		_ = s.Close()
+	}()
+	res.BootDuration = s.bootTime
 
-	if err := conn.pingPong(); err != nil {
+	if err := s.conn.pingPong(); err != nil {
 		return res, err
 	}
-
 	execStart := time.Now()
-	res.Stdout, res.Stderr, res.ExitCode, err = conn.exec(opts.Command, opts.Args...)
+	res.Stdout, res.Stderr, res.ExitCode, err = s.Exec(s.opts.Command, s.opts.Args...)
 	res.ExecDuration = time.Since(execStart)
 	if err != nil {
 		return res, err
 	}
-
 	stopStart := time.Now()
-	if err := conn.stop(); err != nil {
-		return res, err
-	}
-	if err := vm.shutdown(opts.StopTimeout); err != nil {
+	if err := s.Stop(); err != nil {
 		return res, err
 	}
 	res.StopDuration = time.Since(stopStart)
@@ -156,11 +216,13 @@ type firecracker struct {
 
 func startFirecracker(opts Options, dir string) (*firecracker, error) {
 	sockPath := filepath.Join(dir, "api.sock")
-	cmd := exec.Command(opts.Firecracker, "--api-sock", sockPath) //nolint:gosec // fixed binary, no shell
+	cmd := exec.Command(opts.Firecracker, "--api-sock", sockPath)
 	cmd.Stdout = opts.Log
 	cmd.Stderr = opts.Log
-	// Own process group so a leaked child cannot escape shutdown.
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	// Own process group so a leaked child cannot escape shutdown, and PDEATHSIG
+	// so the VMM dies if this harness is killed without running Stop. Firecracker
+	// otherwise survives parent death and becomes an orphan (a T08 concern).
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true, Pdeathsig: syscall.SIGKILL}
 	if err := cmd.Start(); err != nil {
 		return nil, fmt.Errorf("start firecracker: %w", err)
 	}
@@ -244,7 +306,7 @@ func (v *firecracker) shutdown(timeout time.Duration) error {
 		if err != nil {
 			var ee *exec.ExitError
 			if errors.As(err, &ee) {
-				return nil // nonzero exit after CtrlAltDel is expected on some kernels
+				return nil
 			}
 			return fmt.Errorf("wait firecracker: %w", err)
 		}
@@ -289,13 +351,21 @@ func (c *vsockConn) pingPong() error {
 }
 
 func (c *vsockConn) exec(path string, args ...string) (stdout, stderr string, code int, err error) {
-	fields := append([]string{"EXEC", path}, args...)
+	return c.runVerb("EXEC", path, args...)
+}
+
+func (c *vsockConn) execDetached(path string, args ...string) (stdout, stderr string, code int, err error) {
+	return c.runVerb("EXECD", path, args...)
+}
+
+func (c *vsockConn) runVerb(verb, path string, args ...string) (stdout, stderr string, code int, err error) {
+	fields := append([]string{verb, path}, args...)
 	if _, err := io.WriteString(c, strings.Join(fields, "\t")+"\n"); err != nil {
-		return "", "", 0, fmt.Errorf("send EXEC: %w", err)
+		return "", "", 0, fmt.Errorf("send %s: %w", verb, err)
 	}
 	var outBuf, errBuf bytes.Buffer
 	for {
-		line, err := c.readLine(10 * time.Second)
+		line, err := c.readLine(30 * time.Second)
 		if err != nil {
 			return "", "", 0, fmt.Errorf("read exec result: %w", err)
 		}
@@ -314,6 +384,8 @@ func (c *vsockConn) exec(path string, args ...string) (stdout, stderr string, co
 			} else {
 				errBuf.Write(decoded)
 			}
+		case "PID":
+			// Detached-start acknowledgement; the pid is not needed here.
 		case "EXIT":
 			if _, err := fmt.Sscanf(payload, "%d", &code); err != nil {
 				return "", "", 0, fmt.Errorf("parse exit code %q: %w", payload, err)
@@ -399,94 +471,4 @@ func waitForPath(path string, timeout time.Duration) error {
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
-}
-
-func main() {
-	var (
-		fcPath    = flag.String("firecracker", "experiments/artifacts/dependencies-v1/bin/firecracker", "firecracker binary")
-		kernel    = flag.String("kernel", "experiments/artifacts/t01/vmlinux", "uncompressed guest kernel")
-		initramfs = flag.String("initramfs", "experiments/artifacts/t01/initramfs.cpio.gz", "gzip initramfs")
-		cycles    = flag.Int("cycles", 1, "boot/stop cycles")
-		keep      = flag.Bool("keep", false, "keep per-cycle logs")
-	)
-	flag.Parse()
-
-	logDir := ""
-	if *keep {
-		dir, err := os.MkdirTemp("", "grillo-t01-logs-")
-		if err != nil {
-			fmt.Fprintln(os.Stderr, "run: create log dir:", err)
-			os.Exit(1)
-		}
-		logDir = dir
-		fmt.Println("keeping firecracker logs in", dir)
-	}
-
-	results := make([]Result, 0, *cycles)
-	for i := 0; i < *cycles; i++ {
-		var log io.Writer = io.Discard
-		if logDir != "" {
-			path := filepath.Join(logDir, fmt.Sprintf("cycle-%02d.log", i))
-			f, err := os.Create(path)
-			if err != nil {
-				fmt.Fprintln(os.Stderr, "run: create log:", err)
-				os.Exit(1)
-			}
-			defer f.Close()
-			log = f
-		} else if *cycles == 1 {
-			log = os.Stderr
-		}
-		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
-		res, err := RunOnce(ctx, Options{
-			Firecracker: *fcPath,
-			Kernel:      *kernel,
-			Initramfs:   *initramfs,
-			Log:         log,
-		})
-		cancel()
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "cycle %d: FAIL: %v\n", i+1, err)
-			os.Exit(1)
-		}
-		if !strings.Contains(res.Stdout, "grillo-testcmd stdout") || res.ExitCode != 0 {
-			fmt.Fprintf(os.Stderr, "cycle %d: unexpected payload: exit=%d stdout=%q\n", i+1, res.ExitCode, res.Stdout)
-			os.Exit(1)
-		}
-		results = append(results, res)
-		fmt.Printf("cycle %d: boot=%s exec=%s stop=%s total=%s exit=%d\n",
-			i+1, res.BootDuration.Round(time.Millisecond), res.ExecDuration.Round(time.Millisecond),
-			res.StopDuration.Round(time.Millisecond), res.Total.Round(time.Millisecond), res.ExitCode)
-	}
-	summarize(results)
-}
-
-func summarize(results []Result) {
-	if len(results) < 2 {
-		return
-	}
-	boots := make([]time.Duration, len(results))
-	totals := make([]time.Duration, len(results))
-	for i, r := range results {
-		boots[i] = r.BootDuration
-		totals[i] = r.Total
-	}
-	sort.Slice(boots, func(i, j int) bool { return boots[i] < boots[j] })
-	sort.Slice(totals, func(i, j int) bool { return totals[i] < totals[j] })
-	fmt.Printf("summary: cycles=%d boot_median=%s boot_p95=%s total_median=%s total_p95=%s\n",
-		len(results),
-		median(boots).Round(time.Millisecond), percentile(boots, 0.95).Round(time.Millisecond),
-		median(totals).Round(time.Millisecond), percentile(totals, 0.95).Round(time.Millisecond))
-}
-
-func median(sorted []time.Duration) time.Duration {
-	return percentile(sorted, 0.5)
-}
-
-func percentile(sorted []time.Duration, p float64) time.Duration {
-	if len(sorted) == 0 {
-		return 0
-	}
-	idx := int(float64(len(sorted)-1) * p)
-	return sorted[idx]
 }

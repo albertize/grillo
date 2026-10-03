@@ -17,7 +17,12 @@ Linux/amd64 only. Run as the normal host user; never with sudo.
 | `netns-helper.sh` | Rootless networking-helper probe (pasta): address, route, DNS, egress |
 | `guestinit/` | Experiment guest PID 1 (AF_VSOCK server, exec, stream, stop) |
 | `guestcmd/` | Deterministic payload used to prove guest execution |
-| `run/` | Host harness: Firecracker API over a Unix socket, vsock, exec, stop |
+| `spike/` | Reusable boot/session package used by the `run` and `oci` CLIs |
+| `run/` | T01 host harness: boot, exec, stop |
+| `fetch-oci.sh` | Fetch pinned static runc and build the busybox OCI rootfs + bundles |
+| `build-oci-guest.sh` | Build the T02 OCI guest initramfs |
+| `oci/` | T02 host harness: runc run/exec/signal and two-container localhost |
+| `storage-probe.sh` | Records the shared-filesystem device limitation (scenario G) |
 | `build-guest.sh` | Builds the guest kernel and initramfs from pinned downloads |
 
 ## Build and run
@@ -33,7 +38,11 @@ sh experiments/boot/namespaces.sh          # userns/TAP only
 make net-helper                            # rootless helper + egress (pasta)
 make guest                                 # build kernel + initramfs
 go run ./experiments/boot/run -cycles 1    # one boot/exec/stop cycle
-make test-kvm                              # kvm-tagged Go tests
+make oci-guest                             # fetch runc/busybox, build OCI initramfs
+go run ./experiments/boot/oci              # OCI run/exec/signal + localhost
+go run ./experiments/boot/oci -keep        # ... printing the console log
+make storage-probe                         # live-bind limitation (exit 3 = BLOCKED)
+make test-kvm                              # kvm-tagged Go tests (spike + OCI)
 make bench-t01                             # 30 measured cycles
 ```
 
@@ -79,6 +88,21 @@ with `GRILLO_EGRESS_URL`, `GRILLO_EGRESS_TIMEOUT`, and `GRILLO_HELPER_TIMEOUT`.
 This proves the helper alone. Wiring guest `virtio-net` through a helper and
 verifying DNS/egress/host publishing from inside the VM is T02/T11.
 
+## OCI scenario (T02)
+
+The OCI guest adds a static `runc` and a busybox rootfs obtained from a
+content-addressed image (`docker.io/library/busybox:1.37@sha256:bdf5...`,
+exported with podman; Grillo implements no registry client). `guestinit` also
+mounts cgroup v2, devpts, and shm, and brings up loopback, so runc can start
+containers and two containers can share localhost.
+
+`go run ./experiments/boot/oci` runs both scenarios and prints a PASS/FAIL line
+per check. `runc run` uses `--no-pivot` because the bundle rootfs lives on the
+initramfs (ramfs). Detached containers are started with `/dev/null` stdio via a
+separate command so they do not hold the management channel open. Live binds are
+**not** supported by Firecracker; see the [T02 report](../../docs/experiments/t02-oci-and-storage.md)
+and `make storage-probe`.
+
 ## Safety
 
 - Runs as the calling user; no sudo, no jailer, no host network configuration.
@@ -88,8 +112,12 @@ verifying DNS/egress/host publishing from inside the VM is T02/T11.
 
 ## Limits
 
-No OCI runtime, containers, DNS, storage sharing, or guest networking. The
-networking helper is verified as a prerequisite (`netns-helper.sh`), but the
-VM's `virtio-net` is not connected through it here; that is T02/T11. The protocol
-and payload binaries are experiment-only. Real evidence is in
-[the T01 report](../../docs/experiments/t01-boot-spike.md).
+No OCI runtime in the *host* runtime sense, no DNS, and no guest networking: the
+networking helper is verified as a prerequisite (`netns-helper.sh`), but the VM's
+`virtio-net` is not connected through it here (T02 scenario C, T11). Live
+host-directory binds are not supported by the candidate backend (T02 scenario G,
+[ADR 0004](../../docs/adr/0004-shared-filesystem-backend-comparison.md)).
+Containers run as guest root without user-namespace isolation. The protocol and
+payload binaries are experiment-only and are replaced by T06/T07. Real evidence
+is in the [T01](../../docs/experiments/t01-boot-spike.md) and
+[T02](../../docs/experiments/t02-oci-and-storage.md) reports.

@@ -2,7 +2,7 @@
 GO ?= go
 GOVULNCHECK_VERSION := v1.8.0
 
-.PHONY: fmt vet test test-scripts race build check audit vulncheck guest test-kvm bench-t01 net-helper
+.PHONY: fmt vet test test-scripts race build check audit vulncheck guest oci-guest test-kvm bench-t01 net-helper storage-probe
 
 # Check formatting without modifying source files.
 fmt:
@@ -41,10 +41,15 @@ vulncheck:
 guest:
 	bash experiments/boot/build-guest.sh
 
-# Real hardware test. Builds the guest, then boots a microVM under KVM.
-# A missing /dev/kvm is reported as a SKIP by the test, never as a pass.
-test-kvm: guest
-	go test -tags kvm -count=1 -v ./experiments/boot/run/
+# Build the T02 OCI experiment guest (runc + busybox bundles + initramfs).
+oci-guest:
+	bash experiments/boot/fetch-oci.sh
+	bash experiments/boot/build-oci-guest.sh
+
+# Real hardware test. Builds the guests, then boots microVMs under KVM.
+# A missing /dev/kvm is reported as a SKIP by the tests, never as a pass.
+test-kvm: guest oci-guest
+	go test -tags kvm -count=1 -v ./experiments/boot/spike/ ./experiments/boot/oci/
 
 # 30-cycle measured boot/stop run (T01 evidence). Writes no committed artifacts.
 bench-t01: guest
@@ -53,3 +58,7 @@ bench-t01: guest
 # Rootless networking-helper probe (T01). Requires a helper and host egress.
 net-helper:
 	sh experiments/boot/netns-helper.sh
+
+# T02 storage/live-bind feasibility probe: documents the Firecracker limitation.
+storage-probe:
+	sh experiments/boot/storage-probe.sh
