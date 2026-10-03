@@ -12,6 +12,8 @@
 
 **T04 is complete.** The versioned application IR lives in `internal/model` with `internal/source` for source locations and structured diagnostics. It provides the section 5.1 types, quantity parsing, normalization, canonical hashing, an experimental native JSON manifest, a capability/support registry, validation (unknown version, references, duplicates, cycles, guest budget), and public redaction. The model imports no VMM, network, process, or frontend code.
 
+**T05 is complete.** `internal/state` provides the per-user XDG layout, a single-writer `flock`, atomic snapshots with fsync, pending operations and observations, schema versioning with backup-before-migration, and a bounded rotating NDJSON journal that recovers a truncated last record but rejects mid-file corruption. `internal/secrets` keeps secret values out of the IR and state, versions them with random tokens that change only on real change, and garbage-collects only unreferenced versions.
+
 Hosted CI has not yet been executed.
 
 ## Task status
@@ -23,7 +25,7 @@ Hosted CI has not yet been executed.
 | T02 | OCI, filesystem, and application-network spike | BLOCKED | Partial real evidence; two-VM topology, managed storage, and overhead missing; host-watch degraded |
 | T03 | F0 gate and platform ADR | BLOCKED | Proposed QEMU candidate; complete T02 evidence and review ADR 0005 before confirming F0 |
 | T04 | IR, diagnostics, and capabilities | DONE | `internal/model` + `internal/source`; goldens, version/reference/cycle/overflow, import-boundary tests |
-| T05 | State, secrets, and recovery primitives | TODO | T04 |
+| T05 | State, secrets, and recovery primitives | DONE | `internal/state` + `internal/secrets`; lock, atomic snapshots, journal, migration, secret GC tests |
 | T06 | Guest protocol and testable client | TODO | T03, T04 |
 | T07 | Guest PID 1 and OCI runtime | TODO | T06 |
 | T08 | Backend lifecycle and process supervision | TODO | T05, T07 |
@@ -366,6 +368,44 @@ historical evidence only.
   conservatively until real runtime integration. Secret values never enter the
   IR; redaction covers insensitive config entries and arbitrary text.
 - **Next task:** T05 — state, secrets, and recovery primitives (depends on T04).
+
+## T05 state, secrets, and recovery — 2026-10-03
+
+- **Task:** T05 — state, secrets, and recovery primitives
+- **Status:** DONE
+- **Dependencies verified:** T04 complete; `make check` passes.
+- **Files and contracts changed:** `internal/state` (XDG `Layout` with
+  ownership/symlink checks and 0700 dirs; single-writer `flock`; `Snapshot` with
+  desired application, pending `Operation`s, and `Observation`s; `AtomicWriteFile`
+  with per-step failure-injection `Ops`; schema `Version` with backup-before-
+  migration; bounded rotating NDJSON `Journal`) and `internal/secrets` (separate
+  value store, content-compared random version tokens, public `Refs`, and
+  `Collect` for unreferenced versions). Secrets are stored via `state.AtomicWriteFile`.
+- **Decisions/ADRs:** None required. The `Ops` injection seam is an atomic-write
+  primitive shared by state and secrets, not a speculative abstraction.
+- **Tests run:** `make check` PASS; `go test -race ./internal/state
+  ./internal/secrets ./internal/model ./internal/source` PASS. Coverage includes:
+  XDG resolution and fallbacks, 0700 directory creation, symlink and owner
+  rejection, commit/load round trip, 0600 state file, second-writer rejection,
+  future-version rejection, legacy v0 migration with `state.v0.bak` backup,
+  corrupt-state reporting, stray temp-file tolerance, injected failure at every
+  atomic-write step (previous state survives; no temp leaks), directory-fsync
+  failure semantics, journal append/read with persistent sequence IDs,
+  truncated-last-line recovery, mid-file corruption rejection, rotation bounds
+  and sequence continuity, secret put/get, version stability on identical values,
+  new version on change, version-mismatch and not-found errors, secret file/dir
+  permissions, public refs without values, `Collect` removing only unreferenced
+  versions, and a cross-package test that state snapshots and public IR never
+  contain a secret value while retaining the version.
+- **Tests NOT run and why:** No process-level crash/kill test (single-process
+  `flock` and injected step failures cover the recovery contract); no hosted CI.
+- **Integration evidence:** Repository-local only; state is a pure local
+  primitive and has no hardware dependency.
+- **Known limitations:** `flock` is advisory and per-host; secret values are
+  stored unencrypted under 0600 (documented for local use; OS keychain is a later
+  option). Journal timestamps use wall-clock time.
+- **Next task:** T06 (guest protocol) depends on the blocked T03; T17/T20 pure
+  frontends and T09 OCI work depend on T04. T07/T08 depend on T06/T05.
 
 ## Updating this file
 
