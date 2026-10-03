@@ -129,6 +129,7 @@ const (
 // ProbeRequest describes a health probe evaluated inside the guest.
 type ProbeRequest struct {
 	Kind      ProbeKind `json:"kind"`
+	Container string    `json:"container,omitempty"`
 	Command   []string  `json:"command,omitempty"`
 	URL       string    `json:"url,omitempty"`
 	Host      string    `json:"host,omitempty"`
@@ -157,14 +158,18 @@ type StatusResult struct {
 	Containers []ContainerStatus `json:"containers,omitempty"`
 }
 
-// StartRequest asks the guest to start its workload.
+// StartRequest asks the guest to start its workload. Sandbox carries the
+// resolved container specs; a nil sandbox asks the guest to start the workload
+// it was booted with.
 type StartRequest struct {
-	TimeoutMS int64 `json:"timeoutMs,omitempty"`
+	Sandbox   *SandboxSpec `json:"sandbox,omitempty"`
+	TimeoutMS int64        `json:"timeoutMs,omitempty"`
 }
 
 // StartResult acknowledges a start.
 type StartResult struct {
-	State string `json:"state"`
+	State      string            `json:"state"`
+	Containers []ContainerStatus `json:"containers,omitempty"`
 }
 
 // StopRequest asks the guest to stop its workload.
@@ -181,6 +186,7 @@ type StopResult struct {
 // the client assigns one when zero.
 type ExecRequest struct {
 	Session   uint32   `json:"session,omitempty"`
+	Container string   `json:"container,omitempty"`
 	Args      []string `json:"args"`
 	Env       []string `json:"env,omitempty"`
 	Dir       string   `json:"dir,omitempty"`
