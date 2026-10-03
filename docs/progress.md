@@ -35,6 +35,8 @@ real KVM/QEMU and passes OCI scenario A plus an init-failure case.
 
 **T13 is complete.** `internal/observe` provides a sequenced event stream (reusing the state journal's rotation and sequence IDs) with `Follow` and gap detection, a bounded log spool with follow, `/proc`-based resource snapshots with CPU deltas, and exec/HTTP/TCP probes with startup/readiness/liveness roles, thresholds, injected-clock scheduling, and nonoverlapping ticks. A bounded exit watcher emits an event only on container state change.
 
+**T14 is complete.** `internal/plan` diffs a desired IR against observed state into an ordered, typed action list (create/recreate/scale/drain/stop/delete, volume preparation, endpoint updates) with per-template hashing so identical and route-only applies reboot nothing and Jobs do not restart forever. `internal/reconcile` applies plans with deterministic operation IDs, bounded per-application workers, classified permanent/transient retries, partial-progress persistence, crash-replay, idempotent `down`, and a `NativeExecutor` dispatcher over sandbox/volume controllers.
+
 Hosted CI has not yet been executed.
 
 ## Task status
@@ -55,7 +57,7 @@ Hosted CI has not yet been executed.
 | T11 | Production rootless networking and IPAM | DONE | `internal/network`; `make test-netns` PASS (pasta egress, isolation, management denied) |
 | T12 | DNS, Service proxy, and Ingress | DONE | `internal/network` DNS/UDP/TCP, Service balancer/proxy, Ingress; four-name, balancing, readiness, timeout, path-segment tests |
 | T13 | Observability and probes | DONE | `internal/observe`; events/spool/metrics/probes; startup gating, thresholds, fake-clock, timeout-kill, slow-consumer tests |
-| T14 | Planner, reconciler, and updates | TODO | T08–T13 |
+| T14 | Planner, reconciler, and updates | DONE | `internal/plan` + `internal/reconcile`; diff/recreate/route-only, retries, crash replay, idempotent down, bounded workers, race checks |
 | T15 | Local API and daemon lifetime | TODO | T14 |
 | T16 | Native-runtime CLI | TODO | T15 |
 | T17 | Compose parser and compiler | TODO | T04; final integration T16 |
@@ -796,6 +798,42 @@ historical evidence only.
   omission (no zero snapshots), not yet by an explicit unavailable reason.
 - **Next task:** T14 (daemon, reconcile, API) depends on several tasks; T15/T16
   and the pure frontends T17/T20 remain.
+
+## T14 planner, reconciler, and updates — 2026-10-03
+
+- **Task:** T14 — planner, reconciler, and updates
+- **Status:** DONE (planner/reconciler core; the daemon's concrete executor
+  controllers are delivered with T15)
+- **Dependencies verified:** T08–T13 complete.
+- **Files and contracts changed:** `internal/plan` (typed action list, template
+  and route hashing, diff/build, restart policy) and `internal/reconcile`
+  (`Executor`/`Store` contracts, memory store, retry classification, operation
+  IDs, `Apply`/`Down`/`ApplyAll`, `NativeExecutor`).
+- **Decisions/ADRs:** None required. Plans are an ordered linearization of the
+  typed action DAG. Operation IDs are deterministic (`sha256` of application,
+  revision, action kind, and resource) so replayed actions deduplicate.
+- **Tests run:** `make check` PASS (fmt, vet, test, race, scripts, build, audit);
+  `go test -race -count=3 ./internal/plan ./internal/reconcile` PASS. Coverage:
+  identical apply is empty; per-template hashing (image and referenced config
+  changes); create/scale-down/recreate action sequences; route-only change
+  reboots nothing; Job `Never` does not restart forever; volume preparation;
+  startup/readiness-independent reconcile; transient retry then success;
+  permanent error not retried; crash replay applies only the remainder with no
+  duplicate operations; scale-down preserves managed volumes; repeated `down` is
+  a no-op; bounded worker pool; and `NativeExecutor` action dispatch including
+  `down --volumes` deleting an owned managed volume.
+- **Tests NOT run and why:** A fully wired native-manifest apply on real KVM is
+  not run: the concrete `SandboxController`/`VolumeController` that map the IR to
+  `sandbox.Spec`, images/rootfs, and a guest `SandboxSpec` is the daemon's job
+  (T15), and it also depends on T11/T12's incomplete per-sandbox addressing and
+  VIP attachment. The executor is exercised with fakes; F1 end-to-end remains to
+  be verified in T15/integration.
+- **Integration evidence:** Repository-local, with a race-tested reconciler and a
+  fake executor.
+- **Known limitations:** No real effect executor for sandboxes/volumes yet; no
+  rollback on failed replacement (desired state stays new and the failure is
+  reported); endpoint/route wiring is a no-op pending T12 attachment.
+- **Next task:** T15 (local API and daemon lifetime) depends on T14.
 
 ## Updating this file
 
