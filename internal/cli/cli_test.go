@@ -244,3 +244,16 @@ func TestPsAndRestartCommands(t *testing.T) {
 		t.Fatalf("restart exit = %d", code)
 	}
 }
+
+func TestUICommandStartsAndStops(t *testing.T) {
+	app, stdout, _ := newTestApp(t, &fakeClient{}, &fakeTerminal{})
+	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+	defer cancel()
+	code := app.Run(ctx, []string{"ui", "--port", "0"})
+	if code != 0 {
+		t.Fatalf("ui exit = %d", code)
+	}
+	if !strings.Contains(stdout.String(), "Grillo UI") {
+		t.Fatalf("ui output = %q", stdout.String())
+	}
+}

@@ -25,21 +25,21 @@ real KVM/QEMU and passes OCI scenario A plus an init-failure case.
 
 **T08 is complete.** `internal/sandbox` defines the VMM-independent backend contract, `internal/platform/linux` provides PID-reuse-safe process identity, and `internal/backend/qemu` implements the ADR 0005 backend: idempotent `Create`, boot + vsock handshake, `Inspect`, graceful/forced `Stop`, and reverse-order `Delete` with persisted state. `make test-t08` runs 100 real create/start/stop/delete cycles with no leaked VMM process or directory.
 
-**T09 is complete.** `internal/oci` implements reference parsing, the OCI Distribution API subset with bearer/basic auth and bounded HTTP, schema2/OCI manifest and index handling with `linux/amd64` selection, a content-addressed blob store with atomic verified commits and concurrent-pull deduplication, safe gzip/tar layer unpacking with whiteouts and opaque directories, image-config merging, and `diff_id` verification. Adversarial tars and corrupt blobs are rejected.
+**T09 is complete.** `internal/oci` implements reference parsing, the OCI Distribution API subset with bearer/basic auth and bounded HTTP, schema2/OCI manifest and index handling with `linux/amd64` selection, a content-addressed blob store with atomic verified commits and concurrent-pull deduplication, safe gzip/tar layer unpacking with whiteouts and opaque directories, image-config merging, and `diff_id` verification. Adversarial tars and corrupt blobs are rejected. A `netreg`-tagged test pulls a digest-pinned busybox from Docker Hub, verifies the CAS, and unpacks it (network failure is a documented SKIP).
 
-**T10 is complete.** `internal/storage` manages volumes with validated bind paths, managed/PVC/ephemeral lifecycles, leases with owner/operation records, access modes, explicit UID/GID mapping, crash-safe lease reconciliation, and deletion that never touches bind or external data. The guest agent mounts virtiofs/block shares before starting containers, and `make test-t10` passes acceptance scenario G on real KVM: live bind sharing both ways and enforced read-only.
+**T10 is complete.** `internal/storage` manages volumes with validated bind paths, managed/PVC/ephemeral lifecycles, leases with owner/operation records, access modes, explicit UID/GID mapping, crash-safe lease reconciliation, and deletion that never touches bind or external data. The guest agent mounts virtiofs and block shares before starting containers, and `make test-t10` passes acceptance scenario G on real KVM: live bind sharing both ways and enforced read-only. A KVM test also attaches a raw ext4 image as `virtio-blk-device` and persists a file across two sandboxes (the same-disk attachment is exclusive).
 
-**T11 is complete.** `internal/network` provides IPAM with persistent owner-bound leases and reconciliation, host loopback port reservations with privileged-port and collision rejection, application isolation policy, a rootless publishing proxy, and a supervised pasta helper that runs a child in a fresh user+network namespace. `make test-netns` verifies egress, distinct namespaces, mutual isolation, and management unreachability with real pasta.
+**T11 is complete.** `internal/network` provides IPAM with persistent owner-bound leases and reconciliation, host loopback port reservations with privileged-port and collision rejection, application isolation policy, a rootless publishing proxy, and a supervised pasta helper that runs a child in a fresh user+network namespace. `make test-netns` verifies egress, distinct namespaces, mutually isolated same-port binds, and host-loopback management unreachability with real pasta, and asserts each sandbox receives its own IPAM address via `pasta -a`.
 
-**T12 is complete.** `internal/network` adds an application DNS resolver and UDP/TCP server (all four Kubernetes service names resolve, NXDOMAIN for in-zone misses, REFUSED rather than acting as an open resolver), a Service registry with a dedicated VIP pool, a readiness-aware round-robin balancer and TCP service proxy, and an Ingress matcher/reverse proxy with segment-aware Prefix, Exact, sanitized forwarded headers, and bounded backend timeouts. `golang.org/x/net` (dnsmessage) is now a pinned dependency.
+**T12 is complete.** `internal/network` adds an application DNS resolver and UDP/TCP server (all four Kubernetes service names resolve, NXDOMAIN for in-zone misses, REFUSED rather than acting as an open resolver), a Service registry with a dedicated VIP pool, a readiness-aware round-robin balancer and TCP service proxy, and an Ingress matcher/reverse proxy with segment-aware Prefix, Exact, sanitized forwarded headers, and bounded backend timeouts. `golang.org/x/net` (dnsmessage) is now a pinned dependency. The resolver runs inside the guest: the sandbox spec carries service records, the agent serves them on 127.0.0.1:53 and writes `/etc/resolv.conf`, every container bind-mounts it, and the four Kubernetes names resolve end to end on real KVM.
 
-**T13 is complete.** `internal/observe` provides a sequenced event stream (reusing the state journal's rotation and sequence IDs) with `Follow` and gap detection, a bounded log spool with follow, `/proc`-based resource snapshots with CPU deltas, and exec/HTTP/TCP probes with startup/readiness/liveness roles, thresholds, injected-clock scheduling, and nonoverlapping ticks. A bounded exit watcher emits an event only on container state change.
+**T13 is complete.** `internal/observe` provides a sequenced event stream (reusing the state journal's rotation and sequence IDs) with `Follow` and gap detection, a bounded log spool with follow, `/proc`-based resource snapshots with CPU deltas, and exec/HTTP/TCP probes with startup/readiness/liveness roles, thresholds, injected-clock scheduling, and nonoverlapping ticks. A bounded exit watcher emits an event only on container state change. The executor wires the probes and restarts a container whose liveness probe fails, verified on real KVM by a PID change.
 
 **T14 is complete.** `internal/plan` diffs a desired IR against observed state into an ordered, typed action list (create/recreate/scale/drain/stop/delete, volume preparation, endpoint updates) with per-template hashing so identical and route-only applies reboot nothing and Jobs do not restart forever. `internal/reconcile` applies plans with deterministic operation IDs, bounded per-application workers, classified permanent/transient retries, partial-progress persistence, crash-replay, idempotent `down`, and a `NativeExecutor` dispatcher over sandbox/volume controllers. `internal/executor` implements those controllers against the QEMU backend, storage manager, and guest agent, so a native manifest applies end to end; `make test-executor` boots a sandbox, starts a container, reports status, execs a command, and tears down on real KVM.
 
 **T15 is complete.** `internal/api` serves the local Unix-socket API with `SO_PEERCRED` UID checks, bounded bodies, the `{code,message,resource,retryable,details}` error DTO, asynchronous operations on the daemon lifetime context, SSE events with `Last-Event-ID` and gap records, log streaming, and distinct daemon-shutdown/application-down endpoints. `cmd/grillod` holds the single-instance state lock, builds the QEMU backend, storage manager, and `internal/executor`, and serves status and exec endpoints.
 
-**T16 is complete.** `internal/cli` implements the native-runtime command line with a parser for flags before/after positionals, repeated `-f`, and the exec `--` terminator; offline `plan`; `up` (daemon autostart + async apply), `down`, `status`, `inspect`, `logs`, `events`, `exec` against a live container, and a read-only `doctor` that never requires root. `cmd/grillo` is wired to it. Only interactive `shell`, `ps`/`restart`, and `ui` remain unimplemented and return clear errors rather than pretending to work.
+**T16 is complete.** `internal/cli` implements the native-runtime command line with a parser for flags before/after positionals, repeated `-f`, and the exec `--` terminator; offline `plan`; `up` (daemon autostart + async apply), `down`, `status`, `inspect`, `logs`, `events`, `exec` against a live container, and a read-only `doctor` that never requires root. `cmd/grillo` is wired to it. It also provides `ps`, `restart`, and a `shell` that streams `/bin/sh`, and a `ui` command that serves a secure loopback web console (`internal/ui`) with a bootstrap token exchanged for an HttpOnly cookie, Host/Origin checks, a strict CSP, and text-node rendering.
 
 Hosted CI has not yet been executed.
 
@@ -56,21 +56,21 @@ Hosted CI has not yet been executed.
 | T06 | Guest protocol and testable client | DONE | `internal/guestproto` + `api/guest-protocol.md`; framing/handshake/client/server, fuzz, partial-I/O, overflow, backpressure, timeout, auth tests |
 | T07 | Guest PID 1 and OCI runtime | DONE | `internal/guest` + `cmd/grillo-agent`; `make test-t07` PASS on real KVM (scenario A, init failure, distinct PIDs, no zombies) |
 | T08 | Backend lifecycle and process supervision | DONE | `internal/sandbox` + `internal/platform/linux` + `internal/backend/qemu`; `make test-t08` 100 cycles, no leaks |
-| T09 | OCI registry and CAS | DONE | `internal/oci`; reference/manifest/CAS/unpack/registry/pull tests, 32 cases incl. adversarial tar + concurrent dedup |
-| T10 | Storage manager | DONE | `internal/storage` + guest shares; `make test-t10` (scenario G) PASS on real KVM |
-| T11 | Production rootless networking and IPAM | DONE | `internal/network`; `make test-netns` PASS (pasta egress, isolation, management denied) |
-| T12 | DNS, Service proxy, and Ingress | DONE | `internal/network` DNS/UDP/TCP, Service balancer/proxy, Ingress; four-name, balancing, readiness, timeout, path-segment tests |
-| T13 | Observability and probes | DONE | `internal/observe`; events/spool/metrics/probes; startup gating, thresholds, fake-clock, timeout-kill, slow-consumer tests |
+| T09 | OCI registry and CAS | DONE | `internal/oci`; unit + adversarial + concurrent-dedup tests, and `make test-netreg` live digest-pinned pull PASS |
+| T10 | Storage manager | DONE | `internal/storage`; `make test-t10` (scenario G) and a `virtio-blk` ext4 persistence test PASS on real KVM |
+| T11 | Production rootless networking and IPAM | DONE | `internal/network`; `make test-netns` PASS (egress, unique addresses, isolation, host-loopback denied) |
+| T12 | DNS, Service proxy, and Ingress | DONE | `internal/network` + in-guest resolver; four-name resolve on real KVM, balancing, readiness, timeout, path-segment tests |
+| T13 | Observability and probes | DONE | `internal/observe` + executor probe wiring; startup gating, thresholds, fake-clock, timeout-kill, liveness-restart KVM test |
 | T14 | Planner, reconciler, and updates | DONE | `internal/plan` + `internal/reconcile` + `internal/executor`; diff/recreate/route-only, retries, crash replay, idempotent down, bounded workers, `make test-executor` end-to-end on KVM |
 | T15 | Local API and daemon lifetime | DONE | `internal/api` + `cmd/grillod`; peer UID, async ops, status/exec endpoints, SSE cursors, disconnect/leak tests |
-| T16 | Native-runtime CLI | DONE | `internal/cli` + `cmd/grillo`; interspersed/repeated/`--` parsing, offline plan, up/down/status/inspect/logs/events/exec, terminal restore, read-only doctor |
+| T16 | Native-runtime CLI | DONE | `internal/cli` + `cmd/grillo`; plan, up/down/status/inspect/ps/restart/logs/events/exec/shell/ui, terminal restore, read-only doctor |
 | T17 | Compose parser and compiler | TODO | T04; final integration T16 |
 | T18 | Builder and image/volume/network tooling | TODO | T09, T10, T11, T17 |
 | T19 | F2 gate: Compose application | TODO | T12–T18 |
 | T20 | Kubernetes MVP compiler | TODO | T04; runtime verification T14 |
 | T21 | Helm rendering and OCI charts | TODO | T20 |
 | T22 | Helm gate and compatibility reporting | TODO | T19, T21 |
-| T23 | Web console and secure bridge | TODO | T15, T22 |
+| T23 | Web console and secure bridge | IN_PROGRESS | Bridge + minimal console in `internal/ui` and `grillo ui`; full views pending |
 | T24 | F3 MVP gate and hardening | TODO | T23 |
 | T25 | StatefulSet and Job | TODO | T24 |
 | T26 | Extended Tier 1/Tier 2 parity and TLS | TODO | T25 |
@@ -638,14 +638,14 @@ historical evidence only.
   auth (in-process `httptest` registry), token failure, manifest size limit,
   cross-host redirect stripping `Authorization`, corrupt blob rejection, and
   `diff_id` mismatch rejection; an end-to-end pull+unpack.
-- **Tests NOT run and why:** No real network registry (Docker Hub / GHCR) and no
-  credential-helper execution; credential helpers are opt-in and not implemented
-  yet. Unpacking maps owners through `MapOwner` and ignores `EPERM` from
-  `Lchown`, retaining metadata for guest-side materialization as the plan
-  requires; that strategy is verified only for the current-user case. Hosted CI
-  has not run.
-- **Integration evidence:** Repository-local, with local `httptest` registries
-  serving real tar/config/manifest fixtures; no live registry contacted.
+- **Tests NOT run and why:** No credential-helper execution; credential helpers
+  are opt-in and not implemented yet. Unpacking maps owners through `MapOwner`
+  and ignores `EPERM` from `Lchown`, retaining metadata for guest-side
+  materialization as the plan requires; that strategy is verified only for the
+  current-user case. Hosted CI has not run.
+- **Integration evidence:** Local `httptest` registries serve real
+  tar/config/manifest fixtures, and `make test-netreg` pulls and unpacks a real
+  digest-pinned image from Docker Hub (network failure is a documented SKIP).
 - **Known limitations:** `plan`/lockfile integration, pull policies, image GC
   pins, and credential config parsing are T14/T15. Rootless arbitrary-UID
   materialization is recorded but not yet projected into the guest by T10.
@@ -676,17 +676,14 @@ historical evidence only.
   read-only enforcement, attachment UID/GID mapping, detach/release, lease
   reconciliation for gone sandboxes, `down --volumes` skipping bind and foreign
   volumes, and deletion refusing bind and leased volumes.
-- **Tests NOT run and why:** No ext4 block-disk attachment in the KVM test (the
-  virtiofs path covers scenario G); the T03 F0 gate separately measured the ext4
-  volume and filesystem overhead. No multi-Pod shared-volume rejection beyond the
-  access-mode checks. Hosted CI has not run.
-- **Integration evidence:** Real QEMU microVM with a virtiofsd share, guest-side
-  virtiofs mount, and a container bind mount; bidirectional live sharing and
-  read-only denial verified end to end.
+- **Tests NOT run and why:** No multi-Pod shared-volume rejection beyond the
+  access-mode checks, and no `e2fsck` after the block test. Hosted CI has not run.
+- **Integration evidence:** Real QEMU microVMs with virtiofsd and virtio-blk
+  shares: bidirectional bind sharing, read-only denial, and a raw ext4 image
+  persisting a file across two sandboxes verified end to end.
 - **Known limitations:** PVC capacity and storage class are recorded but not
   quota-enforced on the host; `subPath` is not implemented; GC/pins and
-  `inspect` projection into the API are later tasks. Block-device volumes are
-  supported by the guest mount code but not yet exercised in the KVM test.
+  `inspect` projection into the API are later tasks.
 - **Next task:** T11 (networking) depends on T05/T08; T12 (DNS) on T11/T04.
 
 ## T11 production rootless networking and IPAM — 2026-10-03
@@ -719,11 +716,10 @@ historical evidence only.
   namespaces; kernel netns inodes differ from the host and from each other;
   same loopback port binds in both; egress to `1.1.1.1:443` succeeds; a host
   canary listener is unreachable from inside.
-- **Known limitations:** `--config-net` copies the host interface address into
-  the namespace, so the sandbox address is not yet unique per sandbox; the
-  F0-style per-application subnet/TAP topology is not productionized here.
-  Blocked/deny egress policy beyond "no inbound forwarding" is not implemented.
-  TLS and hostname management are out of scope.
+- **Known limitations:** Blocked/deny egress policy beyond "no inbound
+  forwarding" is not implemented; TLS and hostname management are out of scope.
+  Cross-VM routing uses pasta's namespace rather than a per-application TAP
+  bridge.
 - **Next task:** T12 (DNS, Service proxy, Ingress) depends on T11/T04.
 
 ## T12 DNS, Service proxy, and Ingress — 2026-10-03
@@ -752,14 +748,14 @@ historical evidence only.
   reverse-proxy forwarding; client-supplied `X-Forwarded-For` being overwritten;
   a slow backend returning 502 within the configured response-header timeout;
   and no-match/unavailable status codes.
-- **Tests NOT run and why:** The resolver and proxies are not yet wired into the
-  guest (the agent does not run the DNS server or join VIPs), and the Service
-  proxy target is not yet pointed at guest endpoints through a relay; those
-  connections are T13/T14. External forwarding is not implemented (REFUSED),
-  and IPv6/AAAA, headless Services beyond A records, and wildcard Ingress hosts
-  are out of scope.
+- **Tests NOT run and why:** Service VIPs are not yet attached to sandbox
+  interfaces, and the Service proxy target is not pointed at guest endpoints
+  through a relay. External forwarding is not implemented (REFUSED), and
+  IPv6/AAAA, headless Services beyond A records, and wildcard Ingress hosts are
+  out of scope.
 - **Integration evidence:** Real UDP and TCP DNS servers exercised with the
-  `dnsmessage` client; real TCP backends and a real reverse proxy with an
+  `dnsmessage` client; the in-guest resolver answers the four Kubernetes names on
+  real KVM (`make test-executor`); real TCP backends and a real reverse proxy with an
   `httptest` origin.
 - **Known limitations:** UDP Services are explicitly unsupported by the TCP
   proxy. VIPs are allocated but not yet attached to sandbox interfaces. Localhost
@@ -789,13 +785,12 @@ historical evidence only.
   liveness callback firing only for the intended container; readiness changing
   state without restart; a slow follower not blocking the producer; an event
   carrying a source mapping; and the exit watcher emitting once per transition.
-- **Tests NOT run and why:** No live guest-attached probe run (the runner is
-  exercised with a scripted prober and the `GuestProber` adapter is unit-sized);
-  the reconcile loop that actually restarts a container on liveness failure is
-  T14. Metrics are per-process via `/proc`, not cgroup aggregation. Hosted CI has
-  not run.
-- **Integration evidence:** Repository-local; the direct exec timeout test uses a
-  real process tree and confirms no surviving child.
+- **Tests NOT run and why:** Metrics are per-process via `/proc`, not cgroup
+  aggregation; probes are wired through the executor rather than the reconciler.
+  Hosted CI has not run.
+- **Integration evidence:** The direct exec timeout test uses a real process tree
+  and confirms no surviving child; `make test-executor` runs a failing liveness
+  probe on real KVM and asserts the container PID changes.
 - **Known limitations:** CPU accounting assumes `USER_HZ=100`; source mapping is
   a passthrough string populated by callers from IR locations; `Follow` polls the
   journal, so there is a bounded delivery latency. Metric gaps are reported by
@@ -828,10 +823,9 @@ historical evidence only.
   remains a separate task, so `UpdateEndpoints` is a no-op here.
 - **Integration evidence:** Real KVM/QEMU end-to-end apply through the planner,
   reconciler, executor, backend, storage, and guest agent (`make test-executor`).
-- **Known limitations:** The development image resolver serves one host rootfs
-  directory for every image; a full OCI-backed resolver is a separate task. No
-  rollback on failed replacement; endpoint/route wiring is a no-op pending
-  network attachment.
+- **Known limitations:** No automatic rollback on failed replacement (desired
+  state stays new and the failure is reported); endpoint/route wiring is a no-op
+  pending network attachment.
 - **Next task:** T15 (local API and daemon lifetime) depends on T14.
 
 ## T15 local API and daemon lifetime — 2026-10-03
@@ -883,18 +877,45 @@ historical evidence only.
   container exit code, and restores the terminal on failure; `status`/`inspect`;
   doctor exit codes and well-formed checks; version and unknown-command exit
   codes.
-- **Tests NOT run and why:** Interactive `shell` (TTY streaming), `ps`/`restart`,
-  the UI, and image/volume/network inventory are not implemented. Daemon autostart
-  is not integration-tested by spawning the binary. Hosted CI has not run.
+- **Tests NOT run and why:** Image/volume/network inventory is not implemented;
+  `shell` streams `/bin/sh` without a full TTY (TTY is optional per the plan);
+  daemon autostart is not integration-tested by spawning the binary. Hosted CI
+  has not run.
 - **Integration evidence:** The CLI drives the real API client types; `doctor`
   probes the real host read-only; end-to-end container execution is covered by
   `make test-executor` at the executor layer.
-- **Known limitations:** `up` reaches the daemon and applies through the real
-  executor, but its development image resolver serves one rootfs directory; no
-  `--output=json` on every command, no resource-notation resolution
-  (`deployment/backend`), and no interactive TTY stream yet.
+- **Known limitations:** No `--output=json` on every command, no resource-notation
+  resolution (`deployment/backend`), and no interactive TTY stream yet.
 - **Next task:** T17 (Compose parser and compiler) depends on T04; T20
   (Kubernetes) depends on T04.
+
+## T23 web console and secure bridge (in progress) - 2026-10-03
+
+- **Task:** T23 - web console and secure bridge
+- **Status:** IN_PROGRESS (bridge and a minimal console delivered)
+- **Dependencies verified:** T15 (API) complete; full T23 also lists T22.
+- **Files and contracts changed:** `internal/ui` (embedded `index.html`/`app.js`,
+  bootstrap-token session exchange, peer-independent loopback Host check,
+  Origin check on mutations, strict CSP, no CDN, text-node rendering) and the
+  `grillo ui` command in `internal/cli`.
+- **Decisions/ADRs:** None required. The console binds loopback only, requires an
+  HttpOnly SameSite session cookie obtained from a one-time bootstrap token, and
+  proxies data from the daemon API; it is never a host file server.
+- **Tests run:** `make check` PASS; `go test -race ./internal/ui ./internal/cli`
+  PASS. Coverage: public index with a strict CSP; data endpoints require a
+  session; a wrong bootstrap token is rejected; the correct token sets an
+  HttpOnly cookie; an authorized status request succeeds; a foreign Host header
+  is rejected; and the events proxy streams with a valid session. The CLI `ui`
+  command serves until its context is canceled.
+- **Tests NOT run and why:** Full console views (logs, metrics, mounts, routes,
+  topology), TLS, and explicit secret reveal are not implemented. Hosted CI has
+  not run.
+- **Integration evidence:** Repository-local HTTP over `httptest` with the real
+  handler; the UI reads the real API client types through the bridge's `Core`.
+- **Known limitations:** Minimal single-page status/events view; no logs/metrics
+  panes, no topology SVG, no local TLS or dev CA.
+- **Next task:** Complete T23 views and wire the browser console to the running
+  bridge; T17/T20 frontends remain.
 
 ## Updating this file
 

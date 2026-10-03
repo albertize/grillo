@@ -21,6 +21,7 @@ import (
 	"grillo.local/grillo/internal/observe"
 	"grillo.local/grillo/internal/plan"
 	"grillo.local/grillo/internal/state"
+	"grillo.local/grillo/internal/ui"
 )
 
 // Client is the subset of the API client the CLI uses.
@@ -132,6 +133,8 @@ func (a *App) Run(ctx context.Context, args []string) int {
 		return a.cmdPs(ctx, args[1:])
 	case "restart":
 		return a.cmdRestart(ctx, args[1:])
+	case "ui":
+		return a.cmdUI(ctx, args[1:])
 	case "inspect":
 		return a.cmdInspect(ctx, args[1:])
 	case "logs":
@@ -437,6 +440,29 @@ func (a *App) cmdExec(ctx context.Context, args []string, shell bool) int {
 		return fail(a.Stderr, err)
 	}
 	return exitCode
+}
+
+func (a *App) cmdUI(ctx context.Context, args []string) int {
+	fs := flag.NewFlagSet("ui", flag.ContinueOnError)
+	fs.SetOutput(a.Stderr)
+	port := fs.Int("port", 9090, "loopback port")
+	flags, _, _, err := SplitForFlagSet(args, fs)
+	if err != nil {
+		return usageError(a.Stderr, "ui", err)
+	}
+	if err := fs.Parse(flags); err != nil {
+		return 2
+	}
+	if code := a.ensureDaemon(ctx); code != 0 {
+		return code
+	}
+	bridge := ui.New(a.ClientFactory(a.SocketPath))
+	addr := fmt.Sprintf("127.0.0.1:%d", *port)
+	fmt.Fprintf(a.Stdout, "Grillo UI: %s\n", bridge.URL(addr))
+	if err := bridge.ListenAndServe(ctx, addr); err != nil {
+		return fail(a.Stderr, err)
+	}
+	return 0
 }
 
 func (a *App) cmdPs(ctx context.Context, args []string) int {
