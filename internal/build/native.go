@@ -56,6 +56,7 @@ type stageState struct {
 }
 
 type historyEntry struct {
+	Created    string
 	CreatedBy  string
 	EmptyLayer bool
 }
@@ -147,11 +148,12 @@ func (b *NativeBuilder) Build(ctx context.Context, request Request, progress Pro
 		if err != nil {
 			return Result{}, fmt.Errorf("build: stage %d: %w", i, err)
 		}
-		key := parsed.Stages[i].Name
-		if key == "" {
-			key = fmt.Sprintf("%d", i)
+		// Register by index always, and by name when the stage is named, so
+		// both `COPY --from=0` and `COPY --from=name` resolve.
+		build.roots[fmt.Sprintf("%d", i)] = state
+		if name := parsed.Stages[i].Name; name != "" {
+			build.roots[name] = state
 		}
-		build.roots[key] = state
 		final = state
 	}
 
@@ -276,6 +278,7 @@ func (b *NativeBuilder) resolveStageBase(ctx context.Context, build *buildContex
 		state.env = append([]string{}, source.env...)
 		state.workdir = source.workdir
 		state.user = source.user
+		state.history = append([]historyEntry{}, source.history...)
 		for key, value := range source.labels {
 			state.labels[key] = value
 		}
@@ -300,6 +303,13 @@ func (b *NativeBuilder) resolveStageBase(ctx context.Context, build *buildContex
 	state.user = pulled.Config.Config.User
 	for key, value := range pulled.Config.Config.Labels {
 		state.labels[key] = value
+	}
+	for _, entry := range pulled.Config.History {
+		state.history = append(state.history, historyEntry{
+			Created:    entry.Created,
+			CreatedBy:  entry.CreatedBy,
+			EmptyLayer: entry.EmptyLayer,
+		})
 	}
 	return state, nil
 }
@@ -586,7 +596,11 @@ func marshalConfig(platform oci.Platform, state *stageState, diffIDs []string, n
 	if len(state.history) > 0 {
 		history := make([]map[string]any, 0, len(state.history))
 		for _, entry := range state.history {
-			item := map[string]any{"created": now.Format(time.RFC3339Nano), "created_by": entry.CreatedBy}
+			created := entry.Created
+			if created == "" {
+				created = now.Format(time.RFC3339Nano)
+			}
+			item := map[string]any{"created": created, "created_by": entry.CreatedBy}
 			if entry.EmptyLayer {
 				item["empty_layer"] = true
 			}

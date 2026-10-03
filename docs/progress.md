@@ -961,7 +961,8 @@ historical evidence only.
 - **Files and contracts changed:** `internal/dockerfile` (Dockerfile parser and
   `.dockerignore` matcher), `internal/build` (`Builder` contract with `Request`/
   `Result`, `NativeBuilder`, `SandboxRunner`, `GuestBoot`, and `PodmanBuilder`),
-  `internal/oci/layout.go` (`ImportLayout`, `LoadPulled`, `CAS.Read`),
+  `internal/oci/layout.go` (`ImportLayout`, `LoadPulled`, `CAS.Read`) and
+  `internal/oci/config.go` (image-config history),
   `internal/image` (`Store` with `Import`/`List`/`Get`/`Pin`/`PinDigest`/`Prune`/
   `Verify` and `ErrNotFound`), `internal/api/images.go` and `client.go` (image and
   build endpoints), `cmd/grillod` (wires the image store, the native builder with

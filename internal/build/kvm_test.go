@@ -353,3 +353,89 @@ func testNameservers() []string {
 	}
 	return []string{"1.1.1.1", "8.8.8.8"}
 }
+
+// TestKVMBuildNativeMultiStage builds a base image, then a multi-stage image
+// that copies from a named stage into a fresh scratch stage. The final image
+// must contain only the copied file, proving earlier stages are not leaked.
+func TestKVMBuildNativeMultiStage(t *testing.T) {
+	if _, err := os.Stat("/dev/kvm"); err != nil {
+		t.Skip("SKIP: /dev/kvm is not available")
+	}
+	root := buildRepoRoot(t)
+	kernel := filepath.Join(root, "experiments/artifacts/qemu/bzImage")
+	initramfs := filepath.Join(root, "experiments/artifacts/t07/initramfs-agent.cpio.gz")
+	keyPath := filepath.Join(root, "experiments/artifacts/t07/key")
+	contextDir := filepath.Join(root, "experiments/artifacts/t02/rootfs")
+	for _, path := range []string{kernel, initramfs, keyPath, contextDir} {
+		if _, err := os.Stat(path); err != nil {
+			t.Skipf("SKIP: missing %s (run 'make t07-guest' and 'make oci-guest')", path)
+		}
+	}
+	keyData, err := os.ReadFile(keyPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	key, err := base64.StdEncoding.DecodeString(strings.TrimSpace(string(keyData)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	backend, err := qemu.Open(qemu.Config{
+		Kernel:      kernel,
+		Initramfs:   initramfs,
+		WorkDir:     filepath.Join(t.TempDir(), "backend"),
+		CIDBase:     260,
+		BootTimeout: 30 * time.Second,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	builder, _, puller := newNativeBuilder(t, nil)
+	builder.Runner = &SandboxRunner{Share: "build", Boot: (&GuestBoot{
+		Backend:      backend,
+		Kernel:       kernel,
+		Initramfs:    initramfs,
+		KernelArgs:   "console=ttyS0 reboot=k panic=1 rdinit=/init",
+		GuestKey:     key,
+		VsockCIDBase: 260,
+		VsockPort:    1024,
+		MemoryMiB:    512,
+		ShareTag:     "build",
+		ShareTarget:  "/build",
+	}).Boot}
+	ctx, cancel := context.WithTimeout(context.Background(), 180*time.Second)
+	defer cancel()
+
+	dockerfilePath := filepath.Join(contextDir, "Dockerfile")
+	if err := os.WriteFile(dockerfilePath, []byte("FROM scratch\nCOPY . /\nRUN /bin/sh -c \"echo base > /base.txt\"\n"), 0o644); err != nil {
+		t.Skipf("SKIP: cannot write into the artifact context: %v", err)
+	}
+	defer os.Remove(dockerfilePath)
+	if _, err := builder.Build(ctx, Request{ContextDir: contextDir, Reference: "grillo.local/ms-base:1", Network: "none"}, nil); err != nil {
+		t.Fatalf("base build: %v", err)
+	}
+
+	final := writeContext(t, map[string]string{
+		"Dockerfile": "FROM grillo.local/ms-base:1 AS build\nRUN /bin/sh -c \"echo build > /build.txt\"\nFROM scratch\nCOPY --from=build /build.txt /out.txt\n",
+	})
+	result, err := builder.Build(ctx, Request{ContextDir: final, Reference: "grillo.local/ms-final:1", Network: "none"}, func(line string) { t.Log(line) })
+	if err != nil {
+		t.Fatalf("multi-stage build: %v", err)
+	}
+	if got := len(result.Image.Manifest.Layers); got != 1 {
+		t.Fatalf("final layers = %d, want 1", got)
+	}
+	unpacked := t.TempDir()
+	if err := puller.Unpack(result.Image, unpacked, oci.UnpackOptions{}); err != nil {
+		t.Fatalf("unpack: %v", err)
+	}
+	data, err := os.ReadFile(filepath.Join(unpacked, "out.txt"))
+	if err != nil || strings.TrimSpace(string(data)) != "build" {
+		t.Fatalf("out.txt = %q err=%v", data, err)
+	}
+	if _, err := os.Stat(filepath.Join(unpacked, "bin", "sh")); err == nil {
+		t.Fatal("final image leaked the build stage root filesystem")
+	}
+	if _, err := os.Stat(filepath.Join(unpacked, "base.txt")); err == nil {
+		t.Fatal("final image leaked content from a previous stage")
+	}
+}

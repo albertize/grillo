@@ -291,3 +291,70 @@ func TestNativeChownAndChmod(t *testing.T) {
 		t.Fatalf("mode = %v", info.Mode().Perm())
 	}
 }
+
+func nonEmptyHistory(config oci.ImageConfig) int {
+	count := 0
+	for _, entry := range config.History {
+		if !entry.EmptyLayer {
+			count++
+		}
+	}
+	return count
+}
+
+func TestNativeMultiStageHistoryConsistent(t *testing.T) {
+	runner := &testRunner{}
+	builder, _, _ := newNativeBuilder(t, runner)
+	ctx := context.Background()
+	base := writeContext(t, map[string]string{"Dockerfile": "FROM scratch\nCOPY base.txt /base.txt\n", "base.txt": "base"})
+	if _, err := builder.Build(ctx, Request{ContextDir: base, Reference: "grillo.local/hb:1"}, nil); err != nil {
+		t.Fatal(err)
+	}
+
+	// COPY --from=0 must resolve a named stage by index, and history must stay
+	// consistent with the layer count.
+	final := writeContext(t, map[string]string{
+		"Dockerfile": "FROM grillo.local/hb:1 AS build\nRUN sh -c \"echo x > x.txt\"\nFROM scratch\nCOPY --from=0 /x.txt /x.txt\nENV A=1\n",
+	})
+	result, err := builder.Build(ctx, Request{ContextDir: final, Reference: "grillo.local/hf:1"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := len(result.Image.Manifest.Layers); got != 1 {
+		t.Fatalf("final layers = %d, want 1", got)
+	}
+	if got := nonEmptyHistory(result.Image.Config); got != 1 {
+		t.Fatalf("final non-empty history = %d, want 1 (config %+v)", got, result.Image.Config.History)
+	}
+
+	// A stage that inherits an image base must carry the base history forward.
+	inherited := writeContext(t, map[string]string{"Dockerfile": "FROM grillo.local/hb:1\nRUN sh -c \"echo y > y.txt\"\n"})
+	derived, err := builder.Build(ctx, Request{ContextDir: inherited, Reference: "grillo.local/hi:1"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := len(derived.Image.Manifest.Layers); got != 2 {
+		t.Fatalf("inherited layers = %d, want 2", got)
+	}
+	if got := nonEmptyHistory(derived.Image.Config); got != 2 {
+		t.Fatalf("inherited non-empty history = %d, want 2 (config %+v)", got, derived.Image.Config.History)
+	}
+}
+
+func TestNativeCopyFromImage(t *testing.T) {
+	builder, _, puller := newNativeBuilder(t, nil)
+	ctx := context.Background()
+	base := writeContext(t, map[string]string{"Dockerfile": "FROM scratch\nCOPY base.txt /base.txt\n", "base.txt": "from-image"})
+	if _, err := builder.Build(ctx, Request{ContextDir: base, Reference: "grillo.local/cfi:1"}, nil); err != nil {
+		t.Fatal(err)
+	}
+	final := writeContext(t, map[string]string{"Dockerfile": "FROM scratch\nCOPY --from=grillo.local/cfi:1 /base.txt /copied.txt\n"})
+	result, err := builder.Build(ctx, Request{ContextDir: final, Reference: "grillo.local/cfi-final:1"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	root := unpackImage(t, puller, result.Image)
+	if got := readFile(t, root, "copied.txt"); got != "from-image" {
+		t.Fatalf("copied.txt = %q", got)
+	}
+}

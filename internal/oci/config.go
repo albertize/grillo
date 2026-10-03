@@ -25,6 +25,16 @@ type ImageConfig struct {
 		Type    string   `json:"type"`
 		DiffIDs []string `json:"diff_ids"`
 	} `json:"rootfs"`
+	History []ConfigHistory `json:"history,omitempty"`
+}
+
+// ConfigHistory is one image-config history entry.
+type ConfigHistory struct {
+	Created    string `json:"created,omitempty"`
+	CreatedBy  string `json:"created_by,omitempty"`
+	Author     string `json:"author,omitempty"`
+	Comment    string `json:"comment,omitempty"`
+	EmptyLayer bool   `json:"empty_layer,omitempty"`
 }
 
 // ParseImageConfig decodes an image config blob.
