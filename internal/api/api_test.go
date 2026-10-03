@@ -6,7 +6,9 @@ package api
 
 import (
 	"bufio"
+	"bytes"
 	"context"
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -53,6 +55,11 @@ func (f *fakeCore) Status(_ context.Context, _ string) ([]ContainerStatus, error
 
 func (f *fakeCore) Exec(_ context.Context, _, _ string, args []string, _ int64) (int, string, string, error) {
 	return 0, "ran " + strings.Join(args, " "), "", f.err
+}
+
+func (f *fakeCore) ExecStream(_ context.Context, _, _ string, args []string, stdout, _ io.Writer) (int, error) {
+	_, _ = io.WriteString(stdout, "stream "+strings.Join(args, " "))
+	return 0, f.err
 }
 
 func startServer(t *testing.T, opts Options) (string, func()) {
@@ -280,5 +287,18 @@ func TestStatusAndExecEndpoints(t *testing.T) {
 	code, stdout, _, err := client.Exec(context.Background(), "backend", "app", []string{"echo", "hi"})
 	if err != nil || code != 0 || !strings.Contains(stdout, "echo hi") {
 		t.Fatalf("exec code=%d stdout=%q err=%v", code, stdout, err)
+	}
+}
+
+func TestExecStreamEndpoint(t *testing.T) {
+	socket, stop := startServer(t, Options{Core: &fakeCore{}})
+	defer stop()
+	var stdout bytes.Buffer
+	code, err := NewClient(socket).ExecStream(context.Background(), "backend", "app", []string{"echo", "hi"}, &stdout, io.Discard)
+	if err != nil || code != 0 {
+		t.Fatalf("code=%d err=%v", code, err)
+	}
+	if !strings.Contains(stdout.String(), "stream echo hi") {
+		t.Fatalf("streamed stdout = %q", stdout.String())
 	}
 }

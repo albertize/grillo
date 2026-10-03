@@ -32,12 +32,14 @@ const (
 	TypeProbeResult  MessageType = "probe_result"
 	TypeExec         MessageType = "exec"
 	TypeExecResult   MessageType = "exec_result"
+	TypeRestart      MessageType = "restart"
+	TypeRestarted    MessageType = "restarted"
 )
 
 func (t MessageType) isResponse() bool {
 	switch t {
 	case TypeHelloAck, TypeAuth, TypeAuthOK, TypeError, TypePong,
-		TypeStarted, TypeStopped, TypeStatusResult, TypeProbeResult, TypeExecResult:
+		TypeStarted, TypeStopped, TypeStatusResult, TypeProbeResult, TypeExecResult, TypeRestarted:
 		return true
 	default:
 		return false
@@ -200,6 +202,16 @@ type ExecRequest struct {
 type ExecResult struct {
 	ExitCode int    `json:"exitCode"`
 	Detail   string `json:"detail,omitempty"`
+}
+
+// RestartRequest restarts one container in place.
+type RestartRequest struct {
+	Container string `json:"container"`
+}
+
+// RestartResult acknowledges a restart.
+type RestartResult struct {
+	State string `json:"state"`
 }
 
 // CancelRequest cancels a pending request by ID.

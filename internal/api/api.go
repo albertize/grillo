@@ -9,6 +9,7 @@ package api
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -68,6 +69,7 @@ type Core interface {
 	Down(ctx context.Context, application string, removeVolumes bool) (reconcile.Result, error)
 	Status(ctx context.Context, application string) ([]ContainerStatus, error)
 	Exec(ctx context.Context, application, container string, args []string, maxOutput int64) (int, string, string, error)
+	ExecStream(ctx context.Context, application, container string, args []string, stdout, stderr io.Writer) (int, error)
 }
 
 // Options configures the API server.
@@ -184,12 +186,54 @@ func (s *Server) handleExec(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusServiceUnavailable, "unavailable", "no core configured")
 		return
 	}
+	if r.URL.Query().Get("stream") == "true" {
+		s.handleExecStream(w, r, request.Application, request.Container, request.Args)
+		return
+	}
 	code, stdout, stderr, err := s.opts.Core.Exec(r.Context(), request.Application, request.Container, request.Args, 1<<20)
 	if err != nil {
 		writeError(w, http.StatusBadGateway, "exec_failed", err.Error())
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"exitCode": code, "stdout": stdout, "stderr": stderr})
+}
+
+// handleExecStream streams exec output as SSE frames so the CLI can show output
+// live. stdout and stderr data are base64-encoded; a final event carries the
+// exit code.
+func (s *Server) handleExecStream(w http.ResponseWriter, r *http.Request, application, container string, args []string) {
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		writeError(w, http.StatusInternalServerError, "internal", "streaming unsupported")
+		return
+	}
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.WriteHeader(http.StatusOK)
+	flusher.Flush()
+	stdout := &sseWriter{w: w, flusher: flusher, event: "stdout"}
+	stderr := &sseWriter{w: w, flusher: flusher, event: "stderr"}
+	code, err := s.opts.Core.ExecStream(r.Context(), application, container, args, stdout, stderr)
+	if err != nil {
+		fmt.Fprintf(w, "event: error\ndata: %s\n\n", base64.StdEncoding.EncodeToString([]byte(err.Error())))
+	} else {
+		fmt.Fprintf(w, "event: exit\ndata: %d\n\n", code)
+	}
+	flusher.Flush()
+}
+
+type sseWriter struct {
+	w       io.Writer
+	flusher http.Flusher
+	event   string
+}
+
+func (s *sseWriter) Write(p []byte) (int, error) {
+	if _, err := fmt.Fprintf(s.w, "event: %s\ndata: %s\n\n", s.event, base64.StdEncoding.EncodeToString(p)); err != nil {
+		return 0, err
+	}
+	s.flusher.Flush()
+	return len(p), nil
 }
 
 func (s *Server) handleDown(w http.ResponseWriter, r *http.Request) {

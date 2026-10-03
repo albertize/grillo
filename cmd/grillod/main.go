@@ -13,6 +13,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -173,6 +174,10 @@ func (c *core) Status(ctx context.Context, application string) ([]api.ContainerS
 		out = append(out, api.ContainerStatus{Container: state.Container, State: state.State, ExitCode: state.ExitCode})
 	}
 	return out, nil
+}
+
+func (c *core) ExecStream(ctx context.Context, application, container string, args []string, stdout, stderr io.Writer) (int, error) {
+	return c.exec.Exec(ctx, application, container, args, stdout, stderr)
 }
 
 func (c *core) Exec(ctx context.Context, application, container string, args []string, maxOutput int64) (int, string, string, error) {

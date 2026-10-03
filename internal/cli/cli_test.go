@@ -44,9 +44,10 @@ func (f *fakeClient) Operation(context.Context, string) (api.Operation, error) {
 func (f *fakeClient) Status(context.Context, string) ([]api.ContainerStatus, error) {
 	return []api.ContainerStatus{{Container: "app", State: "running"}}, nil
 }
-func (f *fakeClient) Exec(_ context.Context, _, _ string, args []string) (int, string, string, error) {
+func (f *fakeClient) ExecStream(_ context.Context, _, _ string, args []string, stdout, _ io.Writer) (int, error) {
 	f.execArgs = args
-	return 3, "out:" + strings.Join(args, " "), "", nil
+	_, _ = io.WriteString(stdout, "out:"+strings.Join(args, " "))
+	return 3, nil
 }
 func (f *fakeClient) Events(context.Context, uint64) (io.ReadCloser, error) {
 	return io.NopCloser(strings.NewReader("")), nil

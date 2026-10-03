@@ -31,7 +31,7 @@ type Client interface {
 	Down(ctx context.Context, application string, removeVolumes bool) (string, error)
 	Operation(ctx context.Context, id string) (api.Operation, error)
 	Status(ctx context.Context, application string) ([]api.ContainerStatus, error)
-	Exec(ctx context.Context, application, container string, args []string) (int, string, string, error)
+	ExecStream(ctx context.Context, application, container string, args []string, stdout, stderr io.Writer) (int, error)
 	Events(ctx context.Context, since uint64) (io.ReadCloser, error)
 	ListLogs(ctx context.Context, since uint64, resource, container string) ([]observe.LogRecord, error)
 	FollowLogs(ctx context.Context, since uint64, resource, container string) (io.ReadCloser, error)
@@ -426,12 +426,10 @@ func (a *App) cmdExec(ctx context.Context, args []string, shell bool) int {
 		}
 		defer restore()
 	}
-	exitCode, stdout, stderr, err := a.ClientFactory(a.SocketPath).Exec(ctx, application, container, afterDD)
+	exitCode, err := a.ClientFactory(a.SocketPath).ExecStream(ctx, application, container, afterDD, a.Stdout, a.Stderr)
 	if err != nil {
 		return fail(a.Stderr, err)
 	}
-	fmt.Fprint(a.Stdout, stdout)
-	fmt.Fprint(a.Stderr, stderr)
 	return exitCode
 }
 

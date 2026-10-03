@@ -111,6 +111,19 @@ func (c *Client) Stop(ctx context.Context, req StopRequest) (StopResult, error) 
 	return out, nil
 }
 
+// Restart restarts a container in place.
+func (c *Client) Restart(ctx context.Context, container string) (RestartResult, error) {
+	m, err := c.call(ctx, TypeRestart, RestartRequest{Container: container}, nil)
+	if err != nil {
+		return RestartResult{}, err
+	}
+	var out RestartResult
+	if err := UnmarshalPayload(m.Payload, &out); err != nil {
+		return RestartResult{}, err
+	}
+	return out, nil
+}
+
 // Cancel asks the guest to cancel a pending request.
 func (c *Client) Cancel(ctx context.Context, target string) error {
 	_, err := c.call(ctx, TypeCancel, CancelRequest{Target: target}, nil)

@@ -63,6 +63,8 @@ func (a *Agent) Handle(ctx context.Context, req guestproto.Message, stream *gues
 		return a.exec(ctx, req, stream)
 	case guestproto.TypeProbe:
 		return a.probe(ctx, req)
+	case guestproto.TypeRestart:
+		return a.restart(ctx, req)
 	default:
 		return nil, guestproto.Errorf(guestproto.CodeUnsupported, "message type %s", req.Type)
 	}
@@ -209,6 +211,31 @@ func (a *Agent) containerStatusesLocked(ctx context.Context) []guestproto.Contai
 		})
 	}
 	return out
+}
+
+func (a *Agent) restart(ctx context.Context, req guestproto.Message) (any, *guestproto.Error) {
+	var rr guestproto.RestartRequest
+	if err := guestproto.UnmarshalPayload(req.Payload, &rr); err != nil {
+		return nil, guestproto.Errorf(guestproto.CodeBadRequest, "%v", err)
+	}
+	if rr.Container == "" {
+		return nil, guestproto.Errorf(guestproto.CodeBadRequest, "restart requires a container")
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	state, ok := a.containers[rr.Container]
+	if !ok {
+		return nil, guestproto.Errorf(guestproto.CodeNotFound, "container %q not found", rr.Container)
+	}
+	_ = a.Runtime.Kill(ctx, rr.Container, syscall.SIGKILL)
+	_ = a.Runtime.Delete(ctx, rr.Container, true)
+	if err := a.Runtime.StartDetached(ctx, rr.Container, state.bundle); err != nil {
+		state.status = "failed"
+		return nil, guestproto.Errorf(guestproto.CodeInternal, "restart %s: %v", rr.Container, err)
+	}
+	state.status = "running"
+	state.exit = ExitStatus{}
+	return guestproto.RestartResult{State: "running"}, nil
 }
 
 func (a *Agent) exec(ctx context.Context, req guestproto.Message, stream *guestproto.Stream) (any, *guestproto.Error) {

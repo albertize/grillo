@@ -184,3 +184,96 @@ func repoRoot(t *testing.T) string {
 		dir = parent
 	}
 }
+
+// TestKVMLivenessRestart verifies that a failing liveness probe restarts the
+// container in place (its PID changes) and only that container.
+func TestKVMLivenessRestart(t *testing.T) {
+	if _, err := os.Stat("/dev/kvm"); err != nil {
+		t.Skip("SKIP: /dev/kvm is not available")
+	}
+	root := repoRoot(t)
+	kernel := filepath.Join(root, "experiments/artifacts/qemu/bzImage")
+	initramfs := filepath.Join(root, "experiments/artifacts/t07/initramfs-agent.cpio.gz")
+	keyPath := filepath.Join(root, "experiments/artifacts/t07/key")
+	rootfs := filepath.Join(root, "experiments/artifacts/t02/rootfs")
+	for _, path := range []string{kernel, initramfs, keyPath, rootfs} {
+		if _, err := os.Stat(path); err != nil {
+			t.Skipf("SKIP: missing %s (run 'make t07-guest' and 'make oci-guest')", path)
+		}
+	}
+	keyData, _ := os.ReadFile(keyPath)
+	key, err := base64.StdEncoding.DecodeString(strings.TrimSpace(string(keyData)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	backend, err := qemu.Open(qemu.Config{
+		Kernel: kernel, Initramfs: initramfs,
+		WorkDir: filepath.Join(t.TempDir(), "backend"), CIDBase: 90, BootTimeout: 30 * time.Second,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	exec, err := New(Config{
+		Backend: backend, Kernel: kernel, Initramfs: initramfs,
+		KernelArgs: "console=ttyS0 reboot=k panic=1 rdinit=/init", GuestKey: key, VsockPort: 1024, VsockCIDBase: 90,
+		Images: directoryResolver{dir: rootfs},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	reconciler := &reconcile.Reconciler{Store: reconcile.NewMemoryStore(), Executor: &reconcile.NativeExecutor{Sandboxes: SandboxController{exec}}}
+	fail := []string{"/bin/false"}
+	app := model.Application{
+		APIVersion: model.APIVersion, Kind: model.KindApplication,
+		Identity: model.Identity{Name: "liveness", Namespace: "default"},
+		Workloads: []model.Workload{{
+			ID: "app", Kind: model.WorkloadDeployment, Replicas: 1, RestartPolicy: model.RestartAlways,
+			Template: model.SandboxTemplate{Containers: []model.Container{{
+				Name:    "app",
+				Image:   model.ImageRef{Reference: "busybox:1.37"},
+				Command: &[]string{"sleep", "300"},
+				Probes: model.Probes{Liveness: &model.Probe{
+					Kind: model.ProbeExec, Exec: &model.ExecAction{Command: fail},
+					PeriodSeconds: 1, TimeoutSeconds: 1, FailureThreshold: 1,
+				}},
+			}}},
+		}},
+	}
+	exec.SetDesired(app)
+	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	defer cancel()
+	if _, err := reconciler.Apply(ctx, app); err != nil {
+		t.Fatal(err)
+	}
+	defer reconciler.Down(ctx, "liveness", false)
+
+	firstPID := waitForPID(t, ctx, exec, "app")
+	// The liveness probe fails every second, so the container must be restarted.
+	deadline := time.Now().Add(20 * time.Second)
+	for time.Now().Before(deadline) {
+		states, _ := exec.Status(ctx, "liveness")
+		for _, state := range states {
+			if state.Container == "app" && state.State == "running" && state.PID != 0 && state.PID != firstPID {
+				return
+			}
+		}
+		time.Sleep(300 * time.Millisecond)
+	}
+	t.Fatalf("container was not restarted after a failing liveness probe (pid stayed %d)", firstPID)
+}
+
+func waitForPID(t *testing.T, ctx context.Context, exec *Executor, container string) int {
+	t.Helper()
+	deadline := time.Now().Add(20 * time.Second)
+	for time.Now().Before(deadline) {
+		states, _ := exec.Status(ctx, "liveness")
+		for _, state := range states {
+			if state.Container == container && state.State == "running" && state.PID != 0 {
+				return state.PID
+			}
+		}
+		time.Sleep(300 * time.Millisecond)
+	}
+	t.Fatal("container did not start")
+	return 0
+}

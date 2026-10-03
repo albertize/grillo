@@ -15,9 +15,11 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"grillo.local/grillo/internal/guestproto"
 	"grillo.local/grillo/internal/model"
+	"grillo.local/grillo/internal/observe"
 	"grillo.local/grillo/internal/plan"
 	"grillo.local/grillo/internal/sandbox"
 	"grillo.local/grillo/internal/storage"
@@ -61,10 +63,12 @@ type Executor struct {
 }
 
 type sandboxRuntime struct {
-	id    string
-	app   string
-	cid   uint32
-	guest *guestproto.Client
+	id     string
+	app    string
+	cid    uint32
+	guest  *guestproto.Client
+	runner *observe.Runner
+	cancel context.CancelFunc
 }
 
 // New returns an executor.
@@ -165,8 +169,52 @@ func (e *Executor) Ensure(ctx context.Context, application string, descriptor pl
 	}
 	e.mu.Lock()
 	e.runtimes[spec.ID] = &sandboxRuntime{id: spec.ID, app: application, cid: spec.VsockCID, guest: client}
+	rt := e.runtimes[spec.ID]
 	e.mu.Unlock()
+	if runner, cancel, ok := e.startProbes(client, *workload); ok {
+		e.mu.Lock()
+		rt.runner = runner
+		rt.cancel = cancel
+		e.mu.Unlock()
+	}
 	return nil
+}
+
+// startProbes runs the container probes and restarts a container whose liveness
+// probe fails.
+func (e *Executor) startProbes(client *guestproto.Client, workload model.Workload) (*observe.Runner, context.CancelFunc, bool) {
+	runner := observe.NewRunner(observe.RealClock{}, observe.GuestProber{Client: client}, nil)
+	configured := false
+	for _, container := range allContainers(workload) {
+		cfg := probeConfig(container)
+		if cfg.Startup == nil && cfg.Readiness == nil && cfg.Liveness == nil {
+			continue
+		}
+		if err := runner.Set(container.Name, cfg); err != nil {
+			continue
+		}
+		configured = true
+	}
+	if !configured {
+		return nil, nil, false
+	}
+	runner.OnLivenessFailure = func(container string) {
+		_, _ = client.Restart(context.Background(), container)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		ticker := time.NewTicker(time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				runner.Tick(ctx)
+			}
+		}
+	}()
+	return runner, cancel, true
 }
 
 // Stop stops a sandbox's containers and the sandbox itself.
@@ -177,6 +225,9 @@ func (e *Executor) Stop(ctx context.Context, application string, descriptor plan
 	delete(e.runtimes, sandboxID)
 	e.mu.Unlock()
 	if rt != nil && rt.guest != nil {
+		if rt.cancel != nil {
+			rt.cancel()
+		}
 		_, _ = rt.guest.Stop(ctx, guestproto.StopRequest{})
 		_ = rt.guest.Close()
 	}
@@ -201,6 +252,7 @@ type ContainerState struct {
 	Container string
 	State     string
 	ExitCode  int
+	PID       int
 }
 
 // Status aggregates container state across an application's sandboxes.
@@ -220,7 +272,7 @@ func (e *Executor) Status(ctx context.Context, application string) ([]ContainerS
 			continue
 		}
 		for _, container := range status.Containers {
-			states = append(states, ContainerState{Container: container.Name, State: container.State, ExitCode: container.ExitCode})
+			states = append(states, ContainerState{Container: container.Name, State: container.State, ExitCode: container.ExitCode, PID: container.PID})
 		}
 	}
 	return states, nil

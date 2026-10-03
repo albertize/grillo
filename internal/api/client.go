@@ -5,9 +5,12 @@
 package api
 
 import (
+	"bufio"
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -15,6 +18,7 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
+	"strings"
 	"time"
 
 	"grillo.local/grillo/internal/model"
@@ -260,4 +264,57 @@ func (c *Client) Exec(ctx context.Context, application, container string, args [
 		return 0, "", "", err
 	}
 	return out.ExitCode, out.Stdout, out.Stderr, nil
+}
+
+// ExecStream runs a command and streams stdout/stderr to the writers, returning
+// the exit code. It uses the documented SSE-framed exec stream.
+func (c *Client) ExecStream(ctx context.Context, application, container string, args []string, stdout, stderr io.Writer) (int, error) {
+	body, err := json.Marshal(map[string]any{"application": application, "container": container, "args": args})
+	if err != nil {
+		return 0, err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "http://unix/v1/exec?stream=true", bytes.NewReader(body))
+	if err != nil {
+		return 0, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := c.streamClient.Do(req)
+	if err != nil {
+		return 0, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return 0, decodeError(resp)
+	}
+	scanner := bufio.NewScanner(resp.Body)
+	scanner.Buffer(make([]byte, 0, 64*1024), 1<<20)
+	event := ""
+	code := 0
+	for scanner.Scan() {
+		line := scanner.Text()
+		switch {
+		case strings.HasPrefix(line, "event: "):
+			event = strings.TrimPrefix(line, "event: ")
+		case strings.HasPrefix(line, "data: "):
+			data := strings.TrimPrefix(line, "data: ")
+			switch event {
+			case "stdout", "stderr":
+				raw, err := base64.StdEncoding.DecodeString(data)
+				if err != nil {
+					continue
+				}
+				if event == "stdout" {
+					_, _ = stdout.Write(raw)
+				} else {
+					_, _ = stderr.Write(raw)
+				}
+			case "exit":
+				_, _ = fmt.Sscanf(data, "%d", &code)
+			case "error":
+				raw, _ := base64.StdEncoding.DecodeString(data)
+				return code, errors.New(string(raw))
+			}
+		}
+	}
+	return code, nil
 }

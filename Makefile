@@ -98,7 +98,7 @@ test-t10: t07-guest
 # End-to-end: apply a native manifest through the reconciler and executor on
 # real KVM (boot sandbox, start container, status, exec, down).
 test-executor: t07-guest oci-guest
-	go test -tags kvm -count=1 -v -timeout 180s -run TestKVMEndToEndApply ./internal/executor/
+	go test -tags kvm -count=1 -v -timeout 180s -run TestKVM ./internal/executor/
 
 # T11 networking: real rootless helper (pasta) with egress, application isolation,
 # and management unreachability. Missing pasta/userns/loopback is a SKIP.
