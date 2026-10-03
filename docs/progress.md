@@ -39,6 +39,8 @@ real KVM/QEMU and passes OCI scenario A plus an init-failure case.
 
 **T15 is complete.** `internal/api` serves the local Unix-socket API with `SO_PEERCRED` UID checks, bounded bodies, the `{code,message,resource,retryable,details}` error DTO, asynchronous operations on the daemon lifetime context, SSE events with `Last-Event-ID` and gap records, log streaming, and distinct daemon-shutdown/application-down endpoints. `cmd/grillod` holds the single-instance state lock and serves it.
 
+**T16 is complete.** `internal/cli` implements the native-runtime command line with a parser for flags before/after positionals, repeated `-f`, and the exec `--` terminator; offline `plan`; `up` (daemon autostart + async apply), `down`, `logs`, `events`, `exec`/`shell` with guaranteed terminal restoration, and a read-only `doctor` that never requires root. `cmd/grillo` is wired to it. Commands that need an unwired guest pipeline (`exec`/`shell`, `ps`/`status`/`inspect`/`restart`, `ui`) return clear errors rather than pretending to work.
+
 Hosted CI has not yet been executed.
 
 ## Task status
@@ -61,7 +63,7 @@ Hosted CI has not yet been executed.
 | T13 | Observability and probes | DONE | `internal/observe`; events/spool/metrics/probes; startup gating, thresholds, fake-clock, timeout-kill, slow-consumer tests |
 | T14 | Planner, reconciler, and updates | DONE | `internal/plan` + `internal/reconcile`; diff/recreate/route-only, retries, crash replay, idempotent down, bounded workers, race checks |
 | T15 | Local API and daemon lifetime | DONE | `internal/api` + `cmd/grillod`; peer UID, async ops, SSE cursors, disconnect/leak tests |
-| T16 | Native-runtime CLI | TODO | T15 |
+| T16 | Native-runtime CLI | DONE | `internal/cli` + `cmd/grillo`; interspersed/repeated/`--` parsing, offline plan, up/down/logs/events, terminal restore, read-only doctor |
 | T17 | Compose parser and compiler | TODO | T04; final integration T16 |
 | T18 | Builder and image/volume/network tooling | TODO | T09, T10, T11, T17 |
 | T19 | F2 gate: Compose application | TODO | T12–T18 |
@@ -866,6 +868,40 @@ historical evidence only.
   application list endpoint yet; operations are in-memory and not recovered
   across a daemon restart (the reconciler replays from desired state instead).
 - **Next task:** T16 (native-runtime CLI) depends on T15.
+
+## T16 native-runtime CLI — 2026-10-03
+
+- **Task:** T16 — native-runtime CLI
+- **Status:** DONE (core commands; commands that need the unwired guest pipeline
+  return explicit errors)
+- **Dependencies verified:** T15 (API/daemon) complete.
+- **Files and contracts changed:** `internal/cli` (`flags.go` interspersed parser,
+  `cli.go` commands, `doctor.go`, `terminal.go`), `cmd/grillo` wired to the CLI,
+  and `go.mod`/`go.sum` (pins `golang.org/x/term v0.46.0`).
+- **Decisions/ADRs:** None required. Uses the standard `flag` package after a
+  documented split that allows flags before and after positionals and honors
+  `--`; shell/exec put the local terminal in raw mode and always restore it.
+- **Tests run:** `make check` PASS; `go test -race -count=2 ./internal/cli` PASS.
+  Coverage: interspersed and repeated `-f`; flags after positionals; the exec
+  `--` terminator; unknown-flag and missing-value errors; offline `plan` prints
+  actions and rejects invalid manifests; `up` sends the application and waits for
+  the operation; `down --volumes`; `exec` restores the terminal even when the
+  session fails and requires `-- <command>`; doctor exit codes and well-formed
+  checks; version and unknown-command exit codes.
+- **Tests NOT run and why:** `exec`/`shell` do not open a real guest session
+  (the daemon does not expose one yet), so only parsing and terminal restoration
+  are verified. `ps`/`status`/`inspect`/`restart`/`ui` and image/volume/network
+  inventory are not implemented. Daemon autostart is not integration-tested by
+  spawning the binary. Hosted CI has not run.
+- **Integration evidence:** Repository-local; the CLI drives the real API client
+  types, and doctor probes the real host read-only.
+- **Known limitations:** Native-manifest `up` reaches the daemon but sandbox
+  effects fail until the executor controllers are wired, so end-to-end `up` is
+  not verified. No `--output=json` on every command, no resource-notation
+  resolution (`deployment/backend`), and no non-TTY exec stream yet.
+- **Next task:** T17 (Compose parser and compiler) depends on T04; T20
+  (Kubernetes) depends on T04. The real executor controllers and guest exec
+  stream remain follow-up work.
 
 ## Updating this file
 

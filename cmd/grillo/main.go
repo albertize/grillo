@@ -3,11 +3,15 @@
 package main
 
 import (
+	"context"
 	"os"
 
-	"grillo.local/grillo/internal/command"
+	"grillo.local/grillo/internal/cli"
 )
 
+const version = "0.1.0"
+
 func main() {
-	os.Exit(command.Run("grillo", os.Args[1:], os.Stdout, os.Stderr))
+	app := &cli.App{Version: version}
+	os.Exit(app.Run(context.Background(), os.Args[1:]))
 }

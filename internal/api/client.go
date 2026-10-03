@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"grillo.local/grillo/internal/model"
+	"grillo.local/grillo/internal/observe"
 )
 
 // Client talks to the local API over the Unix socket.
@@ -194,4 +195,46 @@ func EnsureDaemon(ctx context.Context, socketPath, daemonPath string, timeout ti
 		}
 	}
 	return fmt.Errorf("api: daemon did not become healthy within %s", timeout)
+}
+
+// ListLogs returns log records without following.
+func (c *Client) ListLogs(ctx context.Context, since uint64, resource, container string) ([]observe.LogRecord, error) {
+	query := fmt.Sprintf("/v1/logs?since=%d", since)
+	if resource != "" {
+		query += "&resource=" + url.QueryEscape(resource)
+	}
+	if container != "" {
+		query += "&container=" + url.QueryEscape(container)
+	}
+	var out struct {
+		Records []observe.LogRecord `json:"records"`
+	}
+	if err := c.do(ctx, http.MethodGet, query, nil, &out); err != nil {
+		return nil, err
+	}
+	return out.Records, nil
+}
+
+// FollowLogs streams log records.
+func (c *Client) FollowLogs(ctx context.Context, since uint64, resource, container string) (io.ReadCloser, error) {
+	query := fmt.Sprintf("/v1/logs?follow=true&since=%d", since)
+	if resource != "" {
+		query += "&resource=" + url.QueryEscape(resource)
+	}
+	if container != "" {
+		query += "&container=" + url.QueryEscape(container)
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://unix"+query, nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := c.streamClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode != http.StatusOK {
+		defer resp.Body.Close()
+		return nil, decodeError(resp)
+	}
+	return resp.Body, nil
 }
