@@ -27,6 +27,8 @@ real KVM/QEMU and passes OCI scenario A plus an init-failure case.
 
 **T09 is complete.** `internal/oci` implements reference parsing, the OCI Distribution API subset with bearer/basic auth and bounded HTTP, schema2/OCI manifest and index handling with `linux/amd64` selection, a content-addressed blob store with atomic verified commits and concurrent-pull deduplication, safe gzip/tar layer unpacking with whiteouts and opaque directories, image-config merging, and `diff_id` verification. Adversarial tars and corrupt blobs are rejected.
 
+**T10 is complete.** `internal/storage` manages volumes with validated bind paths, managed/PVC/ephemeral lifecycles, leases with owner/operation records, access modes, explicit UID/GID mapping, crash-safe lease reconciliation, and deletion that never touches bind or external data. The guest agent mounts virtiofs/block shares before starting containers, and `make test-t10` passes acceptance scenario G on real KVM: live bind sharing both ways and enforced read-only.
+
 Hosted CI has not yet been executed.
 
 ## Task status
@@ -43,7 +45,7 @@ Hosted CI has not yet been executed.
 | T07 | Guest PID 1 and OCI runtime | DONE | `internal/guest` + `cmd/grillo-agent`; `make test-t07` PASS on real KVM (scenario A, init failure, distinct PIDs, no zombies) |
 | T08 | Backend lifecycle and process supervision | DONE | `internal/sandbox` + `internal/platform/linux` + `internal/backend/qemu`; `make test-t08` 100 cycles, no leaks |
 | T09 | OCI registry and CAS | DONE | `internal/oci`; reference/manifest/CAS/unpack/registry/pull tests, 32 cases incl. adversarial tar + concurrent dedup |
-| T10 | Storage manager | TODO | T05, T08, T09 |
+| T10 | Storage manager | DONE | `internal/storage` + guest shares; `make test-t10` (scenario G) PASS on real KVM |
 | T11 | Production rootless networking and IPAM | TODO | T05, T08 |
 | T12 | DNS, Service proxy, and Ingress | TODO | T11, T04 |
 | T13 | Observability and probes | TODO | T05, T07, T12 |
@@ -637,6 +639,43 @@ historical evidence only.
   materialization is recorded but not yet projected into the guest by T10.
 - **Next task:** T10 (storage) depends on T05/T08/T09; T11 (networking) on
   T05/T08.
+
+## T10 storage manager — 2026-10-03
+
+- **Task:** T10 — storage manager
+- **Status:** DONE
+- **Dependencies verified:** T05 (state), T08 (backend), T09 (OCI) complete;
+  real `/dev/kvm`, qemu, and virtiofsd present.
+- **Files and contracts changed:** `internal/storage` (volume model, manager,
+  bind validation, leases, access modes, UID/GID mapping, reconciliation,
+  safe deletion); `internal/guestproto` (`ShareSpec` and `SandboxSpec.Shares`);
+  `internal/guest` (`MountShares`, called before containers start); `test-t10`
+  Makefile target.
+- **Decisions/ADRs:** None required. Bind paths are canonicalized with
+  `EvalSymlinks`; `/` and `$HOME` are refused as bind sources.
+- **Tests run:** `make check` PASS; `go test -race -count=2 ./internal/storage
+  ./internal/guest ./internal/guestproto` PASS; `make test-t10` PASS (real
+  KVM/QEMU). `TestKVMBindPersistence` boots the backend with a virtiofs bind
+  share and asserts, through the production protocol: the guest reads a host
+  sentinel, a host write after mount is visible in the guest (a live bind, not an
+  initial copy), a guest write appears on the host, and a read-only share rejects
+  a write both in the guest and on the host. Unit tests cover managed-volume
+  persistence across reopen, idempotent create, RWO/ROX/RWX access modes,
+  read-only enforcement, attachment UID/GID mapping, detach/release, lease
+  reconciliation for gone sandboxes, `down --volumes` skipping bind and foreign
+  volumes, and deletion refusing bind and leased volumes.
+- **Tests NOT run and why:** No ext4 block-disk attachment in the KVM test (the
+  virtiofs path covers scenario G); the T03 F0 gate separately measured the ext4
+  volume and filesystem overhead. No multi-Pod shared-volume rejection beyond the
+  access-mode checks. Hosted CI has not run.
+- **Integration evidence:** Real QEMU microVM with a virtiofsd share, guest-side
+  virtiofs mount, and a container bind mount; bidirectional live sharing and
+  read-only denial verified end to end.
+- **Known limitations:** PVC capacity and storage class are recorded but not
+  quota-enforced on the host; `subPath` is not implemented; GC/pins and
+  `inspect` projection into the API are later tasks. Block-device volumes are
+  supported by the guest mount code but not yet exercised in the KVM test.
+- **Next task:** T11 (networking) depends on T05/T08; T12 (DNS) on T11/T04.
 
 ## Updating this file
 

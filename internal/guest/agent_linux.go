@@ -83,6 +83,9 @@ func (a *Agent) start(ctx context.Context, req guestproto.Message) (any, *guestp
 		return nil, guestproto.Errorf(guestproto.CodeBusy, "sandbox already started")
 	}
 	a.sandbox = *sr.Sandbox
+	if err := MountShares(a.sandbox.Shares); err != nil {
+		return nil, guestproto.Errorf(guestproto.CodeInternal, "%v", err)
+	}
 	a.containers = make(map[string]*containerState, len(a.sandbox.Containers))
 	for _, c := range a.sandbox.Containers {
 		bundle := filepath.Join(a.WorkDir, "bundles", c.Name)

@@ -90,8 +90,13 @@ test-t07: t07-guest
 test-t08: t07-guest
 	go test -tags kvm -count=1 -v -timeout 600s -run TestKVMCreateStartStopDelete ./internal/backend/qemu/
 
+# T10 storage: real bind persistence and read-only enforcement (scenario G)
+# through the backend and guest agent. Missing /dev/kvm or the image is a SKIP.
+test-t10: t07-guest
+	go test -tags kvm -count=1 -v -timeout 180s -run TestKVMBindPersistence ./internal/storage/
+
 # Full T02/T03 real hardware evidence. No downloads or preexisting volume deletion.
-.PHONY: f0-guest test-f0 t07-guest test-t07 test-t08
+.PHONY: f0-guest test-f0 t07-guest test-t07 test-t08 test-t10
 f0-guest:
 	bash experiments/boot/qemu/build-kernel.sh
 	bash experiments/boot/qemu/build-f0-guest.sh

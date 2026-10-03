@@ -10,6 +10,8 @@ import (
 	"os"
 
 	"golang.org/x/sys/unix"
+
+	"grillo.local/grillo/internal/guestproto"
 )
 
 // SetupFilesystems mounts the pseudo-filesystems PID 1 needs. It is idempotent:
@@ -68,6 +70,39 @@ func SetupLoopback() error {
 	ifr.SetUint16(ifr.Uint16() | unix.IFF_UP)
 	if err := unix.IoctlIfreq(fd, unix.SIOCSIFFLAGS, ifr); err != nil {
 		return fmt.Errorf("guest: set lo up: %w", err)
+	}
+	return nil
+}
+
+// MountShares mounts each volume share at its target before containers start.
+// Virtiofs shares use the tag as the mount source; block filesystems use the
+// source path. A share already mounted is left in place.
+func MountShares(shares []guestproto.ShareSpec) error {
+	for _, share := range shares {
+		fstype := share.FSType
+		if fstype == "" {
+			fstype = "virtiofs"
+		}
+		source := share.Source
+		if fstype == "virtiofs" {
+			source = share.Tag
+		}
+		if source == "" {
+			return fmt.Errorf("guest: share %q has no source", share.Tag)
+		}
+		if err := os.MkdirAll(share.Target, 0o700); err != nil {
+			return fmt.Errorf("guest: create share target %s: %w", share.Target, err)
+		}
+		flags := uintptr(0)
+		if share.ReadOnly {
+			flags |= unix.MS_RDONLY
+		}
+		if err := unix.Mount(source, share.Target, fstype, flags, ""); err != nil {
+			if errors.Is(err, unix.EBUSY) {
+				continue
+			}
+			return fmt.Errorf("guest: mount %s (%s) at %s: %w", source, fstype, share.Target, err)
+		}
 	}
 	return nil
 }

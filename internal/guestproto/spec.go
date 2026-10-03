@@ -16,7 +16,18 @@ type SandboxSpec struct {
 	ID          string          `json:"id"`
 	Hostname    string          `json:"hostname,omitempty"`
 	Nameservers []string        `json:"nameservers,omitempty"`
+	Shares      []ShareSpec     `json:"shares,omitempty"`
 	Containers  []ContainerSpec `json:"containers"`
+}
+
+// ShareSpec is a volume the guest mounts before starting containers. Virtiofs
+// shares are identified by tag; block devices by source path.
+type ShareSpec struct {
+	Tag      string `json:"tag"`
+	Target   string `json:"target"`
+	FSType   string `json:"fsType,omitempty"` // "virtiofs" (default) or "ext4"
+	Source   string `json:"source,omitempty"` // block device for block filesystems
+	ReadOnly bool   `json:"readOnly,omitempty"`
 }
 
 // ContainerSpec describes one container to run inside the guest.
@@ -69,6 +80,19 @@ func (s SandboxSpec) Validate() error {
 		return errors.New("guestproto: sandbox has no containers")
 	}
 	seen := make(map[string]bool, len(s.Containers))
+	seenShares := make(map[string]bool, len(s.Shares))
+	for _, share := range s.Shares {
+		if share.Tag == "" || share.Target == "" {
+			return errors.New("guestproto: share needs a tag and target")
+		}
+		if !strings.HasPrefix(share.Target, "/") {
+			return fmt.Errorf("guestproto: share target %q must be absolute", share.Target)
+		}
+		if seenShares[share.Tag] {
+			return fmt.Errorf("guestproto: duplicate share tag %q", share.Tag)
+		}
+		seenShares[share.Tag] = true
+	}
 	nameless := 0
 	for i, c := range s.Containers {
 		if c.Name == "" {
