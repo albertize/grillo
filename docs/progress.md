@@ -14,6 +14,8 @@
 
 **T05 is complete.** `internal/state` provides the per-user XDG layout, a single-writer `flock`, atomic snapshots with fsync, pending operations and observations, schema versioning with backup-before-migration, and a bounded rotating NDJSON journal that recovers a truncated last record but rejects mid-file corruption. `internal/secrets` keeps secret values out of the IR and state, versions them with random tokens that change only on real change, and garbage-collects only unreferenced versions.
 
+**T06 is complete.** `internal/guestproto` implements the bounded, versioned, authenticated host/guest protocol and its documented wire format in [api/guest-protocol.md](../api/guest-protocol.md). The framing codec is independent of the transport; an AF_VSOCK dialer/listener and an in-memory plain-conn test transport are provided. The real guest agent (PID 1, OCI runtime) is still T07.
+
 Hosted CI has not yet been executed.
 
 ## Task status
@@ -26,7 +28,7 @@ Hosted CI has not yet been executed.
 | T03 | F0 gate and platform ADR | BLOCKED | Proposed QEMU candidate; complete T02 evidence and review ADR 0005 before confirming F0 |
 | T04 | IR, diagnostics, and capabilities | DONE | `internal/model` + `internal/source`; goldens, version/reference/cycle/overflow, import-boundary tests |
 | T05 | State, secrets, and recovery primitives | DONE | `internal/state` + `internal/secrets`; lock, atomic snapshots, journal, migration, secret GC tests |
-| T06 | Guest protocol and testable client | TODO | T03, T04 |
+| T06 | Guest protocol and testable client | DONE | `internal/guestproto` + `api/guest-protocol.md`; framing/handshake/client/server, fuzz, partial-I/O, overflow, backpressure, timeout, auth tests |
 | T07 | Guest PID 1 and OCI runtime | TODO | T06 |
 | T08 | Backend lifecycle and process supervision | TODO | T05, T07 |
 | T09 | OCI registry and CAS | TODO | T04, T03 |
@@ -406,6 +408,44 @@ historical evidence only.
   option). Journal timestamps use wall-clock time.
 - **Next task:** T06 (guest protocol) depends on the blocked T03; T17/T20 pure
   frontends and T09 OCI work depend on T04. T07/T08 depend on T06/T05.
+
+## T06 guest protocol and testable client — 2026-10-03
+
+- **Task:** T06 — guest protocol and testable client
+- **Status:** DONE
+- **Dependencies verified:** T03 (chosen AF_VSOCK/vhost-vsock transport) and T04
+  complete; `make check` PASS.
+- **Files and contracts changed:** `internal/guestproto` (frames and bounds in
+  `frame.go`/`codec.go`, typed messages in `message.go`, handshake in
+  `handshake.go`, host client in `client.go`, guest server in `server.go`,
+  transport contract in `transport.go`, AF_VSOCK adapter in `vsock_linux.go`) and
+  `api/guest-protocol.md`. No runtime, VMM, or guest agent code was added; the
+  throwaway T01/T02 spike protocol is untouched and remains experiment-only.
+- **Decisions/ADRs:** None required. The framing builds on specification §6.4
+  (1 MiB control messages, 64 KiB data frames, length validated before
+  allocation) and the T03 transport choice.
+- **Tests run:** `make check` PASS; `go test -race -count=1 ./internal/...` PASS;
+  `go test -race -count=5 ./internal/guestproto` PASS; `FuzzReadFrame` and
+  `FuzzReadMessage` (8 s each, ~2.5M/2.5M executions) PASS with no crash;
+  `TestVsockLoopback` PASS on the host AF_VSOCK loopback device. Coverage
+  includes frame round trips, short reads/writes (partial I/O), oversized and
+  unknown frames rejected before allocation, writer backpressure with a
+  non-reading peer (timeout, bounded memory), handshake success, version
+  mismatch (server and unit), failed authentication with a wrong per-boot key,
+  sandbox mismatch, ping/probe/status/start/stop round trips, streamed exec
+  with stdout/stderr/exit, typed error propagation, client timeout, and
+  server-side cancellation via a `cancel` message.
+- **Tests NOT run and why:** No end-to-end host-to-guest run; that needs the T07
+  agent and the T08 backend, and no guest binary speaks this protocol yet. The
+  AF_VSOCK adapter was exercised on the local loopback device, not vhost-vsock.
+  Hosted CI has not run.
+- **Integration evidence:** Repository-local plus an AF_VSOCK loopback test; the
+  vsock test skips (never passes) when the host forbids AF_VSOCK.
+- **Known limitations:** One in-flight request per connection on the client; the
+  server is concurrent but multi-connection session multiplexing and reconnect
+  without duplicate starts are deferred to T08. `stdin` frames are not routed
+  yet (T07). The per-boot key delivery mechanism is specified, not implemented.
+- **Next task:** T07 (guest PID 1 and OCI runtime) depends on T06 and T03.
 
 ## Updating this file
 
