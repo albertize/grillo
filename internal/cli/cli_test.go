@@ -257,3 +257,33 @@ func TestUICommandStartsAndStops(t *testing.T) {
 		t.Fatalf("ui output = %q", stdout.String())
 	}
 }
+
+func TestPlanComposeInput(t *testing.T) {
+	dir := t.TempDir()
+	composePath := filepath.Join(dir, "compose.yaml")
+	if err := os.WriteFile(composePath, []byte("name: demo\nservices:\n  web:\n    image: busybox:${TAG:-1.37}\n    environment:\n      EMPTY: \"\"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	app, stdout, stderr := newTestApp(t, &fakeClient{}, &fakeTerminal{})
+	if code := app.Run(context.Background(), []string{"plan", composePath}); code != 0 {
+		t.Fatalf("plan compose exit = %d: %s", code, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "CreateSandbox") {
+		t.Fatalf("plan output = %q", stdout.String())
+	}
+}
+
+func TestPlanRejectsUnsupportedComposeField(t *testing.T) {
+	dir := t.TempDir()
+	composePath := filepath.Join(dir, "compose.yaml")
+	if err := os.WriteFile(composePath, []byte("services:\n  web:\n    image: busybox\n    privileged: true\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	app, _, stderr := newTestApp(t, &fakeClient{}, &fakeTerminal{})
+	if code := app.Run(context.Background(), []string{"plan", composePath}); code == 0 {
+		t.Fatalf("unsupported field accepted: %s", stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "privileged") {
+		t.Fatalf("stderr = %q", stderr.String())
+	}
+}

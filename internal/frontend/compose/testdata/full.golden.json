@@ -1,0 +1,179 @@
+{
+  "apiVersion": "grillo.dev/v1alpha1",
+  "kind": "Application",
+  "metadata": {
+    "name": "demo",
+    "namespace": "default"
+  },
+  "workloads": [
+    {
+      "id": "db",
+      "kind": "Deployment",
+      "labels": {
+        "io.grillo.compose.service": "db"
+      },
+      "replicas": 1,
+      "template": {
+        "containers": [
+          {
+            "name": "db",
+            "image": {
+              "reference": "busybox:1.37"
+            },
+            "env": [
+              {
+                "name": "POSTGRES_PASSWORD",
+                "value": "secret"
+              }
+            ],
+            "mounts": [
+              {
+                "volume": "dbdata",
+                "mountPath": "/var/lib/data"
+              }
+            ],
+            "resources": {
+              "requests": {},
+              "limits": {}
+            },
+            "probes": {}
+          }
+        ],
+        "guestResources": {
+          "requests": {},
+          "limits": {}
+        },
+        "networks": [
+          "front"
+        ],
+        "securityProfile": {}
+      },
+      "restartPolicy": "Always"
+    },
+    {
+      "id": "web",
+      "kind": "Deployment",
+      "labels": {
+        "io.grillo.compose.service": "web"
+      },
+      "replicas": 2,
+      "dependsOn": [
+        "db"
+      ],
+      "template": {
+        "containers": [
+          {
+            "name": "web",
+            "image": {
+              "reference": "busybox:1.37"
+            },
+            "args": [
+              "httpd",
+              "-f",
+              "-p",
+              "8080"
+            ],
+            "env": [
+              {
+                "name": "EMPTY"
+              },
+              {
+                "name": "GREETING",
+                "value": "hello"
+              }
+            ],
+            "mounts": [
+              {
+                "volume": "data",
+                "mountPath": "/data"
+              },
+              {
+                "volume": "web-1",
+                "mountPath": "/usr/share/static",
+                "readOnly": true
+              }
+            ],
+            "ports": [
+              {
+                "containerPort": 80,
+                "protocol": "tcp",
+                "hostPort": 8080
+              }
+            ],
+            "resources": {
+              "requests": {},
+              "limits": {
+                "cpu": 500,
+                "memory": 134217728
+              }
+            },
+            "probes": {
+              "liveness": {
+                "kind": "exec",
+                "exec": {
+                  "command": [
+                    "wget",
+                    "-q",
+                    "-O-",
+                    "http://127.0.0.1:80/"
+                  ]
+                },
+                "timeoutSeconds": 2,
+                "periodSeconds": 10,
+                "failureThreshold": 3
+              }
+            },
+            "workingDir": "/srv",
+            "user": "1000:1000"
+          }
+        ],
+        "guestResources": {
+          "requests": {},
+          "limits": {}
+        },
+        "networks": [
+          "front"
+        ],
+        "securityProfile": {}
+      },
+      "restartPolicy": "OnFailure"
+    }
+  ],
+  "services": [
+    {
+      "name": "web",
+      "selector": {
+        "io.grillo.compose.service": "web"
+      },
+      "ports": [
+        {
+          "protocol": "TCP",
+          "port": 8080,
+          "targetPort": {
+            "number": 80
+          }
+        }
+      ]
+    }
+  ],
+  "volumes": [
+    {
+      "name": "data",
+      "kind": "managed"
+    },
+    {
+      "name": "dbdata",
+      "kind": "managed"
+    },
+    {
+      "name": "web-1",
+      "kind": "bind",
+      "source": "testdata/static"
+    }
+  ],
+  "networks": [
+    {
+      "name": "front"
+    }
+  ]
+}

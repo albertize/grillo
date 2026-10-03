@@ -17,9 +17,12 @@ import (
 	"time"
 
 	"grillo.local/grillo/internal/api"
+	"grillo.local/grillo/internal/frontend/compose"
+	"grillo.local/grillo/internal/frontend/detect"
 	"grillo.local/grillo/internal/model"
 	"grillo.local/grillo/internal/observe"
 	"grillo.local/grillo/internal/plan"
+	"grillo.local/grillo/internal/source"
 	"grillo.local/grillo/internal/state"
 	"grillo.local/grillo/internal/ui"
 )
@@ -151,12 +154,13 @@ func (a *App) Run(ctx context.Context, args []string) int {
 	}
 }
 
-func (a *App) cmdPlan(_ context.Context, args []string) int {
+func (a *App) cmdPlan(ctx context.Context, args []string) int {
 	fs := flag.NewFlagSet("plan", flag.ContinueOnError)
 	fs.SetOutput(a.Stderr)
 	var files stringSlice
 	fs.Var(&files, "f", "manifest file (repeatable)")
 	output := fs.String("output", "text", "text or json")
+	format := fs.String("format", "", "input format (compose|native)")
 	flags, positionals, _, err := SplitForFlagSet(args, fs)
 	if err != nil {
 		return usageError(a.Stderr, "plan", err)
@@ -164,7 +168,7 @@ func (a *App) cmdPlan(_ context.Context, args []string) int {
 	if err := fs.Parse(flags); err != nil {
 		return 2
 	}
-	app, code := a.loadManifest(files, positionals)
+	app, code := a.loadApplication(ctx, *format, files, positionals)
 	if code != 0 {
 		return code
 	}
@@ -196,6 +200,7 @@ func (a *App) cmdUp(ctx context.Context, args []string) int {
 	fs.SetOutput(a.Stderr)
 	var files stringSlice
 	fs.Var(&files, "f", "manifest file (repeatable)")
+	format := fs.String("format", "", "input format (compose|native)")
 	flags, positionals, _, err := SplitForFlagSet(args, fs)
 	if err != nil {
 		return usageError(a.Stderr, "up", err)
@@ -203,7 +208,7 @@ func (a *App) cmdUp(ctx context.Context, args []string) int {
 	if err := fs.Parse(flags); err != nil {
 		return 2
 	}
-	app, code := a.loadManifest(files, positionals)
+	app, code := a.loadApplication(ctx, *format, files, positionals)
 	if code != 0 {
 		return code
 	}
@@ -583,11 +588,9 @@ func DefaultSocketPath() string {
 	return filepath.Join(layout.Runtime, "grillod.sock")
 }
 
-func (a *App) loadManifest(files stringSlice, positionals []string) (model.Application, int) {
+func (a *App) loadApplication(ctx context.Context, format string, files stringSlice, positionals []string) (model.Application, int) {
 	sources := append([]string(nil), positionals...)
-	if len(files) > 0 {
-		sources = append(sources, files...)
-	}
+	sources = append(sources, files...)
 	if len(sources) == 0 {
 		fmt.Fprintln(a.Stderr, "grillo: no manifest given")
 		return model.Application{}, 2
@@ -596,33 +599,89 @@ func (a *App) loadManifest(files stringSlice, positionals []string) (model.Appli
 		fmt.Fprintln(a.Stderr, "grillo: multiple manifest sources are not supported yet")
 		return model.Application{}, 2
 	}
+	path := sources[0]
 	var data []byte
 	var err error
-	if sources[0] == "-" {
+	if path == "-" {
 		data, err = io.ReadAll(io.LimitReader(a.Stdin, 8<<20))
 	} else {
-		data, err = os.ReadFile(sources[0])
+		data, err = os.ReadFile(path)
 	}
 	if err != nil {
 		return model.Application{}, fail(a.Stderr, err)
 	}
-	app, diagnostics, err := model.LoadManifest(data)
-	if err != nil {
-		return model.Application{}, fail(a.Stderr, err)
-	}
-	diagnostics.Sort()
-	validation := model.Validate(app, model.Capabilities{})
-	validation.Sort()
-	all := append(diagnostics, validation...)
-	if len(all) > 0 {
-		for _, diagnostic := range all {
-			fmt.Fprintln(a.Stderr, diagnostic.Error())
+
+	kind := source.Kind(format)
+	if kind == "" {
+		detected, err := detect.Format(data, path)
+		if err != nil {
+			return model.Application{}, fail(a.Stderr, err)
 		}
+		kind = detected
+	}
+
+	var app model.Application
+	var diagnostics source.List
+	switch kind {
+	case source.KindCompose:
+		result, err := compose.Compile(ctx, data, compose.Options{Path: path, Environment: composeEnvironment(path)})
+		if err != nil {
+			return model.Application{}, fail(a.Stderr, err)
+		}
+		app, diagnostics = result.Application, result.Diagnostics
+	case source.KindNative:
+		loaded, diags, err := model.LoadManifest(data)
+		if err != nil {
+			return model.Application{}, fail(a.Stderr, err)
+		}
+		app, diagnostics = loaded, diags
+	case source.KindHelm:
+		fmt.Fprintln(a.Stderr, "grillo: Helm charts are not supported by this build")
+		return model.Application{}, 2
+	case source.KindKubernetes:
+		fmt.Fprintln(a.Stderr, "grillo: Kubernetes manifests are not supported by this build")
+		return model.Application{}, 2
+	default:
+		fmt.Fprintf(a.Stderr, "grillo: unknown input format %q\n", kind)
+		return model.Application{}, 2
+	}
+
+	validation := model.Validate(app, model.Capabilities{})
+	all := append(diagnostics, validation...)
+	all.Sort()
+	for _, diagnostic := range all {
+		fmt.Fprintln(a.Stderr, diagnostic.Error())
 	}
 	if all.HasErrors() {
 		return model.Application{}, 1
 	}
 	return app, 0
+}
+
+// composeEnvironment merges the project .env file with the host environment;
+// host values take precedence.
+func composeEnvironment(path string) map[string]string {
+	env := map[string]string{}
+	envFile := filepath.Join(filepath.Dir(path), ".env")
+	if data, err := os.ReadFile(envFile); err == nil {
+		for _, line := range strings.Split(string(data), "\n") {
+			line = strings.TrimSpace(line)
+			if line == "" || strings.HasPrefix(line, "#") {
+				continue
+			}
+			key, value, found := strings.Cut(line, "=")
+			if found {
+				env[strings.TrimSpace(key)] = strings.Trim(value, `"'`)
+			}
+		}
+	}
+	for _, entry := range os.Environ() {
+		key, value, found := strings.Cut(entry, "=")
+		if found {
+			env[key] = value
+		}
+	}
+	return env
 }
 
 func usageError(w io.Writer, command string, err error) int {

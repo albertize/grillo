@@ -1,0 +1,5 @@
+services:
+  web:
+    image: busybox:1.37
+    privileged: true
+    network_mode: host

@@ -1,0 +1,4 @@
+services:
+  web:
+    image: busybox:1.37
+    frobnicate: true

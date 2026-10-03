@@ -1,0 +1,44 @@
+name: demo
+services:
+  web:
+    image: busybox:1.37
+    command: ["httpd", "-f", "-p", "8080"]
+    environment:
+      GREETING: hello
+      EMPTY: ""
+    ports:
+      - "8080:80"
+    volumes:
+      - data:/data
+      - ./static:/usr/share/static:ro
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O-", "http://127.0.0.1:80/"]
+      interval: 10s
+      timeout: 2s
+      retries: 3
+    depends_on:
+      - db
+    restart: on-failure
+    deploy:
+      replicas: 2
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 128M
+    user: "1000:1000"
+    working_dir: /srv
+    networks:
+      - front
+  db:
+    image: busybox:1.37
+    environment:
+      - POSTGRES_PASSWORD=secret
+    volumes:
+      - dbdata:/var/lib/data
+    networks:
+      - front
+volumes:
+  data:
+  dbdata:
+networks:
+  front:

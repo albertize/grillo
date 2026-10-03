@@ -39,6 +39,8 @@ real KVM/QEMU and passes OCI scenario A plus an init-failure case.
 
 **T15 is complete.** `internal/api` serves the local Unix-socket API with `SO_PEERCRED` UID checks, bounded bodies, the `{code,message,resource,retryable,details}` error DTO, asynchronous operations on the daemon lifetime context, SSE events with `Last-Event-ID` and gap records, log streaming, and distinct daemon-shutdown/application-down endpoints. `cmd/grillod` holds the single-instance state lock, builds the QEMU backend, storage manager, and `internal/executor`, and serves status and exec endpoints.
 
+**T17 is complete.** `internal/frontend/compose` parses Compose YAML with source maps, interpolation (`$VAR`, `${VAR}`, defaults, required, alternatives, `$$`), `.env`/host environment precedence, `env_file`, ports, volumes, healthchecks, `depends_on`, restart policies, resources, and networks, and compiles to the IR with field-level support diagnostics and a golden fixture. `internal/frontend/detect` identifies Compose, native, Kubernetes, and Helm input, and the CLI now accepts Compose files.
+
 **T16 is complete.** `internal/cli` implements the native-runtime command line with a parser for flags before/after positionals, repeated `-f`, and the exec `--` terminator; offline `plan`; `up` (daemon autostart + async apply), `down`, `status`, `inspect`, `logs`, `events`, `exec` against a live container, and a read-only `doctor` that never requires root. `cmd/grillo` is wired to it. It also provides `ps`, `restart`, and a `shell` that streams `/bin/sh`, and a `ui` command that serves a secure loopback web console (`internal/ui`) with a bootstrap token exchanged for an HttpOnly cookie, Host/Origin checks, a strict CSP, and text-node rendering.
 
 Hosted CI has not yet been executed.
@@ -64,7 +66,7 @@ Hosted CI has not yet been executed.
 | T14 | Planner, reconciler, and updates | DONE | `internal/plan` + `internal/reconcile` + `internal/executor`; diff/recreate/route-only, retries, crash replay, idempotent down, bounded workers, `make test-executor` end-to-end on KVM |
 | T15 | Local API and daemon lifetime | DONE | `internal/api` + `cmd/grillod`; peer UID, async ops, status/exec endpoints, SSE cursors, disconnect/leak tests |
 | T16 | Native-runtime CLI | DONE | `internal/cli` + `cmd/grillo`; plan, up/down/status/inspect/ps/restart/logs/events/exec/shell/ui, terminal restore, read-only doctor |
-| T17 | Compose parser and compiler | TODO | T04; final integration T16 |
+| T17 | Compose parser and compiler | DONE | `internal/frontend/compose` + `detect`; interpolation/env precedence, support diagnostics, golden IR, CLI integration |
 | T18 | Builder and image/volume/network tooling | TODO | T09, T10, T11, T17 |
 | T19 | F2 gate: Compose application | TODO | T12–T18 |
 | T20 | Kubernetes MVP compiler | TODO | T04; runtime verification T14 |
@@ -947,6 +949,40 @@ historical evidence only.
   setup uses `ip`/`nft` binaries; the guest interface is configured by the agent,
   not the kernel.
 - **Next task:** T17 (Compose parser and compiler).
+
+## T17 Compose parser and compiler - 2026-10-03
+
+- **Task:** T17 - Compose parser and compiler
+- **Status:** DONE
+- **Dependencies verified:** T04 (IR) complete; integrated with T16 (CLI).
+- **Files and contracts changed:** `internal/frontend/compose` (YAML node
+  helpers, `interpolate.go`, `support.go`, `compile.go`), `internal/frontend/detect`
+  (format detection), and `internal/cli` (Compose-aware `plan`/`up` with
+  `--format` and `.env`/host environment precedence). Adds the allowed module
+  `go.yaml.in/yaml/v3 v3.0.5`.
+- **Decisions/ADRs:** None required. A Compose string `command`/`entrypoint` is
+  split with a shell-like lexer, never wrapped in `/bin/sh -c`; each service maps
+  to one workload with one container.
+- **Tests run:** `make check` PASS; `go test -race ./internal/frontend/...
+  ./internal/cli` PASS. Coverage: the full fixture compiles to the expected IR
+  (replicas, restart, depends_on, resources, healthcheck probe, ports, volumes,
+  networks); a canonical-JSON golden; unknown and unsupported fields produce
+  structured diagnostics; interpolation forms and required-variable failure;
+  empty document and absent-vs-empty command/environment; a diagnostic does not
+  echo a secret value; the project-relative bind source is resolved; format
+  detection for compose/native/kubernetes/helm and ambiguity; and the CLI
+  compiles Compose for `plan`/`up` and rejects unsupported fields. The optional
+  `docker compose config` comparison SKIPs because Docker is not installed.
+- **Tests NOT run and why:** `build` is `VALIDATE_ONLY` (the image builder is
+  T18); Compose secrets/configs/profiles/extends/devices/privileged/host-network
+  are rejected with diagnostics; Kubernetes and Helm inputs are detected but not
+  compiled (T20/T21). Hosted CI has not run.
+- **Integration evidence:** Repository-local; the frontend imports only
+  `model`/`source`/YAML, enforced by a `go list` import-boundary test.
+- **Known limitations:** Bind sources are kept project-relative for reproducible
+  goldens and must be resolved by the runtime; `build` is a diagnostic only;
+  `env_file` supports the `KEY=VALUE` subset.
+- **Next task:** T18 (builder and image/volume/network tooling).
 
 ## Updating this file
 

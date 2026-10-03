@@ -1,0 +1,5 @@
+services:
+  web:
+    image: busybox:${TAG:-1.37}
+    environment:
+      REQUIRED: ${REQUIRED:?set REQUIRED}
