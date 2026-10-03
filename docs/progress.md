@@ -31,6 +31,8 @@ real KVM/QEMU and passes OCI scenario A plus an init-failure case.
 
 **T11 is complete.** `internal/network` provides IPAM with persistent owner-bound leases and reconciliation, host loopback port reservations with privileged-port and collision rejection, application isolation policy, a rootless publishing proxy, and a supervised pasta helper that runs a child in a fresh user+network namespace. `make test-netns` verifies egress, distinct namespaces, mutual isolation, and management unreachability with real pasta.
 
+**T12 is complete.** `internal/network` adds an application DNS resolver and UDP/TCP server (all four Kubernetes service names resolve, NXDOMAIN for in-zone misses, REFUSED rather than acting as an open resolver), a Service registry with a dedicated VIP pool, a readiness-aware round-robin balancer and TCP service proxy, and an Ingress matcher/reverse proxy with segment-aware Prefix, Exact, sanitized forwarded headers, and bounded backend timeouts. `golang.org/x/net` (dnsmessage) is now a pinned dependency.
+
 Hosted CI has not yet been executed.
 
 ## Task status
@@ -49,7 +51,7 @@ Hosted CI has not yet been executed.
 | T09 | OCI registry and CAS | DONE | `internal/oci`; reference/manifest/CAS/unpack/registry/pull tests, 32 cases incl. adversarial tar + concurrent dedup |
 | T10 | Storage manager | DONE | `internal/storage` + guest shares; `make test-t10` (scenario G) PASS on real KVM |
 | T11 | Production rootless networking and IPAM | DONE | `internal/network`; `make test-netns` PASS (pasta egress, isolation, management denied) |
-| T12 | DNS, Service proxy, and Ingress | TODO | T11, T04 |
+| T12 | DNS, Service proxy, and Ingress | DONE | `internal/network` DNS/UDP/TCP, Service balancer/proxy, Ingress; four-name, balancing, readiness, timeout, path-segment tests |
 | T13 | Observability and probes | TODO | T05, T07, T12 |
 | T14 | Planner, reconciler, and updates | TODO | T08–T13 |
 | T15 | Local API and daemon lifetime | TODO | T14 |
@@ -715,6 +717,46 @@ historical evidence only.
   Blocked/deny egress policy beyond "no inbound forwarding" is not implemented.
   TLS and hostname management are out of scope.
 - **Next task:** T12 (DNS, Service proxy, Ingress) depends on T11/T04.
+
+## T12 DNS, Service proxy, and Ingress — 2026-10-03
+
+- **Task:** T12 — DNS, Service proxy, and Ingress
+- **Status:** DONE
+- **Dependencies verified:** T11 (rootless namespaces, IPAM) and T04 (IR)
+  complete.
+- **Files and contracts changed:** `internal/network` (`dns.go`, `service.go`,
+  `ingress.go`) and `go.mod`/`go.sum` (adds the allowed module
+  `golang.org/x/net v0.59.0` for `dns/dnsmessage`).
+- **Decisions/ADRs:** None required. The resolver is authoritative for the
+  application zone and returns REFUSED for external names rather than acting as
+  an open resolver; a TCP proxy cannot serve UDP, so UDP Services are rejected
+  with `ErrUnsupported`.
+- **Tests run:** `make check` PASS (fmt, vet, test, race, scripts, build, audit,
+  module tidy diff); `go test -race -count=2 ./internal/network` PASS. Coverage:
+  all four service names (`postgres`, `postgres.default`,
+  `postgres.default.svc`, `postgres.default.svc.cluster.local`) resolve an A
+  record over both UDP and TCP; in-zone misses return NXDOMAIN and external
+  names return REFUSED; SRV records resolve; service removal; VIP allocation in a
+  separate pool; round-robin balancing across three ready backends with an
+  unready backend receiving zero connections; UDP Service rejection; balancing
+  with no ready endpoints; Ingress Exact-vs-Prefix precedence, segment-aware
+  prefix (`/api` not matching `/apix`), host-port stripping, and no-match cases;
+  reverse-proxy forwarding; client-supplied `X-Forwarded-For` being overwritten;
+  a slow backend returning 502 within the configured response-header timeout;
+  and no-match/unavailable status codes.
+- **Tests NOT run and why:** The resolver and proxies are not yet wired into the
+  guest (the agent does not run the DNS server or join VIPs), and the Service
+  proxy target is not yet pointed at guest endpoints through a relay; those
+  connections are T13/T14. External forwarding is not implemented (REFUSED),
+  and IPv6/AAAA, headless Services beyond A records, and wildcard Ingress hosts
+  are out of scope.
+- **Integration evidence:** Real UDP and TCP DNS servers exercised with the
+  `dnsmessage` client; real TCP backends and a real reverse proxy with an
+  `httptest` origin.
+- **Known limitations:** UDP Services are explicitly unsupported by the TCP
+  proxy. VIPs are allocated but not yet attached to sandbox interfaces. Localhost
+  Ingress fallback and TLS are T14. No SRV `_proto` variants beyond TCP.
+- **Next task:** T13 (observability and probes) depends on T05/T07/T12.
 
 ## Updating this file
 
