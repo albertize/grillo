@@ -2,7 +2,7 @@
 GO ?= go
 GOVULNCHECK_VERSION := v1.8.0
 
-.PHONY: fmt vet test test-scripts race build check audit vulncheck guest test-kvm bench-t01
+.PHONY: fmt vet test test-scripts race build check audit vulncheck guest test-kvm bench-t01 net-helper
 
 # Check formatting without modifying source files.
 fmt:
@@ -49,3 +49,7 @@ test-kvm: guest
 # 30-cycle measured boot/stop run (T01 evidence). Writes no committed artifacts.
 bench-t01: guest
 	go run ./experiments/boot/run -cycles 30
+
+# Rootless networking-helper probe (T01). Requires a helper and host egress.
+net-helper:
+	sh experiments/boot/netns-helper.sh

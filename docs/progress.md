@@ -4,7 +4,7 @@
 
 **T00 is implemented and locally verified.** The repository contains a Go module, tested command scaffolding, build/check targets, and CI configuration.
 
-**T01's rootless boot spike is implemented.** A real Firecracker microVM boots as the user, completes a vsock handshake, executes a guest command, streams output, and stops cleanly across 30 measured cycles (boot median 260 ms, total median 391 ms). T01's networking-helper forwarding item is still unverified. There is still no workload runtime, OCI execution, or release.
+**T01 is complete.** A real Firecracker microVM boots as the user, completes a vsock handshake, executes a guest command, streams output, and stops cleanly across 30 measured cycles (boot median 260 ms, total median 391 ms). A rootless networking helper (pasta) was also verified to give a new user+network namespace an address, default route, DNS, and egress. There is still no workload runtime, OCI execution, or release.
 
 No application-networking, storage-sharing, or OCI experiments have been performed. Hosted CI has not yet been executed.
 
@@ -13,7 +13,7 @@ No application-networking, storage-sharing, or OCI experiments have been perform
 | Task | Title | Status | Evidence or next prerequisite |
 |---|---|---|---|
 | T00 | Repository scaffold and conventions | DONE | Local checks, clean-source builds, audit, and command smoke tests; evidence below |
-| T01 | Rootless VMM and minimal guest spike | IN_PROGRESS | Boot/exec/stop + 30 cycles pass on real KVM; networking-helper forwarding untested |
+| T01 | Rootless VMM and minimal guest spike | DONE | Real boot/exec/stop 30/30, rootless userns/TAP + pasta egress; two T01 reports |
 | T02 | OCI, filesystem, and application-network spike | TODO | T01 |
 | T03 | F0 gate and platform ADR | TODO | T02 and measured evidence |
 | T04 | IR, diagnostics, and capabilities | TODO | T00 |
@@ -156,7 +156,7 @@ Task contracts and full acceptance criteria live in [IMPLEMENTATION_PLAN.md](../
 ## T01 boot spike — 2026-10-03
 
 - **Task:** T01 — Rootless VMM and minimal guest spike
-- **Status:** IN_PROGRESS (boot spike complete; networking-helper forwarding untested)
+- **Status:** DONE (boot spike portion; helper covered by the completion entry below)
 - **Dependencies verified:** T00; bootstrap provisioned pinned Firecracker 1.17.0
   and Linux 6.1.188 sources; `make check` passes.
 - **Files and contracts changed:** `experiments/boot/` (`guestinit`, `guestcmd`,
@@ -184,6 +184,31 @@ Task contracts and full acceptance criteria live in [IMPLEMENTATION_PLAN.md](../
   1 vCPU/256 MiB; guest is a trusted image; helper networking unproven.
 - **Next task:** finish T01 helper-networking verification or proceed to T02
   (OCI, filesystem, application networking) with the backend still provisional.
+
+## T01 completion — rootless networking helper
+
+- **Task:** T01 — final acceptance item (helper without root)
+- **Status:** DONE (T01 complete)
+- **Dependencies verified:** T00; bootstrap and boot spike committed.
+- **Files and contracts changed:** `experiments/boot/netns-helper.sh`,
+  `Makefile` (`net-helper`), `experiments/boot/README.md`, and the updated
+  [T01 report](experiments/t01-boot-spike.md).
+- **Decisions/ADRs:** None new. Only `pasta` is exercised; `slirp4netns` is not
+  implemented or claimed. No backend selected.
+- **Tests run:** `sh experiments/boot/netns-helper.sh` PASS (pasta 0^20260728,
+  UID 1000, address + default route + DNS + HTTP 200 egress, no leftover
+  process); offline-egress case INCONCLUSIVE exit 2; unsupported-helper case
+  BLOCKED exit 1; `make check` PASS; `git diff --check` PASS.
+- **Tests NOT run and why:** `slirp4netns` absent; guest `virtio-net` not wired
+  to the helper (T02/T11); hosted CI not run.
+- **Integration evidence:** real rootless namespace connectivity on the host;
+  distribution restrictions (`max_user_namespaces=62055`, SELinux `Enforcing`,
+  no `unprivileged_userns_clone`, `/dev/net/tun` present) recorded in the report.
+- **Cleanup evidence:** no `pasta` process remained; host interface count unchanged.
+- **Known limitations:** helper validated in isolation, not from inside a VM;
+  port forwarding and multi-VM routing untested.
+- **Next task:** T02 — OCI execution through guest runc, two-VM application
+  networking, and live bind mounts, with the backend still provisional.
 
 ## Updating this file
 

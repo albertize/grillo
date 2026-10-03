@@ -14,6 +14,7 @@ Linux/amd64 only. Run as the normal host user; never with sudo.
 |---|---|
 | `preflight/` | Go probe that opens `/dev/kvm` and checks the KVM API version |
 | `namespaces.sh` | Private user/network-namespace + TAP create/up/delete probe |
+| `netns-helper.sh` | Rootless networking-helper probe (pasta): address, route, DNS, egress |
 | `guestinit/` | Experiment guest PID 1 (AF_VSOCK server, exec, stream, stop) |
 | `guestcmd/` | Deterministic payload used to prove guest execution |
 | `run/` | Host harness: Firecracker API over a Unix socket, vsock, exec, stop |
@@ -29,6 +30,7 @@ minutes the first time; the result is cached under `experiments/artifacts/t01/`.
 ```sh
 go run ./experiments/boot/preflight        # KVM API access only
 sh experiments/boot/namespaces.sh          # userns/TAP only
+make net-helper                            # rootless helper + egress (pasta)
 make guest                                 # build kernel + initramfs
 go run ./experiments/boot/run -cycles 1    # one boot/exec/stop cycle
 make test-kvm                              # kvm-tagged Go tests
@@ -60,6 +62,23 @@ restart path uses the keyboard-controller reset that Firecracker turns into
 process exit. The host keeps `SendCtrlAltDel` as a fallback and escalates to
 `SIGKILL` on the process group if the VM does not stop within the timeout.
 
+## Networking helper
+
+`netns-helper.sh` runs a command in a new user+network namespace through
+`pasta --config-net` and verifies a non-loopback address, a default route,
+loopback, and external HTTP (and therefore DNS). It refuses root, bounds the run
+with a timeout, cleans up its temporary script, and checks that no `pasta`
+process is left behind. It prints the distribution restrictions it observes
+(`max_user_namespaces`, SELinux mode, `/dev/net/tun`).
+
+Exit codes distinguish outcomes: `0` PASS, `1` FAIL/BLOCKED (helper missing,
+unsupported, or namespace not configured), `2` INCONCLUSIVE (namespace
+configured but no external egress, e.g. an offline host). Override the target
+with `GRILLO_EGRESS_URL`, `GRILLO_EGRESS_TIMEOUT`, and `GRILLO_HELPER_TIMEOUT`.
+
+This proves the helper alone. Wiring guest `virtio-net` through a helper and
+verifying DNS/egress/host publishing from inside the VM is T02/T11.
+
 ## Safety
 
 - Runs as the calling user; no sudo, no jailer, no host network configuration.
@@ -69,8 +88,8 @@ process exit. The host keeps `SendCtrlAltDel` as a fallback and escalates to
 
 ## Limits
 
-No OCI runtime, containers, DNS, storage sharing, or networking beyond the
-prerequisite TAP probe. The networking **helper** (e.g. `pasta`/`slirp4netns`) is
-detected but its forwarding is not functionally tested here; that is T02/T11.
-The protocol and payload binaries are experiment-only. Real evidence is in
+No OCI runtime, containers, DNS, storage sharing, or guest networking. The
+networking helper is verified as a prerequisite (`netns-helper.sh`), but the
+VM's `virtio-net` is not connected through it here; that is T02/T11. The protocol
+and payload binaries are experiment-only. Real evidence is in
 [the T01 report](../../docs/experiments/t01-boot-spike.md).
