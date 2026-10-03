@@ -10,6 +10,8 @@
 
 **T03 remains BLOCKED; QEMU is a proposed candidate, not a completed F0 gate.** Two-VM DNS/egress/publishing/management isolation, managed-volume persistence, and filesystem overhead remain unverified T02 requirements. See [ADR 0005](adr/0005-platform-qemu-virtiofsd.md). There is still no workload runtime or release.
 
+**T04 is complete.** The versioned application IR lives in `internal/model` with `internal/source` for source locations and structured diagnostics. It provides the section 5.1 types, quantity parsing, normalization, canonical hashing, an experimental native JSON manifest, a capability/support registry, validation (unknown version, references, duplicates, cycles, guest budget), and public redaction. The model imports no VMM, network, process, or frontend code.
+
 Hosted CI has not yet been executed.
 
 ## Task status
@@ -20,7 +22,7 @@ Hosted CI has not yet been executed.
 | T01 | Rootless VMM and minimal guest spike | DONE | Real boot/exec/stop 30/30, rootless userns/TAP + pasta egress; two T01 reports |
 | T02 | OCI, filesystem, and application-network spike | BLOCKED | Partial real evidence; two-VM topology, managed storage, and overhead missing; host-watch degraded |
 | T03 | F0 gate and platform ADR | BLOCKED | Proposed QEMU candidate; complete T02 evidence and review ADR 0005 before confirming F0 |
-| T04 | IR, diagnostics, and capabilities | TODO | T00 |
+| T04 | IR, diagnostics, and capabilities | DONE | `internal/model` + `internal/source`; goldens, version/reference/cycle/overflow, import-boundary tests |
 | T05 | State, secrets, and recovery primitives | TODO | T04 |
 | T06 | Guest protocol and testable client | TODO | T03, T04 |
 | T07 | Guest PID 1 and OCI runtime | TODO | T06 |
@@ -329,6 +331,41 @@ historical evidence only.
   reviewed and moved aside explicitly, never automatically deleted.
 - **Next task:** finish the missing T02 experiments and assess the host-watch
   limitation before closing T03; pure T04 work remains independent.
+
+## T04 IR and diagnostics — 2026-10-03
+
+- **Task:** T04 — IR, diagnostics, and capabilities
+- **Status:** DONE
+- **Dependencies verified:** T00 (module, checks); T02/T03 remain blocked and are
+  independent of this pure work.
+- **Files and contracts changed:** `internal/model` (types, quantities,
+  capabilities/support registry, normalization, canonical hashing, validation,
+  redaction, experimental native manifest) and `internal/source` (source kinds,
+  positions/spans, source map, severity/compatibility, structured diagnostics).
+  IR version is `grillo.dev/v1alpha1`.
+- **Decisions/ADRs:** None required. The model boundary is enforced by
+  `TestModelImportBoundary`: it imports only the standard library and
+  `internal/source`.
+- **Tests run:** `make check` PASS; `go test ./internal/...` PASS;
+  `go test -race ./internal/model ./internal/source` PASS. Coverage includes a
+  deterministic canonical JSON golden, hash determinism and volatile-field
+  insensitivity (source path, identity ID, route endpoint) plus sensitivity to
+  secret-version and image-digest changes, quantity overflow/invalid inputs,
+  order-insensitive normalization, unknown version, missing references,
+  duplicates, dependency cycles, negative quantities, guest-budget aggregation,
+  unsupported capabilities, env value/valueFrom conflict, duplicate ports, native
+  manifest decode/trailing-data rejection and round-trip, and public redaction.
+- **Tests NOT run and why:** No KVM/runtime tests; the IR is pure and has no
+  effectful path. Frontend compilers (T17/T20) and the state store (T05) are not
+  implemented yet, so no end-to-end compile test exists.
+- **Integration evidence:** None required for a pure package; the done-when
+  gate is deterministic goldens plus version/reference/cycle/overflow tests and
+  the import boundary, all present.
+- **Known limitations:** `Workload.DependsOn` is an experimental native-manifest
+  ordering hint, not a Kubernetes/Compose concept; capability data is described
+  conservatively until real runtime integration. Secret values never enter the
+  IR; redaction covers insensitive config entries and arbitrary text.
+- **Next task:** T05 — state, secrets, and recovery primitives (depends on T04).
 
 ## Updating this file
 

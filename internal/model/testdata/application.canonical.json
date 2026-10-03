@@ -1,0 +1,231 @@
+{
+  "apiVersion": "grillo.dev/v1alpha1",
+  "kind": "Application",
+  "metadata": {
+    "name": "store",
+    "namespace": "default"
+  },
+  "workloads": [
+    {
+      "id": "api",
+      "kind": "Deployment",
+      "labels": {
+        "app": "api"
+      },
+      "replicas": 2,
+      "dependsOn": [
+        "db"
+      ],
+      "template": {
+        "hostname": "api",
+        "containers": [
+          {
+            "name": "api",
+            "image": {
+              "reference": "example/api:1",
+              "digest": "sha256:2222"
+            },
+            "env": [
+              {
+                "name": "DB_HOST",
+                "value": "db"
+              }
+            ],
+            "ports": [
+              {
+                "name": "http",
+                "containerPort": 8080,
+                "protocol": "TCP"
+              }
+            ],
+            "resources": {
+              "requests": {
+                "cpu": 500,
+                "memory": 268435456
+              },
+              "limits": {}
+            },
+            "probes": {
+              "readiness": {
+                "kind": "http",
+                "http": {
+                  "path": "/healthz",
+                  "port": {
+                    "number": 8080
+                  },
+                  "scheme": "HTTP"
+                }
+              }
+            }
+          }
+        ],
+        "guestResources": {
+          "requests": {
+            "cpu": 1000,
+            "memory": 1073741824
+          },
+          "limits": {}
+        },
+        "securityProfile": {}
+      },
+      "restartPolicy": "Always"
+    },
+    {
+      "id": "db",
+      "kind": "StatefulSet",
+      "labels": {
+        "app": "db"
+      },
+      "replicas": 1,
+      "template": {
+        "hostname": "db",
+        "containers": [
+          {
+            "name": "postgres",
+            "image": {
+              "reference": "postgres:16",
+              "digest": "sha256:1111"
+            },
+            "env": [
+              {
+                "name": "LOG_LEVEL",
+                "valueFrom": {
+                  "configRef": {
+                    "config": "app-config",
+                    "key": "LOG_LEVEL"
+                  }
+                }
+              },
+              {
+                "name": "POSTGRES_PASSWORD",
+                "valueFrom": {
+                  "secretRef": {
+                    "secret": "db-secret",
+                    "key": "password"
+                  }
+                }
+              }
+            ],
+            "mounts": [
+              {
+                "volume": "data",
+                "mountPath": "/var/lib/postgresql/data"
+              }
+            ],
+            "ports": [
+              {
+                "name": "sql",
+                "containerPort": 5432,
+                "protocol": "TCP"
+              }
+            ],
+            "resources": {
+              "requests": {
+                "cpu": 250,
+                "memory": 268435456
+              },
+              "limits": {
+                "cpu": 1000,
+                "memory": 536870912
+              }
+            },
+            "probes": {}
+          }
+        ],
+        "guestResources": {
+          "requests": {
+            "cpu": 1000,
+            "memory": 1073741824
+          },
+          "limits": {}
+        },
+        "volumes": [
+          "data"
+        ],
+        "securityProfile": {}
+      },
+      "restartPolicy": "Always"
+    }
+  ],
+  "services": [
+    {
+      "name": "api",
+      "selector": {
+        "app": "api"
+      },
+      "ports": [
+        {
+          "name": "http",
+          "protocol": "TCP",
+          "port": 80,
+          "targetPort": {
+            "name": "http"
+          }
+        }
+      ]
+    },
+    {
+      "name": "db",
+      "selector": {
+        "app": "db"
+      },
+      "ports": [
+        {
+          "name": "sql",
+          "protocol": "TCP",
+          "port": 5432,
+          "targetPort": {
+            "number": 5432
+          }
+        }
+      ]
+    }
+  ],
+  "routes": [
+    {
+      "hostname": "api.local",
+      "path": "/",
+      "pathType": "Prefix",
+      "service": "api",
+      "port": {
+        "name": "http"
+      }
+    }
+  ],
+  "volumes": [
+    {
+      "name": "data",
+      "kind": "managed",
+      "capacity": 1073741824
+    },
+    {
+      "name": "host-src",
+      "kind": "bind",
+      "source": "/home/user/app/src",
+      "readOnly": true
+    }
+  ],
+  "configs": [
+    {
+      "name": "app-config",
+      "entries": [
+        {
+          "key": "LOG_LEVEL",
+          "text": "info"
+        }
+      ]
+    }
+  ],
+  "secrets": [
+    {
+      "name": "db-secret",
+      "id": "sec-1",
+      "version": "v1"
+    }
+  ],
+  "networks": [
+    {
+      "name": "default"
+    }
+  ]
+}
