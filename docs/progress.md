@@ -29,6 +29,8 @@ real KVM/QEMU and passes OCI scenario A plus an init-failure case.
 
 **T10 is complete.** `internal/storage` manages volumes with validated bind paths, managed/PVC/ephemeral lifecycles, leases with owner/operation records, access modes, explicit UID/GID mapping, crash-safe lease reconciliation, and deletion that never touches bind or external data. The guest agent mounts virtiofs/block shares before starting containers, and `make test-t10` passes acceptance scenario G on real KVM: live bind sharing both ways and enforced read-only.
 
+**T11 is complete.** `internal/network` provides IPAM with persistent owner-bound leases and reconciliation, host loopback port reservations with privileged-port and collision rejection, application isolation policy, a rootless publishing proxy, and a supervised pasta helper that runs a child in a fresh user+network namespace. `make test-netns` verifies egress, distinct namespaces, mutual isolation, and management unreachability with real pasta.
+
 Hosted CI has not yet been executed.
 
 ## Task status
@@ -46,7 +48,7 @@ Hosted CI has not yet been executed.
 | T08 | Backend lifecycle and process supervision | DONE | `internal/sandbox` + `internal/platform/linux` + `internal/backend/qemu`; `make test-t08` 100 cycles, no leaks |
 | T09 | OCI registry and CAS | DONE | `internal/oci`; reference/manifest/CAS/unpack/registry/pull tests, 32 cases incl. adversarial tar + concurrent dedup |
 | T10 | Storage manager | DONE | `internal/storage` + guest shares; `make test-t10` (scenario G) PASS on real KVM |
-| T11 | Production rootless networking and IPAM | TODO | T05, T08 |
+| T11 | Production rootless networking and IPAM | DONE | `internal/network`; `make test-netns` PASS (pasta egress, isolation, management denied) |
 | T12 | DNS, Service proxy, and Ingress | TODO | T11, T04 |
 | T13 | Observability and probes | TODO | T05, T07, T12 |
 | T14 | Planner, reconciler, and updates | TODO | T08–T13 |
@@ -676,6 +678,43 @@ historical evidence only.
   `inspect` projection into the API are later tasks. Block-device volumes are
   supported by the guest mount code but not yet exercised in the KVM test.
 - **Next task:** T11 (networking) depends on T05/T08; T12 (DNS) on T11/T04.
+
+## T11 production rootless networking and IPAM — 2026-10-03
+
+- **Task:** T11 — production rootless networking and IPAM
+- **Status:** DONE
+- **Dependencies verified:** T05 (state) and T08 (backend) complete; pasta,
+  user namespaces, and a non-loopback address available; SELinux Permissive.
+- **Files and contracts changed:** `internal/network` (IPAM leases, port
+  reservations, isolation policy, loopback publishing proxy, and the pasta
+  helper) and the `test-netns` Makefile target.
+- **Decisions/ADRs:** None required. Rootless egress uses pasta with inbound
+  forwarding disabled; publishing is a host loopback TCP proxy owned by T12's
+  routing; multiple logical networks per sandbox are rejected rather than
+  flattened.
+- **Tests run:** `make check` PASS; `go test -race -count=2 ./internal/network`
+  PASS; `make test-netns` PASS (real pasta, ~4 s). Coverage: address allocation
+  and reuse, `/30` exhaustion, lease persistence across reopen, reconciliation
+  of gone sandboxes; port reservation idempotency, collision (`ErrPortInUse`),
+  privileged-port rejection with a remap suggestion, non-loopback rejection,
+  detection of an already-bound host port, release, and reconciliation; isolation
+  policy; loopback proxying; and the namespace integration test, which starts
+  two concurrent pasta helpers and asserts distinct netns inodes, working guest
+  egress, denial of a host canary endpoint, and same-port bind isolation.
+- **Tests NOT run and why:** Guest DNS, Service VIPs/proxies, and Ingress are T12.
+  The publishing proxy forwards to a target address but is not yet wired to a
+  guest through a relay; the T03 F0 gate covered the full host→guest publish
+  path in the experiment harness. No multi-VM TAP-in-namespace test here.
+- **Integration evidence:** Real pasta helpers under UID 1000 with user
+  namespaces; kernel netns inodes differ from the host and from each other;
+  same loopback port binds in both; egress to `1.1.1.1:443` succeeds; a host
+  canary listener is unreachable from inside.
+- **Known limitations:** `--config-net` copies the host interface address into
+  the namespace, so the sandbox address is not yet unique per sandbox; the
+  F0-style per-application subnet/TAP topology is not productionized here.
+  Blocked/deny egress policy beyond "no inbound forwarding" is not implemented.
+  TLS and hostname management are out of scope.
+- **Next task:** T12 (DNS, Service proxy, Ingress) depends on T11/T04.
 
 ## Updating this file
 
