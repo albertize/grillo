@@ -100,13 +100,17 @@ test-t10: t07-guest
 test-executor: t07-guest oci-guest
 	go test -tags kvm -count=1 -v -timeout 180s -run TestKVM ./internal/executor/
 
+# T09 live registry: pull a digest-pinned image from a real registry.
+test-netreg:
+	go test -tags netreg -count=1 -v -timeout 300s -run TestLivePullPinnedImage ./internal/oci/
+
 # T11 networking: real rootless helper (pasta) with egress, application isolation,
 # and management unreachability. Missing pasta/userns/loopback is a SKIP.
 test-netns:
 	go test -tags netns -count=1 -v -timeout 180s -run TestPastaEgressAndIsolation ./internal/network/
 
 # Full T02/T03 real hardware evidence. No downloads or preexisting volume deletion.
-.PHONY: f0-guest test-f0 t07-guest test-t07 test-t08 test-t10 test-netns test-executor
+.PHONY: f0-guest test-f0 t07-guest test-t07 test-t08 test-t10 test-netns test-executor test-netreg
 f0-guest:
 	bash experiments/boot/qemu/build-kernel.sh
 	bash experiments/boot/qemu/build-f0-guest.sh

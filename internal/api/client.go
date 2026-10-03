@@ -243,6 +243,26 @@ func (c *Client) FollowLogs(ctx context.Context, since uint64, resource, contain
 	return resp.Body, nil
 }
 
+// Applications lists the applications the daemon knows.
+func (c *Client) Applications(ctx context.Context) ([]string, error) {
+	var out struct {
+		Applications []string `json:"applications"`
+	}
+	if err := c.do(ctx, http.MethodGet, "/v1/applications", nil, &out); err != nil {
+		return nil, err
+	}
+	return out.Applications, nil
+}
+
+// Restart restarts every running container of an application.
+func (c *Client) Restart(ctx context.Context, application string) (string, error) {
+	var out struct {
+		OperationID string `json:"operationId"`
+	}
+	err := c.do(ctx, http.MethodPost, "/v1/applications/"+url.PathEscape(application)+"/restart", nil, &out)
+	return out.OperationID, err
+}
+
 // Status returns an application's container states.
 func (c *Client) Status(ctx context.Context, application string) ([]ContainerStatus, error) {
 	var out struct {

@@ -8,7 +8,9 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
+	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -222,5 +224,101 @@ func storageRepoRoot(t *testing.T) string {
 			t.Fatal("go.mod not found")
 		}
 		dir = parent
+	}
+}
+
+// TestKVMBlockVolumePersistence attaches a raw ext4 block device, writes a file
+// from one sandbox, and reads it from a second sandbox after the first is gone.
+//
+// Missing /dev/kvm, qemu, mke2fs, or the built images is a documented SKIP.
+func TestKVMBlockVolumePersistence(t *testing.T) {
+	if _, err := os.Stat("/dev/kvm"); err != nil {
+		t.Skip("SKIP: /dev/kvm is not available")
+	}
+	root := storageRepoRoot(t)
+	kernel := filepath.Join(root, "experiments/artifacts/qemu/bzImage")
+	initramfs := filepath.Join(root, "experiments/artifacts/t07/initramfs-agent.cpio.gz")
+	keyPath := filepath.Join(root, "experiments/artifacts/t07/key")
+	rootfs := filepath.Join(root, "experiments/artifacts/t02/rootfs")
+	for _, path := range []string{kernel, initramfs, keyPath, rootfs} {
+		if _, err := os.Stat(path); err != nil {
+			t.Skipf("SKIP: missing %s (run 'make t07-guest' and 'make oci-guest')", path)
+		}
+	}
+	if _, err := exec.LookPath("mke2fs"); err != nil {
+		t.Skip("SKIP: mke2fs is not installed")
+	}
+	keyData, _ := os.ReadFile(keyPath)
+	key, err := base64.StdEncoding.DecodeString(strings.TrimSpace(string(keyData)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	work := t.TempDir()
+	disk := filepath.Join(work, "volume.img")
+	if err := exec.Command("truncate", "-s", "32M", disk).Run(); err != nil {
+		t.Fatal(err)
+	}
+	if out, err := exec.Command("mke2fs", "-F", "-q", "-t", "ext4", disk).CombinedOutput(); err != nil {
+		t.Fatalf("mke2fs: %v: %s", err, out)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+	defer cancel()
+
+	writeClient, stopWrite := startBlockSandbox(t, ctx, 95, disk, key, kernel, initramfs, rootfs, work)
+	execGuest(t, ctx, writeClient, "app", "/bin/sh", "-c", "echo persisted > /data/token && sync")
+	if out := execGuest(t, ctx, writeClient, "app", "/bin/cat", "/data/token"); !strings.Contains(out, "persisted") {
+		t.Fatalf("write did not land in the running sandbox: %q", out)
+	}
+	stopWrite()
+
+	readClient, stopRead := startBlockSandbox(t, ctx, 96, disk, key, kernel, initramfs, rootfs, work)
+	defer stopRead()
+	if out := execGuest(t, ctx, readClient, "app", "/bin/cat", "/data/token"); !strings.Contains(out, "persisted") {
+		t.Fatalf("block volume did not persist: %q", out)
+	}
+}
+
+func startBlockSandbox(t *testing.T, ctx context.Context, cid uint32, disk string, key []byte, kernel, initramfs, rootfs, work string) (*guestproto.Client, func()) {
+	t.Helper()
+	backend, err := qemu.Open(qemu.Config{
+		Kernel: kernel, Initramfs: initramfs,
+		WorkDir: filepath.Join(work, fmt.Sprintf("backend-%d", cid)), CIDBase: cid, BootTimeout: 30 * time.Second,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	spec := sandbox.Spec{
+		ID: fmt.Sprintf("block-%d", cid), Kernel: kernel, Initramfs: initramfs,
+		KernelArgs: "console=ttyS0 reboot=k panic=1 rdinit=/init",
+		VsockPort:  1024, GuestKey: key, VsockCID: cid,
+		Disks:  []sandbox.Disk{{Path: disk, Format: "raw"}},
+		Shares: []sandbox.Share{{Tag: "rootfs", HostPath: rootfs}},
+	}
+	handle, err := backend.Create(ctx, spec, "op")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := backend.Start(ctx, handle); err != nil {
+		t.Fatal(err)
+	}
+	client := connectGuest(t, ctx, cid, key)
+	guestSpec := guestproto.SandboxSpec{
+		ID: spec.ID,
+		Shares: []guestproto.ShareSpec{
+			{Tag: "rootfs", Target: "/rootfs-app"},
+			{Source: "/dev/vda", Target: "/volumes/disk", FSType: "ext4"},
+		},
+		Containers: []guestproto.ContainerSpec{{
+			Name: "app", Rootfs: "/rootfs-app", Args: []string{"/bin/sh", "-c", "sleep 300"},
+			Mounts: []guestproto.MountSpec{{Source: "/volumes/disk", Target: "/data"}},
+		}},
+	}
+	if _, err := client.Start(ctx, guestproto.StartRequest{Sandbox: &guestSpec}); err != nil {
+		t.Fatalf("start containers: %v", err)
+	}
+	return client, func() {
+		_, _ = client.Stop(ctx, guestproto.StopRequest{})
+		_ = client.Close()
+		_ = backend.Delete(ctx, handle)
 	}
 }

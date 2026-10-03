@@ -70,6 +70,8 @@ type Core interface {
 	Status(ctx context.Context, application string) ([]ContainerStatus, error)
 	Exec(ctx context.Context, application, container string, args []string, maxOutput int64) (int, string, string, error)
 	ExecStream(ctx context.Context, application, container string, args []string, stdout, stderr io.Writer) (int, error)
+	Applications(ctx context.Context) ([]string, error)
+	Restart(ctx context.Context, application string) error
 }
 
 // Options configures the API server.
@@ -106,7 +108,9 @@ func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /v1/version", s.handleVersion)
 	mux.HandleFunc("GET /v1/health", s.handleHealth)
+	mux.HandleFunc("GET /v1/applications", s.handleApplications)
 	mux.HandleFunc("GET /v1/applications/{id}", s.handleStatus)
+	mux.HandleFunc("POST /v1/applications/{id}/restart", s.handleRestart)
 	mux.HandleFunc("POST /v1/applications", s.handleApply)
 	mux.HandleFunc("POST /v1/applications/{id}/down", s.handleDown)
 	mux.HandleFunc("POST /v1/exec", s.handleExec)
@@ -150,6 +154,31 @@ func (s *Server) handleApply(w http.ResponseWriter, r *http.Request) {
 	operation := s.ops.Start("apply", app.Identity.Name, func(ctx context.Context) error {
 		_, err := s.opts.Core.Apply(ctx, app)
 		return err
+	})
+	writeJSON(w, http.StatusAccepted, map[string]string{"operationId": operation.ID})
+}
+
+func (s *Server) handleApplications(w http.ResponseWriter, r *http.Request) {
+	if s.opts.Core == nil {
+		writeError(w, http.StatusServiceUnavailable, "unavailable", "no core configured")
+		return
+	}
+	applications, err := s.opts.Core.Applications(r.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "list_failed", err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"applications": applications})
+}
+
+func (s *Server) handleRestart(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	if s.opts.Core == nil {
+		writeError(w, http.StatusServiceUnavailable, "unavailable", "no core configured")
+		return
+	}
+	operation := s.ops.Start("restart", id, func(ctx context.Context) error {
+		return s.opts.Core.Restart(ctx, id)
 	})
 	writeJSON(w, http.StatusAccepted, map[string]string{"operationId": operation.ID})
 }

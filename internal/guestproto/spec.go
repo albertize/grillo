@@ -98,16 +98,18 @@ func (s SandboxSpec) Validate() error {
 	seen := make(map[string]bool, len(s.Containers))
 	seenShares := make(map[string]bool, len(s.Shares))
 	for _, share := range s.Shares {
-		if share.Tag == "" || share.Target == "" {
-			return errors.New("guestproto: share needs a tag and target")
+		if share.Target == "" || (share.Tag == "" && share.Source == "") {
+			return errors.New("guestproto: share needs a target and a tag or source")
 		}
 		if !strings.HasPrefix(share.Target, "/") {
 			return fmt.Errorf("guestproto: share target %q must be absolute", share.Target)
 		}
-		if seenShares[share.Tag] {
-			return fmt.Errorf("guestproto: duplicate share tag %q", share.Tag)
+		if share.Tag != "" {
+			if seenShares[share.Tag] {
+				return fmt.Errorf("guestproto: duplicate share tag %q", share.Tag)
+			}
+			seenShares[share.Tag] = true
 		}
-		seenShares[share.Tag] = true
 	}
 	nameless := 0
 	for i, c := range s.Containers {

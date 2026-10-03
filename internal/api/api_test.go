@@ -57,6 +57,9 @@ func (f *fakeCore) Exec(_ context.Context, _, _ string, args []string, _ int64) 
 	return 0, "ran " + strings.Join(args, " "), "", f.err
 }
 
+func (f *fakeCore) Applications(context.Context) ([]string, error) { return []string{"backend"}, nil }
+func (f *fakeCore) Restart(context.Context, string) error          { return f.err }
+
 func (f *fakeCore) ExecStream(_ context.Context, _, _ string, args []string, stdout, _ io.Writer) (int, error) {
 	_, _ = io.WriteString(stdout, "stream "+strings.Join(args, " "))
 	return 0, f.err

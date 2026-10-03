@@ -41,6 +41,10 @@ func (f *fakeClient) Down(_ context.Context, _ string, _ bool) (string, error) {
 func (f *fakeClient) Operation(context.Context, string) (api.Operation, error) {
 	return f.operation, nil
 }
+func (f *fakeClient) Applications(context.Context) ([]string, error) {
+	return []string{"backend"}, nil
+}
+func (f *fakeClient) Restart(context.Context, string) (string, error) { return "op-r", nil }
 func (f *fakeClient) Status(context.Context, string) ([]api.ContainerStatus, error) {
 	return []api.ContainerStatus{{Container: "app", State: "running"}}, nil
 }
@@ -224,5 +228,19 @@ func TestDoctorChecksAreWellFormed(t *testing.T) {
 		default:
 			t.Fatalf("check %q has invalid status %q", check.Name, check.Status)
 		}
+	}
+}
+
+func TestPsAndRestartCommands(t *testing.T) {
+	client := &fakeClient{operation: api.Operation{State: "succeeded", Kind: "restart"}}
+	app, stdout, _ := newTestApp(t, client, &fakeTerminal{})
+	if code := app.Run(context.Background(), []string{"ps"}); code != 0 {
+		t.Fatalf("ps exit = %d", code)
+	}
+	if !strings.Contains(stdout.String(), "backend") {
+		t.Fatalf("ps output = %q", stdout.String())
+	}
+	if code := app.Run(context.Background(), []string{"restart", "backend"}); code != 0 {
+		t.Fatalf("restart exit = %d", code)
 	}
 }

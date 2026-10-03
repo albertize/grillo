@@ -32,6 +32,8 @@ type Client interface {
 	Operation(ctx context.Context, id string) (api.Operation, error)
 	Status(ctx context.Context, application string) ([]api.ContainerStatus, error)
 	ExecStream(ctx context.Context, application, container string, args []string, stdout, stderr io.Writer) (int, error)
+	Applications(ctx context.Context) ([]string, error)
+	Restart(ctx context.Context, application string) (string, error)
 	Events(ctx context.Context, since uint64) (io.ReadCloser, error)
 	ListLogs(ctx context.Context, since uint64, resource, container string) ([]observe.LogRecord, error)
 	FollowLogs(ctx context.Context, since uint64, resource, container string) (io.ReadCloser, error)
@@ -126,6 +128,10 @@ func (a *App) Run(ctx context.Context, args []string) int {
 		return a.cmdDown(ctx, args[1:])
 	case "status":
 		return a.cmdStatus(ctx, args[1:])
+	case "ps":
+		return a.cmdPs(ctx, args[1:])
+	case "restart":
+		return a.cmdRestart(ctx, args[1:])
 	case "inspect":
 		return a.cmdInspect(ctx, args[1:])
 	case "logs":
@@ -401,10 +407,6 @@ func (a *App) cmdExec(ctx context.Context, args []string, shell bool) int {
 		fmt.Fprintf(a.Stderr, "usage: grillo exec <pod> [container] -- <command>\n")
 		return 2
 	}
-	if shell {
-		fmt.Fprintln(a.Stderr, "grillo: interactive shell sessions are not supported yet; use exec -- <command>")
-		return 1
-	}
 	application := strings.TrimPrefix(positionals[0], "pod/")
 	container := ""
 	if len(positionals) > 1 {
@@ -417,6 +419,10 @@ func (a *App) cmdExec(ctx context.Context, args []string, shell bool) int {
 	if code := a.ensureDaemon(ctx); code != 0 {
 		return code
 	}
+	command := afterDD
+	if shell {
+		command = []string{"/bin/sh"}
+	}
 	// Put the local terminal in raw mode and always restore it, even if the
 	// session fails, so an interrupted CLI never leaves a broken terminal.
 	if a.Terminal.IsTerminal() {
@@ -426,11 +432,72 @@ func (a *App) cmdExec(ctx context.Context, args []string, shell bool) int {
 		}
 		defer restore()
 	}
-	exitCode, err := a.ClientFactory(a.SocketPath).ExecStream(ctx, application, container, afterDD, a.Stdout, a.Stderr)
+	exitCode, err := a.ClientFactory(a.SocketPath).ExecStream(ctx, application, container, command, a.Stdout, a.Stderr)
 	if err != nil {
 		return fail(a.Stderr, err)
 	}
 	return exitCode
+}
+
+func (a *App) cmdPs(ctx context.Context, args []string) int {
+	fs := flag.NewFlagSet("ps", flag.ContinueOnError)
+	fs.SetOutput(a.Stderr)
+	output := fs.String("output", "text", "text or json")
+	flags, _, _, err := SplitForFlagSet(args, fs)
+	if err != nil {
+		return usageError(a.Stderr, "ps", err)
+	}
+	if err := fs.Parse(flags); err != nil {
+		return 2
+	}
+	if code := a.ensureDaemon(ctx); code != 0 {
+		return code
+	}
+	applications, err := a.ClientFactory(a.SocketPath).Applications(ctx)
+	if err != nil {
+		return fail(a.Stderr, err)
+	}
+	if *output == "json" {
+		encoder := json.NewEncoder(a.Stdout)
+		encoder.SetIndent("", "  ")
+		if err := encoder.Encode(map[string]any{"applications": applications}); err != nil {
+			return fail(a.Stderr, err)
+		}
+		return 0
+	}
+	if len(applications) == 0 {
+		fmt.Fprintln(a.Stdout, "no applications")
+		return 0
+	}
+	for _, application := range applications {
+		fmt.Fprintln(a.Stdout, application)
+	}
+	return 0
+}
+
+func (a *App) cmdRestart(ctx context.Context, args []string) int {
+	fs := flag.NewFlagSet("restart", flag.ContinueOnError)
+	fs.SetOutput(a.Stderr)
+	flags, positionals, _, err := SplitForFlagSet(args, fs)
+	if err != nil {
+		return usageError(a.Stderr, "restart", err)
+	}
+	if err := fs.Parse(flags); err != nil {
+		return 2
+	}
+	if len(positionals) != 1 {
+		fmt.Fprintln(a.Stderr, "usage: grillo restart <application>")
+		return 2
+	}
+	if code := a.ensureDaemon(ctx); code != 0 {
+		return code
+	}
+	client := a.ClientFactory(a.SocketPath)
+	id, err := client.Restart(ctx, strings.TrimPrefix(positionals[0], "application/"))
+	if err != nil {
+		return fail(a.Stderr, err)
+	}
+	return a.waitOperation(ctx, client, id)
 }
 
 func (a *App) ensureDaemon(ctx context.Context) int {

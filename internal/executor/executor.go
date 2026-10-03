@@ -278,6 +278,30 @@ func (e *Executor) Status(ctx context.Context, application string) ([]ContainerS
 	return states, nil
 }
 
+// Restart restarts every running container of an application.
+func (e *Executor) Restart(ctx context.Context, application string) error {
+	e.mu.Lock()
+	var clients []*guestproto.Client
+	for _, rt := range e.runtimes {
+		if rt.app == application && rt.guest != nil {
+			clients = append(clients, rt.guest)
+		}
+	}
+	e.mu.Unlock()
+	for _, client := range clients {
+		status, err := client.Status(ctx)
+		if err != nil {
+			continue
+		}
+		for _, container := range status.Containers {
+			if container.State == "running" {
+				_, _ = client.Restart(ctx, container.Name)
+			}
+		}
+	}
+	return nil
+}
+
 // Exec runs a command in a container of an application.
 func (e *Executor) Exec(ctx context.Context, application, container string, args []string, stdout, stderr io.Writer) (int, error) {
 	e.mu.Lock()

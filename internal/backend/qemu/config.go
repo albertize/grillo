@@ -109,7 +109,7 @@ func qemuArgs(spec sandbox.Spec, cfg Config, dir, serialLog string, shareSockets
 			"-device", "vhost-user-fs-device,chardev="+id+",tag="+share.Tag,
 		)
 	}
-	for _, disk := range spec.Disks {
+	for i, disk := range spec.Disks {
 		format := disk.Format
 		if format == "" {
 			format = "raw"
@@ -118,7 +118,11 @@ func qemuArgs(spec sandbox.Spec, cfg Config, dir, serialLog string, shareSockets
 		if disk.ReadOnly {
 			readonly = "on"
 		}
-		args = append(args, "-drive", fmt.Sprintf("file=%s,format=%s,if=virtio,readonly=%s", disk.Path, format, readonly))
+		// microvm has no PCI, so virtio-blk-device (MMIO) is used instead of the
+		// `if=virtio` PCI shortcut.
+		id := fmt.Sprintf("disk%d", i)
+		args = append(args, "-drive", fmt.Sprintf("file=%s,format=%s,if=none,id=%s,readonly=%s", disk.Path, format, id, readonly))
+		args = append(args, "-device", "virtio-blk-device,drive="+id)
 	}
 	if spec.Network != nil && spec.Network.Netdev != "" && spec.Network.Device != "" {
 		args = append(args, "-netdev", spec.Network.Netdev, "-device", spec.Network.Device)

@@ -17,7 +17,9 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"sort"
 	"strings"
+	"sync"
 	"syscall"
 
 	"grillo.local/grillo/internal/api"
@@ -123,7 +125,7 @@ func run() error {
 	defer cancel()
 
 	server := api.NewServer(api.Options{
-		Core:     &core{reconciler: reconciler, exec: exec},
+		Core:     &core{reconciler: reconciler, exec: exec, apps: map[string]bool{}},
 		Events:   events,
 		Logs:     logs,
 		Version:  version,
@@ -153,11 +155,38 @@ func readKey(path string) ([]byte, error) {
 type core struct {
 	reconciler *reconcile.Reconciler
 	exec       *executor.Executor
+
+	mu   sync.Mutex
+	apps map[string]bool
 }
 
 func (c *core) Apply(ctx context.Context, app model.Application) (reconcile.Result, error) {
 	c.exec.SetDesired(app)
-	return c.reconciler.Apply(ctx, app)
+	result, err := c.reconciler.Apply(ctx, app)
+	if err == nil {
+		c.mu.Lock()
+		if c.apps == nil {
+			c.apps = map[string]bool{}
+		}
+		c.apps[app.Identity.Name] = true
+		c.mu.Unlock()
+	}
+	return result, err
+}
+
+func (c *core) Applications(context.Context) ([]string, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	names := make([]string, 0, len(c.apps))
+	for name := range c.apps {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names, nil
+}
+
+func (c *core) Restart(ctx context.Context, application string) error {
+	return c.exec.Restart(ctx, application)
 }
 
 func (c *core) Down(ctx context.Context, application string, removeVolumes bool) (reconcile.Result, error) {
