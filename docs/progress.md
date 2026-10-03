@@ -37,6 +37,8 @@ real KVM/QEMU and passes OCI scenario A plus an init-failure case.
 
 **T14 is complete.** `internal/plan` diffs a desired IR against observed state into an ordered, typed action list (create/recreate/scale/drain/stop/delete, volume preparation, endpoint updates) with per-template hashing so identical and route-only applies reboot nothing and Jobs do not restart forever. `internal/reconcile` applies plans with deterministic operation IDs, bounded per-application workers, classified permanent/transient retries, partial-progress persistence, crash-replay, idempotent `down`, and a `NativeExecutor` dispatcher over sandbox/volume controllers.
 
+**T15 is complete.** `internal/api` serves the local Unix-socket API with `SO_PEERCRED` UID checks, bounded bodies, the `{code,message,resource,retryable,details}` error DTO, asynchronous operations on the daemon lifetime context, SSE events with `Last-Event-ID` and gap records, log streaming, and distinct daemon-shutdown/application-down endpoints. `cmd/grillod` holds the single-instance state lock and serves it.
+
 Hosted CI has not yet been executed.
 
 ## Task status
@@ -58,7 +60,7 @@ Hosted CI has not yet been executed.
 | T12 | DNS, Service proxy, and Ingress | DONE | `internal/network` DNS/UDP/TCP, Service balancer/proxy, Ingress; four-name, balancing, readiness, timeout, path-segment tests |
 | T13 | Observability and probes | DONE | `internal/observe`; events/spool/metrics/probes; startup gating, thresholds, fake-clock, timeout-kill, slow-consumer tests |
 | T14 | Planner, reconciler, and updates | DONE | `internal/plan` + `internal/reconcile`; diff/recreate/route-only, retries, crash replay, idempotent down, bounded workers, race checks |
-| T15 | Local API and daemon lifetime | TODO | T14 |
+| T15 | Local API and daemon lifetime | DONE | `internal/api` + `cmd/grillod`; peer UID, async ops, SSE cursors, disconnect/leak tests |
 | T16 | Native-runtime CLI | TODO | T15 |
 | T17 | Compose parser and compiler | TODO | T04; final integration T16 |
 | T18 | Builder and image/volume/network tooling | TODO | T09, T10, T11, T17 |
@@ -834,6 +836,36 @@ historical evidence only.
   rollback on failed replacement (desired state stays new and the failure is
   reported); endpoint/route wiring is a no-op pending T12 attachment.
 - **Next task:** T15 (local API and daemon lifetime) depends on T14.
+
+## T15 local API and daemon lifetime — 2026-10-03
+
+- **Task:** T15 — local API and daemon lifetime
+- **Status:** DONE
+- **Dependencies verified:** T14 (planner/reconciler) complete.
+- **Files and contracts changed:** `internal/api` (`api.go` server/DTOs/ops,
+  `listener_linux.go` peer-UID Unix listener, `client.go` + daemon bootstrap),
+  `cmd/grillod` (foreground daemon), and `api/local-api.md`.
+- **Decisions/ADRs:** None required. Operations derive from the daemon lifetime
+  context so client disconnects do not cancel accepted work; the daemon `shutdown`
+  endpoint is intentionally separate from application `down`.
+- **Tests run:** `make check` PASS; `go test -race -count=2 ./internal/api` PASS.
+  Coverage: version/health; malformed JSON returns 400 and the server keeps
+  serving; oversized bodies rejected; an apply accepted before the client
+  disconnects still succeeds; explicit cancel transitions to `canceled`; a peer
+  from an unexpected UID is rejected; SSE delivers a sequenced event;
+  concurrent clients; and closing twenty event streams does not grow goroutines
+  (session-leak check).
+- **Tests NOT run and why:** `EnsureDaemon` autostart is exercised only for the
+  already-healthy path; spawning the real `grillod` binary from a test is not
+  done. The daemon wires a `NativeExecutor` with no controllers yet, so an apply
+  that needs sandbox effects fails; the concrete executor controllers remain
+  follow-up work. Hosted CI has not run.
+- **Integration evidence:** Repository-local, with real Unix-socket HTTP over a
+  peer-credential-checked listener.
+- **Known limitations:** No request-level rate limiting beyond body bounds; no
+  application list endpoint yet; operations are in-memory and not recovered
+  across a daemon restart (the reconciler replays from desired state instead).
+- **Next task:** T16 (native-runtime CLI) depends on T15.
 
 ## Updating this file
 
