@@ -50,6 +50,9 @@ type Request struct {
 	Pull bool `json:"pull,omitempty"`
 	// Network selects the build network mode, e.g. "none" for hermetic builds.
 	Network string `json:"network,omitempty"`
+	// Builder selects the backend: "" (native, the default) or "podman" (an
+	// explicit opt-in accelerator).
+	Builder string `json:"builder,omitempty"`
 }
 
 // Validate reports whether the request is well formed.

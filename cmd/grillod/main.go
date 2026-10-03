@@ -104,11 +104,25 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	builder := &build.PodmanBuilder{
+	podmanBuilder := &build.PodmanBuilder{
 		CAS:      cas,
 		Store:    imagesStore,
 		TempDir:  filepath.Join(layout.Cache, "build"),
 		Platform: oci.Platform{OS: "linux", Architecture: "amd64"},
+	}
+	platform := oci.Platform{OS: "linux", Architecture: "amd64"}
+	puller := &oci.Puller{CAS: cas, Registry: oci.NewRegistryClient(), Platform: platform}
+	guestBoot := &build.GuestBoot{
+		Backend:      backend,
+		Kernel:       *kernel,
+		Initramfs:    *initramfs,
+		KernelArgs:   "console=ttyS0 reboot=k panic=1 rdinit=/init",
+		GuestKey:     guestKey,
+		VsockCIDBase: 200,
+		VsockPort:    uint32(*vsockPort),
+		MemoryMiB:    512,
+		ShareTag:     "build",
+		ShareTarget:  "/build",
 	}
 	images := &executor.OCIResolver{
 		Puller:   &oci.Puller{CAS: cas, Registry: oci.NewRegistryClient(), Platform: oci.Platform{OS: "linux", Architecture: "amd64"}},
@@ -137,12 +151,16 @@ func run() error {
 	defer cancel()
 
 	runtimeCore := &core{
-		reconciler: reconciler,
-		exec:       exec,
-		images:     imagesStore,
-		builder:    builder,
-		apps:       map[string]bool{},
-		desired:    map[string]model.Application{},
+		reconciler:   reconciler,
+		exec:         exec,
+		images:       imagesStore,
+		cas:          cas,
+		puller:       puller,
+		boot:         guestBoot,
+		podman:       podmanBuilder,
+		buildScratch: filepath.Join(layout.Cache, "native-build"),
+		apps:         map[string]bool{},
+		desired:      map[string]model.Application{},
 	}
 	server := api.NewServer(api.Options{
 		Core:     runtimeCore,
@@ -174,10 +192,14 @@ func readKey(path string) ([]byte, error) {
 
 // core adapts the reconciler and executor to the API contract.
 type core struct {
-	reconciler *reconcile.Reconciler
-	exec       *executor.Executor
-	images     *image.Store
-	builder    *build.PodmanBuilder
+	reconciler   *reconcile.Reconciler
+	exec         *executor.Executor
+	images       *image.Store
+	cas          *oci.CAS
+	puller       *oci.Puller
+	boot         *build.GuestBoot
+	podman       *build.PodmanBuilder
+	buildScratch string
 
 	mu      sync.Mutex
 	apps    map[string]bool
@@ -293,10 +315,32 @@ func (c *core) PruneImages(ctx context.Context, keep []string) (image.PruneResul
 }
 
 func (c *core) Build(ctx context.Context, request build.Request, progress func(string)) (build.Result, error) {
-	if c.builder == nil {
-		return build.Result{}, errors.New("no builder configured")
+	switch request.Builder {
+	case "podman":
+		if c.podman == nil {
+			return build.Result{}, errors.New("build: the podman backend is not configured")
+		}
+		return c.podman.Build(ctx, request, build.Progress(progress))
+	case "", "native":
+		if c.images == nil || c.cas == nil || c.puller == nil {
+			return build.Result{}, errors.New("build: the native builder is not configured")
+		}
+		runner := &build.SandboxRunner{Share: "build"}
+		if c.boot != nil {
+			runner.Boot = c.boot.Boot
+		}
+		native := &build.NativeBuilder{
+			Store:      c.images,
+			CAS:        c.cas,
+			Images:     c.puller,
+			Runner:     runner,
+			ScratchDir: c.buildScratch,
+			Platform:   oci.Platform{OS: "linux", Architecture: "amd64"},
+		}
+		return native.Build(ctx, request, build.Progress(progress))
+	default:
+		return build.Result{}, fmt.Errorf("build: unknown builder %q", request.Builder)
 	}
-	return c.builder.Build(ctx, request, build.Progress(progress))
 }
 
 type boundedBuffer struct {

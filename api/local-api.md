@@ -34,15 +34,20 @@ stderr.
 | `GET /v1/images/inspect?ref=` | one image record by reference |
 | `POST /v1/images/prune` | garbage-collect unused images; body `{"keep":[...]}`; `202` + `operationId` |
 | `POST /v1/images/pin` | protect or release an image (or a bare `sha256:` digest) from pruning |
-| `POST /v1/build` | build with rootless Podman; body is a build request; `202` + `operationId` |
+| `POST /v1/build` | build an image; body is a build request; `202` + `operationId` |
 | `POST /v1/shutdown` | stop the daemon (not applications) |
 
 Image pruning never removes an image that is pinned or referenced by a known
 application, and only then collects unreferenced CAS blobs, so active data is
-preserved. `POST /v1/build` imports the result through a verified OCI layout,
-records it as a `build`-source image, and streams builder output into the event
-stream (`kind=build`, `reason=progress`). A missing Podman is reported as an
-actionable error, not a fallback.
+preserved.
+
+`POST /v1/build` uses Grillo's **native builder by default**: it parses a
+supported Dockerfile subset, executes `RUN` steps inside a sandboxed guest that
+shares the build root, and publishes a verified OCI image. `builder: "podman"`
+selects rootless Podman as an explicit opt-in accelerator; it is never selected
+automatically. Builder output streams into the event stream (`kind=build`,
+`reason=progress`). A missing guest artifact or a missing Podman binary is
+reported as an actionable error, not a fallback.
 
 ## Asynchronous operations
 

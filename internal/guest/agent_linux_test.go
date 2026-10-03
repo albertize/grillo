@@ -7,6 +7,7 @@ package guest
 import (
 	"bytes"
 	"context"
+	"io"
 	"net"
 	"reflect"
 	"strings"
@@ -21,6 +22,7 @@ import (
 // the agent's logic; the real runc path is covered by the KVM integration test,
 // not here.
 type fakeRuntime struct {
+	streamOut  []byte
 	mu         sync.Mutex
 	calls      []string
 	runExit    map[string]int
@@ -52,6 +54,18 @@ func (f *fakeRuntime) Run(_ context.Context, name, _ string) (ExitStatus, []byte
 	code := f.runExit[name]
 	f.mu.Unlock()
 	return ExitStatus{PID: 1, ExitCode: code}, []byte("init-out"), nil, nil
+}
+
+func (f *fakeRuntime) RunStreaming(_ context.Context, name, _ string, stdout, _ io.Writer) (ExitStatus, error) {
+	f.record("runstream:" + name)
+	f.mu.Lock()
+	code := f.runExit[name]
+	out := f.streamOut
+	f.mu.Unlock()
+	if stdout != nil && out != nil {
+		_, _ = stdout.Write(out)
+	}
+	return ExitStatus{PID: 1, ExitCode: code}, nil
 }
 
 func (f *fakeRuntime) StartDetached(_ context.Context, name, _ string) error {

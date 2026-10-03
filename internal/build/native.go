@@ -382,6 +382,8 @@ func (b *NativeBuilder) applyInstruction(ctx context.Context, build *buildContex
 		return false, b.applyCopy(ctx, build, state, instruction)
 	case "RUN":
 		return false, b.applyRun(ctx, build, state, instruction)
+	case "HEALTHCHECK", "SHELL", "ONBUILD", "VOLUME", "STOPSIGNAL", "MAINTAINER":
+		return false, fmt.Errorf("build: unsupported Dockerfile instruction %s (line %d)", instruction.Name, instruction.Line)
 	default:
 		return false, fmt.Errorf("build: unsupported instruction %s", instruction.Name)
 	}

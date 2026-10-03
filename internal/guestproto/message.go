@@ -34,12 +34,14 @@ const (
 	TypeExecResult   MessageType = "exec_result"
 	TypeRestart      MessageType = "restart"
 	TypeRestarted    MessageType = "restarted"
+	TypeRun          MessageType = "run"
+	TypeRunResult    MessageType = "run_result"
 )
 
 func (t MessageType) isResponse() bool {
 	switch t {
 	case TypeHelloAck, TypeAuth, TypeAuthOK, TypeError, TypePong,
-		TypeStarted, TypeStopped, TypeStatusResult, TypeProbeResult, TypeExecResult, TypeRestarted:
+		TypeStarted, TypeStopped, TypeStatusResult, TypeProbeResult, TypeExecResult, TypeRestarted, TypeRunResult:
 		return true
 	default:
 		return false
@@ -202,6 +204,22 @@ type ExecRequest struct {
 type ExecResult struct {
 	ExitCode int    `json:"exitCode"`
 	Detail   string `json:"detail,omitempty"`
+}
+
+// RunRequest runs one build command against a mounted build share.
+type RunRequest struct {
+	Session   uint32   `json:"session,omitempty"`
+	Share     string   `json:"share"`
+	Args      []string `json:"args"`
+	Env       []string `json:"env,omitempty"`
+	WorkDir   string   `json:"workDir,omitempty"`
+	User      UserSpec `json:"user,omitempty"`
+	TimeoutMS int64    `json:"timeoutMs,omitempty"`
+}
+
+// RunResult is the terminal result of a build run.
+type RunResult struct {
+	ExitCode int `json:"exitCode"`
 }
 
 // RestartRequest restarts one container in place.

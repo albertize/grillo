@@ -7,6 +7,7 @@ package guest
 import (
 	"context"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"os"
@@ -32,6 +33,8 @@ type Agent struct {
 
 	dnsMu sync.Mutex
 	dns   interface{ Close() error }
+
+	buildSeq uint64
 }
 
 type containerState struct {
@@ -65,6 +68,8 @@ func (a *Agent) Handle(ctx context.Context, req guestproto.Message, stream *gues
 		return a.probe(ctx, req)
 	case guestproto.TypeRestart:
 		return a.restart(ctx, req)
+	case guestproto.TypeRun:
+		return a.run(ctx, req, stream)
 	default:
 		return nil, guestproto.Errorf(guestproto.CodeUnsupported, "message type %s", req.Type)
 	}
@@ -96,6 +101,10 @@ func (a *Agent) start(ctx context.Context, req guestproto.Message) (any, *guestp
 	}
 	if err := a.startDNS(a.sandbox.DNS); err != nil {
 		return nil, guestproto.Errorf(guestproto.CodeInternal, "%v", err)
+	}
+	if a.sandbox.Build {
+		a.started = true
+		return guestproto.StartResult{State: "ready"}, nil
 	}
 	a.containers = make(map[string]*containerState, len(a.sandbox.Containers))
 	for _, c := range a.sandbox.Containers {
@@ -137,6 +146,68 @@ func (a *Agent) start(ctx context.Context, req guestproto.Message) (any, *guestp
 	a.started = true
 	return guestproto.StartResult{State: "running", Containers: a.containerStatusesLocked(ctx)}, nil
 }
+
+// run executes one build command against a mounted share. The share target is
+// chosen by the agent, not the caller, so a build cannot chroot elsewhere.
+func (a *Agent) run(ctx context.Context, req guestproto.Message, stream *guestproto.Stream) (any, *guestproto.Error) {
+	var rr guestproto.RunRequest
+	if err := guestproto.UnmarshalPayload(req.Payload, &rr); err != nil {
+		return nil, guestproto.Errorf(guestproto.CodeBadRequest, "%v", err)
+	}
+	if rr.Share == "" || len(rr.Args) == 0 {
+		return nil, guestproto.Errorf(guestproto.CodeBadRequest, "run requires a share and a command")
+	}
+	a.mu.Lock()
+	target, ok := a.buildShareTarget(rr.Share)
+	sandbox := a.sandbox
+	a.buildSeq++
+	seq := a.buildSeq
+	a.mu.Unlock()
+	if !ok {
+		return nil, guestproto.Errorf(guestproto.CodeBadRequest, "unknown build share %q", rr.Share)
+	}
+	name := fmt.Sprintf("grillo-build-%d", seq)
+	spec := guestproto.ContainerSpec{
+		Name:       name,
+		Rootfs:     target,
+		Init:       true,
+		Args:       rr.Args,
+		Env:        rr.Env,
+		WorkingDir: rr.WorkDir,
+		User:       rr.User,
+	}
+	bundle := filepath.Join(a.WorkDir, "build", name)
+	if err := WriteBundle(bundle, spec, sandbox); err != nil {
+		return nil, guestproto.Errorf(guestproto.CodeInternal, "%v", err)
+	}
+	defer func() { _ = a.Runtime.Delete(ctx, name, true) }()
+	var stdout, stderr io.Writer = io.Discard, io.Discard
+	if stream != nil {
+		stdout = stream
+		stderr = stderrWriter{stream}
+	}
+	status, err := a.Runtime.RunStreaming(ctx, name, bundle, stdout, stderr)
+	if err != nil {
+		return nil, guestproto.Errorf(guestproto.CodeInternal, "%v", err)
+	}
+	if stream != nil {
+		_ = stream.Exit(status.ExitCode)
+	}
+	return guestproto.RunResult{ExitCode: status.ExitCode}, nil
+}
+
+func (a *Agent) buildShareTarget(tag string) (string, bool) {
+	for _, share := range a.sandbox.Shares {
+		if share.Tag == tag {
+			return share.Target, true
+		}
+	}
+	return "", false
+}
+
+type stderrWriter struct{ stream *guestproto.Stream }
+
+func (w stderrWriter) Write(p []byte) (int, error) { return w.stream.WriteStderr(p) }
 
 func (a *Agent) stop(ctx context.Context, req guestproto.Message) (any, *guestproto.Error) {
 	var sr guestproto.StopRequest

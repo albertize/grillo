@@ -1,5 +1,7 @@
 # Local build outputs and reports
 /bin/
+/grillo
+/grillod
 /dist/
 /coverage/
 /coverage.out

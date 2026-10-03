@@ -39,7 +39,7 @@ real KVM/QEMU and passes OCI scenario A plus an init-failure case.
 
 **T15 is complete.** `internal/api` serves the local Unix-socket API with `SO_PEERCRED` UID checks, bounded bodies, the `{code,message,resource,retryable,details}` error DTO, asynchronous operations on the daemon lifetime context, SSE events with `Last-Event-ID` and gap records, log streaming, and distinct daemon-shutdown/application-down endpoints. `cmd/grillod` holds the single-instance state lock, builds the QEMU backend, storage manager, and `internal/executor`, and serves status and exec endpoints.
 
-**T18 is IN_PROGRESS and its scope was revised (ADR 0006).** The maintainer required Grillo to build without Podman or Docker, so a native build system is the default and required path; Podman is an opt-in accelerator only. The existing Podman backend, `internal/oci.ImportLayout`, and `internal/image` (inventory/inspect/pin/GC, API/CLI) are retained. The native Dockerfile parser, host-side assembly, guest `RUN` execution (T18b), and the `--podman` opt-in wiring are the remaining work.
+**T18 and T18b are complete (ADR 0006).** Grillo has a native build system as the default and required path: `internal/dockerfile` parses a supported Dockerfile subset and `.dockerignore`, `internal/build.NativeBuilder` assembles the image without any external container engine, and `RUN` executes inside a sandboxed guest that shares the build root (T18b). Podman is an explicit opt-in (`--podman`) only. The Podman backend, `internal/oci.ImportLayout`, and `internal/image` (inventory/inspect/pin/GC, API/CLI) are retained.
 
 **T17 is complete.** `internal/frontend/compose` parses Compose YAML with source maps, interpolation (`$VAR`, `${VAR}`, defaults, required, alternatives, `$$`), `.env`/host environment precedence, `env_file`, ports, volumes, healthchecks, `depends_on`, restart policies, resources, and networks, and compiles to the IR with field-level support diagnostics and a golden fixture. `internal/frontend/detect` identifies Compose, native, Kubernetes, and Helm input, and the CLI now accepts Compose files.
 
@@ -69,8 +69,8 @@ Hosted CI has not yet been executed.
 | T15 | Local API and daemon lifetime | DONE | `internal/api` + `cmd/grillod`; peer UID, async ops, status/exec endpoints, SSE cursors, disconnect/leak tests |
 | T16 | Native-runtime CLI | DONE | `internal/cli` + `cmd/grillo`; plan, up/down/status/inspect/ps/restart/logs/events/exec/shell/ui, terminal restore, read-only doctor |
 | T17 | Compose parser and compiler | DONE | `internal/frontend/compose` + `detect`; interpolation/env precedence, support diagnostics, golden IR, CLI integration |
-| T18 | Native build system and image tooling | IN_PROGRESS | Podman backend/image store done; native builder + guest `RUN` (T18b) pending (ADR 0006) |
-| T18b | Build execution in the guest (protocol) | TODO | T06, T07, T18 |
+| T18 | Native build system and image tooling | DONE | `internal/dockerfile` + `internal/build.NativeBuilder`; copy-only and sandboxed `RUN` builds, Podman opt-in, image store/GC, API/CLI (ADR 0006) |
+| T18b | Build execution in the guest (protocol) | DONE | `run` guest message + `SandboxRunner`; real KVM evidence |
 | T19 | F2 gate: Compose application | TODO | T12–T18 |
 | T20 | Kubernetes MVP compiler | TODO | T04; runtime verification T14 |
 | T21 | Helm rendering and OCI charts | TODO | T20 |
@@ -956,36 +956,66 @@ historical evidence only.
 ## T18 Builder and image tooling - 2026-10-03
 
 - **Task:** T18 - Native build system and image tooling
-- **Status:** IN_PROGRESS (scope revised by ADR 0006: native builder required, Podman opt-in only)
-- **Dependencies verified:** T09 (OCI/CAS), T10 (storage), T11 (network), T17 (Compose) complete.
-- **Files and contracts changed:** `internal/build` (`Builder`, `Request`,
-  `Result`, `PodmanBuilder` with rootless build, OCI-dir export, import, and
-  cancellation), `internal/oci/layout.go` (`ImportLayout`), `internal/image`
-  (`Store` with `Import`/`List`/`Get`/`Pin`/`PinDigest`/`Prune`/`Verify` and
-  `ErrNotFound`), `internal/api/images.go` and `client.go` (image and build
-  endpoints), `cmd/grillod` (wires the store and builder), `internal/cli`
-  (`build`, `image ls|inspect|pin|unpin|prune`), `api/local-api.md`.
-- **Decisions/ADRs:** None required. The builder is an external tool integration;
-  Grillo does not parse Dockerfiles or `.dockerignore`, so those semantics stay
-  with the builder and the integration remains modular.
-- **Tests run:** `make test-builder` PASS (real rootless Podman scratch build,
-  `.dockerignore` honored, OCI-layout import, unpack; build cancellation with a
-  timeout; missing-tool actionable error), `make check` PASS (CGO, race, vet,
-  import boundaries), and the existing suite. New unit tests cover OCI layout
-  import and corruption/missing-layout rejection, image import/list/pin/verify,
-  prune preserving pinned and active data while collecting stale blobs, digest
-  pinning, request validation, API image/build endpoints, and CLI `build`/`image`.
-  `TestPlanDoesNotBuild` enforces that `internal/plan` never imports a builder.
-- **Tests NOT run and why:** hosted CI has not run. No Podman in CI means the
-  `builder`-tagged test SKIPs there; it is documented, not a pass. Builds run
-  rootless and never use a Docker daemon.
-- **Integration evidence:** Real build/export/import executed on this host with
-  rootless Podman 5.8.7; the CLI drives the daemon API, which owns the CAS and
-  image store.
-- **Known limitations:** `prune` preserves images referenced by applications the
-  daemon has applied in this session (state is not yet persisted across restarts);
-  multi-tag publishing and build cache control beyond `--no-cache`/`--pull` are
-  minimal.
+- **Status:** DONE
+- **Dependencies verified:** T07 (guest agent), T09 (OCI/CAS), T10 (storage), T11 (network), T17 (Compose) complete.
+- **Files and contracts changed:** `internal/dockerfile` (Dockerfile parser and
+  `.dockerignore` matcher), `internal/build` (`Builder` contract with `Request`/
+  `Result`, `NativeBuilder`, `SandboxRunner`, `GuestBoot`, and `PodmanBuilder`),
+  `internal/oci/layout.go` (`ImportLayout`, `LoadPulled`, `CAS.Read`),
+  `internal/image` (`Store` with `Import`/`List`/`Get`/`Pin`/`PinDigest`/`Prune`/
+  `Verify` and `ErrNotFound`), `internal/api/images.go` and `client.go` (image and
+  build endpoints), `cmd/grillod` (wires the image store, the native builder with
+  a sandbox runner, and the opt-in Podman builder), `internal/cli`
+  (`build --podman`, `image ls|inspect|pin|unpin|prune`), `api/local-api.md`.
+- **Decisions/ADRs:** ADR 0006 - native build system required, Podman opt-in.
+- **Tests run:** `make check` PASS. `make test-builder-kvm` PASS on real KVM:
+  `TestKVMBuildGuestRun` proves commands execute in a booted build guest, writes
+  reach the shared root over virtiofs, the guest is reused, and exit codes are
+  reported; `TestKVMBuildNativeBuilderRun` proves the full native pipeline
+  (`FROM scratch` -> `COPY` -> sandboxed `RUN` -> publish -> unpack). `make
+  test-builder` PASS confirms the opt-in Podman path (scratch build,
+  `.dockerignore`, OCI-layout import, cancellation, missing-tool error). Unit
+  tests cover the parser, `.dockerignore`, `ARG`/`ENV` expansion, `COPY`/`ADD`
+  with `--chown`/`--chmod`, `FROM scratch`/local-base/multi-stage builds,
+  whiteouts, unsupported-instruction rejection, `RUN` requiring a runner,
+  `SandboxRunner` boot reuse and exit-code handling, image import/list/pin/verify
+  and GC, OCI-layout import/corruption, API endpoints, and CLI `build`/`image`
+  (`--podman` opt-in asserted). `TestPlanDoesNotBuild` enforces that planning
+  never imports a builder.
+- **Tests NOT run and why:** hosted CI has not run. CI without `/dev/kvm` or the
+  guest artifacts SKIPs the `kvm` build test; CI without Podman SKIPs the
+  `builder` test. Both are documented, not passes.
+- **Integration evidence:** Real native build with sandboxed `RUN` executed on
+  this host (Linux/amd64, kernel `7.2.8-200.fc44.x86_64`, KVM API 12) in 11.4 s;
+  the guest agent initramfs was rebuilt before testing.
+- **Known limitations:** the build guest is currently **offline** (no network in
+  the sandbox), so `RUN` steps that install packages are not yet supported -
+  in-image tooling and local commands work; per-instruction layer caching is not
+  yet implemented (one layer per stage); non-numeric `USER`/`--chown` names and
+  `ADD` URLs/tar extraction are rejected; `prune` preserves images referenced by
+  applications applied in the current daemon session only (not persisted across
+  restarts).
+- **Next task:** T19 (F2 gate: Compose application).
+
+## T18b Build execution in the guest - 2026-10-03
+
+- **Task:** T18b - Build execution in the guest (protocol)
+- **Status:** DONE
+- **Dependencies verified:** T06 (protocol), T07 (guest agent), T18 (native builder).
+- **Files and contracts changed:** `internal/guestproto` (`run`/`run_result`
+  message types, `RunRequest`/`RunResult`, `SandboxSpec.Build`, `SandboxClient`
+  surface), `internal/guest` (`RunStreaming` on the runtime, the agent `run`
+  handler that resolves the share target itself, and `stderrWriter`),
+  `internal/build` (`SandboxRunner`, `GuestBoot`).
+- **Decisions/ADRs:** ADR 0006 (option A: execute `RUN` inside the sandbox).
+- **Tests run:** `make test-builder-kvm` PASS; `make check` PASS. The agent's
+  `run` handler rejects an unknown share and requires a share and command.
+- **Tests NOT run and why:** hosted CI has not run; the KVM test SKIPs without
+  `/dev/kvm` or the guest artifacts.
+- **Integration evidence:** repeated `RUN` commands ran against one booted guest;
+  output and exit codes were correct; writes propagated to the host share.
+- **Known limitations:** streaming is delivered per read chunk and bounded by the
+  runtime capture limit; build networking is not yet wired.
 - **Next task:** T19 (F2 gate: Compose application).
 
 ## T17 Compose parser and compiler - 2026-10-03

@@ -166,6 +166,40 @@ func (c *Client) Exec(ctx context.Context, req ExecRequest, stdout, stderr io.Wr
 	return out, nil
 }
 
+// Run executes a build command, streaming output to stdout and stderr.
+func (c *Client) Run(ctx context.Context, req RunRequest, stdout, stderr io.Writer) (RunResult, error) {
+	if req.Session == 0 {
+		req.Session = newSessionID()
+	}
+	onFrame := func(fr Frame) error {
+		if fr.Session != req.Session {
+			return nil
+		}
+		switch fr.Stream {
+		case StreamStdout:
+			if stdout != nil {
+				_, err := stdout.Write(fr.Data)
+				return err
+			}
+		case StreamStderr:
+			if stderr != nil {
+				_, err := stderr.Write(fr.Data)
+				return err
+			}
+		}
+		return nil
+	}
+	m, err := c.call(ctx, TypeRun, req, onFrame)
+	if err != nil {
+		return RunResult{}, err
+	}
+	var out RunResult
+	if err := UnmarshalPayload(m.Payload, &out); err != nil {
+		return RunResult{}, err
+	}
+	return out, nil
+}
+
 // call sends a request and reads frames until the matching response arrives.
 // Stream data frames are passed to onFrame.
 func (c *Client) call(ctx context.Context, typ MessageType, payload any, onFrame func(Frame) error) (Message, error) {

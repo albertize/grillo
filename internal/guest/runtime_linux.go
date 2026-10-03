@@ -29,6 +29,8 @@ type ContainerState struct {
 type Runtime interface {
 	// Run runs an init container to completion, capturing bounded output.
 	Run(ctx context.Context, name, bundle string) (ExitStatus, []byte, []byte, error)
+	// RunStreaming runs a container to completion, streaming output.
+	RunStreaming(ctx context.Context, name, bundle string, stdout, stderr io.Writer) (ExitStatus, error)
 	// StartDetached starts a long-lived container and returns once runc reports it.
 	StartDetached(ctx context.Context, name, bundle string) error
 	// Exec runs a command in a running container, capturing bounded output.
@@ -56,6 +58,17 @@ func (r *Runc) command(args ...string) *exec.Cmd {
 // Run implements Runtime.
 func (r *Runc) Run(ctx context.Context, name, bundle string) (ExitStatus, []byte, []byte, error) {
 	return r.capture(ctx, r.command("run", "--no-pivot", "--bundle", bundle, name))
+}
+
+// RunStreaming implements Runtime.
+func (r *Runc) RunStreaming(ctx context.Context, name, bundle string, stdout, stderr io.Writer) (ExitStatus, error) {
+	cmd := r.command("run", "--no-pivot", "--bundle", bundle, name)
+	cmd.Stdout = stdout
+	cmd.Stderr = stderr
+	if err := r.Reaper.Start(cmd); err != nil {
+		return ExitStatus{}, err
+	}
+	return r.wait(ctx, cmd.Process.Pid)
 }
 
 // StartDetached implements Runtime.

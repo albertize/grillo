@@ -330,6 +330,16 @@ func TestBuildCommand(t *testing.T) {
 	if client.lastBuild.BuildArgs["VERSION"] != "1.2" || client.lastBuild.Labels["org.test"] != "1" || !client.lastBuild.NoCache || client.lastBuild.Network != "none" {
 		t.Fatalf("request = %+v", client.lastBuild)
 	}
+	if client.lastBuild.Builder != "native" {
+		t.Fatalf("default builder = %q, want native", client.lastBuild.Builder)
+	}
+	// Podman must be an explicit opt-in.
+	if code := app.Run(context.Background(), []string{"build", "--podman", "-t", "grillo.local/app:dev", "/tmp/context"}); code != 0 {
+		t.Fatalf("podman build exit = %d: %s", code, stderr.String())
+	}
+	if client.lastBuild.Builder != "podman" {
+		t.Fatalf("opt-in builder = %q, want podman", client.lastBuild.Builder)
+	}
 	if !strings.Contains(stdout.String(), "build: succeeded") {
 		t.Fatalf("stdout = %q", stdout.String())
 	}

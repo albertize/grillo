@@ -76,7 +76,7 @@ Commands:
   events [-f]              show or follow the event stream
   exec <pod> [container] -- <command>
   shell <pod> [container]
-  build -t <ref> <context> build an image with rootless Podman
+  build -t <ref> <context> build an image (native; --podman is opt-in)
   image <ls|inspect|pin|unpin|prune>
   doctor                   check host readiness (read-only)
   version
@@ -719,6 +719,7 @@ func (a *App) cmdBuild(ctx context.Context, args []string) int {
 	platform := fs.String("platform", "", "target platform")
 	noCache := fs.Bool("no-cache", false, "disable the builder cache")
 	pull := fs.Bool("pull", false, "refresh base images")
+	podman := fs.Bool("podman", false, "use rootless Podman as the build backend (opt-in)")
 	var buildArgs, labels stringSlice
 	fs.Var(&buildArgs, "build-arg", "build argument KEY=VALUE (repeatable)")
 	fs.Var(&labels, "label", "image label KEY=VALUE (repeatable)")
@@ -752,11 +753,19 @@ func (a *App) cmdBuild(ctx context.Context, args []string) int {
 		Pull:       *pull,
 		BuildArgs:  keyValues(buildArgs),
 		Labels:     keyValues(labels),
+		Builder:    builderName(*podman),
 	})
 	if err != nil {
 		return fail(a.Stderr, err)
 	}
 	return a.waitOperation(ctx, client, id)
+}
+
+func builderName(podman bool) string {
+	if podman {
+		return "podman"
+	}
+	return "native"
 }
 
 func (a *App) cmdImage(ctx context.Context, args []string) int {

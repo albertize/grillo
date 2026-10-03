@@ -20,6 +20,9 @@ type SandboxSpec struct {
 	Network     *NetworkConfig  `json:"network,omitempty"`
 	Shares      []ShareSpec     `json:"shares,omitempty"`
 	Containers  []ContainerSpec `json:"containers"`
+	// Build marks a sandbox created for a build: it mounts shares and runs
+	// commands on demand instead of starting workload containers.
+	Build bool `json:"build,omitempty"`
 }
 
 // NetworkConfig is the sandbox interface configuration applied by the agent.
@@ -101,7 +104,7 @@ func (s SandboxSpec) Validate() error {
 	if s.ID == "" {
 		return errors.New("guestproto: sandbox id is required")
 	}
-	if len(s.Containers) == 0 {
+	if len(s.Containers) == 0 && !s.Build {
 		return errors.New("guestproto: sandbox has no containers")
 	}
 	seen := make(map[string]bool, len(s.Containers))
@@ -136,8 +139,11 @@ func (s SandboxSpec) Validate() error {
 			nameless++
 		}
 	}
-	if nameless == 0 {
+	if nameless == 0 && !s.Build {
 		return errors.New("guestproto: sandbox has no application container")
+	}
+	if s.Build && len(s.Shares) == 0 {
+		return errors.New("guestproto: build sandbox has no shares")
 	}
 	return nil
 }

@@ -295,6 +295,8 @@ func responseTypeFor(t MessageType) MessageType {
 		return TypeExecResult
 	case TypeRestart:
 		return TypeRestarted
+	case TypeRun:
+		return TypeRunResult
 	default:
 		return TypeError
 	}
