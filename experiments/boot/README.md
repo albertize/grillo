@@ -23,7 +23,7 @@ Linux/amd64 only. Run as the normal host user; never with sudo.
 | `build-oci-guest.sh` | Build the T02 OCI guest initramfs |
 | `oci/` | T02 host harness: runc run/exec/signal and two-container localhost |
 | `storage-probe.sh` | Records the shared-filesystem device limitation (scenario G) |
-| `qemu/` | T03 QEMU `microvm` experiments: kernel/initramfs builds, storage and network probes, QEMU-backend OCI |
+| `qemu/` | T03 QEMU `microvm` experiments: kernel/initramfs builds, storage/network/`f0` probes, guest fixtures, QEMU-backend OCI |
 | `build-guest.sh` | Builds the guest kernel and initramfs from pinned downloads |
 
 ## Build and run
@@ -47,6 +47,8 @@ make qemu-guest                            # QEMU bzImage (VIRTIO_FS) + probes
 make qemu-share                            # QEMU + virtiofsd live-bind probe
 make test-kvm                              # Firecracker KVM tests (spike + OCI)
 make test-qemu                             # QEMU KVM tests (share, net, OCI)
+make f0-guest                              # QEMU bzImage + F0 probe initramfs
+make test-f0                               # full rootless F0 topology and benchmarks
 make bench-t01                             # 30 measured cycles
 ```
 
@@ -129,6 +131,30 @@ tests rootless TCP egress and DNS; `make test-qemu` also runs the OCI scenarios
 on QEMU via `vhost-vsock`. Results are in the
 [T03 report](../../docs/experiments/t03-backend-comparison.md) and ADR 0005.
 QEMU/virtiofsd are system packages, not bootstrapped here.
+
+## Full F0 topology (T02/T03)
+
+`make test-f0` runs the complete feasibility experiment. `pasta` creates a user
+and network namespace (asserting the mapping is exactly `0 <host-uid> 1`), the
+harness builds two bridges and three TAP devices inside it, applies a default-deny
+nftables policy, and boots three QEMU `microvm` guests. It then verifies OCI
+execution and two-container localhost, two-VM HTTP/DNS/egress, guest→host
+publishing on loopback, cross-application and guest→management denial, live
+virtiofs binds, a managed ext4 volume with restart persistence, and warm-boot and
+filesystem benchmarks. Every VMM is asserted to run with `CapEff=0`,
+`NoNewPrivs=1`, and `Seccomp=2`.
+
+`experiments/boot/qemu/f0guest/` is the trusted guest payload, `fsbench/` is the
+fixed filesystem benchmark shared with the host baseline, and
+`run/dns_fixture.go` is a bounded fixed-answer resolver (not the T12
+implementation). The offline tests cover the DNS fixture and the process/relay
+failure paths without KVM.
+
+**SELinux.** On the tested Fedora policy, SELinux Enforcing silently kills
+processes started by `pasta` inside the user namespace (exit 2, no output). The
+harness refuses to run under Enforcing with an actionable message; supply a
+policy or set SELinux to Permissive for the experiment. This is a host
+prerequisite for `doctor`, not a runtime fallback.
 
 ## Safety
 

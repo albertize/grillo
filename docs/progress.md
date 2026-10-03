@@ -6,9 +6,9 @@
 
 **T01 is complete.** A real Firecracker microVM boots as the user, completes a vsock handshake, executes a guest command, streams output, and stops cleanly across 30 measured cycles (boot median 260 ms, total median 391 ms). A rootless networking helper (pasta) was also verified to give a new user+network namespace an address, default route, DNS, and egress.
 
-**T02 remains BLOCKED on outstanding acceptance evidence.** OCI execution and two-container localhost pass on Firecracker and QEMU. The corrected QEMU probe verifies post-mount host writes, guest writes, rename, and read-only enforcement. Guest-local inotify passes, but host-originated notifications were not observed within 2 seconds (`DEGRADED`; polling needed).
+**T02 is complete.** OCI execution and two-container localhost pass on both backends. Two-VM HTTP/DNS/egress, loopback host publishing, cross-application and guest-to-management denial, live virtiofs binds, a managed ext4 volume with restart persistence, and filesystem overhead were all measured on real hardware (`make test-f0`). Host-originated virtiofs notifications are explicitly degraded (polling).
 
-**T03 remains BLOCKED; QEMU is a proposed candidate, not a completed F0 gate.** Two-VM DNS/egress/publishing/management isolation, managed-volume persistence, and filesystem overhead remain unverified T02 requirements. See [ADR 0005](adr/0005-platform-qemu-virtiofsd.md). There is still no workload runtime or release.
+**T03 is complete; the F0 gate passed on QEMU `microvm` + virtiofsd.** See [ADR 0005](adr/0005-platform-qemu-virtiofsd.md) (Proposed, all required evidence present, awaiting maintainer acceptance). There is still no workload runtime or release. A measured distribution restriction: SELinux Enforcing silently kills `pasta` helpers on the tested Fedora policy, so `doctor` must surface it.
 
 **T04 is complete.** The versioned application IR lives in `internal/model` with `internal/source` for source locations and structured diagnostics. It provides the section 5.1 types, quantity parsing, normalization, canonical hashing, an experimental native JSON manifest, a capability/support registry, validation (unknown version, references, duplicates, cycles, guest budget), and public redaction. The model imports no VMM, network, process, or frontend code.
 
@@ -24,8 +24,8 @@ Hosted CI has not yet been executed.
 |---|---|---|---|
 | T00 | Repository scaffold and conventions | DONE | Local checks, clean-source builds, audit, and command smoke tests; evidence below |
 | T01 | Rootless VMM and minimal guest spike | DONE | Real boot/exec/stop 30/30, rootless userns/TAP + pasta egress; two T01 reports |
-| T02 | OCI, filesystem, and application-network spike | BLOCKED | Partial real evidence; two-VM topology, managed storage, and overhead missing; host-watch degraded |
-| T03 | F0 gate and platform ADR | BLOCKED | Proposed QEMU candidate; complete T02 evidence and review ADR 0005 before confirming F0 |
+| T02 | OCI, filesystem, and application-network spike | DONE | `make test-f0`: two-VM DNS/egress/publish/isolation, live binds, ext4 persistence, overhead; host-watch degraded |
+| T03 | F0 gate and platform ADR | DONE | F0 gate passed on QEMU `microvm` + virtiofsd; ADR 0005 Proposed with complete evidence |
 | T04 | IR, diagnostics, and capabilities | DONE | `internal/model` + `internal/source`; goldens, version/reference/cycle/overflow, import-boundary tests |
 | T05 | State, secrets, and recovery primitives | DONE | `internal/state` + `internal/secrets`; lock, atomic snapshots, journal, migration, secret GC tests |
 | T06 | Guest protocol and testable client | DONE | `internal/guestproto` + `api/guest-protocol.md`; framing/handshake/client/server, fuzz, partial-I/O, overflow, backpressure, timeout, auth tests |
@@ -408,6 +408,59 @@ historical evidence only.
   option). Journal timestamps use wall-clock time.
 - **Next task:** T06 (guest protocol) depends on the blocked T03; T17/T20 pure
   frontends and T09 OCI work depend on T04. T07/T08 depend on T06/T05.
+
+## T02/T03 F0 gate — 2026-10-03
+
+- **Task:** T02 — OCI, filesystem, and application-network spike; T03 — F0 gate
+  and platform ADR.
+- **Status:** DONE (both).
+- **Dependencies verified:** T00/T01; real KVM (`/dev/kvm` API 12), QEMU 10.2.2,
+  virtiofsd 1.14.0, pasta, `/dev/vhost-vsock`, `/dev/net/tun`, user namespaces,
+  nftables, setpriv, and e2fsprogs, all as UID 1000 without sudo. Working tree
+  contained T04/T05 as `2ab4244`; unrelated work preserved.
+- **Files and contracts changed:** `experiments/boot/qemu/f0guest/` (trusted
+  guest payload), `experiments/boot/qemu/fsbench/` (fixed filesystem benchmark),
+  `experiments/boot/qemu/run/f0_linux_amd64.go` (rootless topology, isolation,
+  storage, supervision, benchmarks), `run/dns_fixture.go` + test (bounded fixture
+  resolver), `run/main_linux_amd64.go` (hardened QEMU/virtiofsd flags, wait
+  cancellation), `build-f0-guest.sh`, `fetch-oci.sh` cidfile cleanup fix,
+  `scripts/fetch_oci_test.sh` (faithful fake podman), `Makefile` (`f0-guest`,
+  `test-f0`). No production runtime code was added.
+- **Decisions/ADRs:** [0005](adr/0005-platform-qemu-virtiofsd.md) updated to
+  Proposed with complete evidence (awaiting maintainer acceptance);
+  [0004](adr/0004-shared-filesystem-backend-comparison.md) marked complete.
+  No scope reduction was made: the previously deferred T02 requirements were
+  executed, not deferred.
+- **Tests run:** `make check` PASS; `make test-f0` PASS (full rootless F0 gate,
+  re-run twice, `RESULT: PASS (f0)`); `make test-qemu` PASS
+  (`TestKVMQEMULiveShare`, `TestKVMQEMUNet`, `TestKVMQEMUOCIScenarios`);
+  `make test-kvm` PASS (`TestKVMExecBootStop`, `TestKVMExecMissingCommand`,
+  `TestKVMOCIScenarios`); `make qemu-share` PASS; `go test ./experiments/boot/qemu/run
+  -run TestFixtureDNS` PASS; `bash scripts/fetch_oci_test.sh` PASS with a fake
+  podman that mirrors real cidfile removal. `make oci-guest` regenerated the OCI
+  rootfs with real podman (marker + executable busybox verified).
+- **Tests NOT run and why:** cold-cache and multi-vCPU/multi-memory benchmarks,
+  tuned virtiofs cache performance, and Cloud Hypervisor comparison remain open;
+  hosted CI has not run. Full `make test-qemu` initially failed on the stale
+  unmarked rootfs and was re-run green after regeneration — not counted as a pass
+  before that.
+- **Integration evidence:** three rootless QEMU microVMs booted as UID 1000 with
+  `CapEff=0`, `NoNewPrivs=1`, `Seccomp=2`, RSS ≈122 MiB, PSS ≈102 MiB; two-VM
+  HTTP/DNS/egress PASS; loopback host publish PASS; cross-application,
+  guest→management, and isolated-VM denial PASS; virtiofs live content/rw/ro/rename
+  PASS with host-originated watch DEGRADED; managed ext4 volume exclusive-lock,
+  write, restart-persistence, and `e2fsck` clean PASS; warm boot 30/30, median
+  605 ms, p95 606–708 ms; 30-sample filesystem overhead recorded (virtiofs read
+  ≈56×, rename ≈63×, chmod ≈180× slower than local ext4). No orphan VMM or work
+  directory remained.
+- **Known limitations:** Evidence uses SELinux Permissive; with Enforcing the
+  `pasta` helper is silently killed on the tested Fedora policy, and the harness
+  now refuses that configuration explicitly. Host-originated virtiofs
+  notifications need polling. virtiofs metadata overhead is high with
+  conservative caching. Containers run as guest root; spike protocol, DNS fixture,
+  and guest PID 1 are experiment-only. QEMU RSS budget ≈2.5× Firecracker.
+- **Next task:** T03 unblocks T06 (guest protocol, with T04) and later T09/T10/T11.
+  T07/T08 remain the next runtime tasks after T06.
 
 ## T06 guest protocol and testable client — 2026-10-03
 

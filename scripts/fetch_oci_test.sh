@@ -29,6 +29,13 @@ case $1 in
   [[ ${1:-} != -f ]] || shift
   [[ $# = 1 && $1 = owned-* ]]
   [[ ${FAIL_REMOVE:-0} = 0 ]]
+  # Real podman removes the --cidfile when it removes the container.
+  rm -f -- "${1#owned-}/container.cid"
+  ;;
+ container)
+  [[ $2 = exists ]]
+  [[ $3 = owned-* ]]
+  [[ -e ${3#owned-}/container.cid ]]
   ;;
  *) exit 99 ;;
 esac

@@ -92,7 +92,10 @@ func runProbe(ctx context.Context, raw options) (string, error) {
 	vfsd, err := startProcess(opts.VirtioFSD,
 		"--socket-path", vfsdSock,
 		"--shared-dir", share,
-		"--sandbox=none",
+		"--sandbox=namespace",
+		"--seccomp=kill",
+		"--cache=never",
+		"--inode-file-handles=never",
 		"--log-level", "warn",
 	)
 	if err != nil {
@@ -161,7 +164,8 @@ func baseQEMUArgs(opts options, serialLog, appendArgs string) []string {
 		"-smp", "1",
 		"-m", fmt.Sprintf("%d", opts.MemMiB),
 		"-object", "memory-backend-memfd,id=mem,size=" + memSize + ",share=on",
-		"-no-user-config",
+		"-no-user-config", "-nodefaults", "-monitor", "none",
+		"-sandbox", "on,obsolete=deny,elevateprivileges=deny,spawn=deny,resourcecontrol=deny",
 		"-kernel", opts.Kernel,
 		"-initrd", opts.Initramfs,
 		"-append", appendArgs,
@@ -222,8 +226,9 @@ func runNet(ctx context.Context, raw options) (string, error) {
 
 // managed wraps a helper process with a process group and parent-death signal.
 type managed struct {
-	cmd  *exec.Cmd
-	done chan error
+	cmd      *exec.Cmd
+	done     chan error
+	finished bool
 }
 
 func startProcess(path string, args ...string) (*managed, error) {
@@ -246,6 +251,10 @@ func startProcess2(path string, stdout *os.File, args ...string) (*managed, erro
 }
 
 func (m *managed) wait(parent context.Context, timeout time.Duration) error {
+	if m.finished {
+		return nil
+	}
+	defer func() { m.finished = true }()
 	ctx, cancel := context.WithTimeout(parent, timeout)
 	defer cancel()
 	select {
@@ -259,6 +268,15 @@ func (m *managed) wait(parent context.Context, timeout time.Duration) error {
 }
 
 func (m *managed) stop(log io.Writer) {
+	if m.finished {
+		return
+	}
+	defer func() { m.finished = true }()
+	select {
+	case <-m.done:
+		return
+	default:
+	}
 	if m.cmd.Process != nil {
 		_ = syscall.Kill(-m.cmd.Process.Pid, syscall.SIGKILL)
 	}
@@ -315,16 +333,19 @@ func waitForPath(ctx context.Context, path string, timeout time.Duration) error 
 
 func main() {
 	var (
-		qemu      = flag.String("qemu", "qemu-system-x86_64", "qemu binary")
-		virtiofsd = flag.String("virtiofsd", "/usr/libexec/virtiofsd", "virtiofsd binary")
-		kernel    = flag.String("kernel", "experiments/artifacts/qemu/bzImage", "guest bzImage with CONFIG_VIRTIO_FS")
-		initramfs = flag.String("initramfs", "experiments/artifacts/qemu/initramfs-probe.cpio.gz", "probe initramfs")
-		scenario  = flag.String("scenario", "share", "share (virtiofs) or net (user-mode networking)")
-		verbose   = flag.Bool("verbose", false, "print the guest serial console")
+		qemu       = flag.String("qemu", "qemu-system-x86_64", "qemu binary")
+		virtiofsd  = flag.String("virtiofsd", "/usr/libexec/virtiofsd", "virtiofsd binary")
+		kernel     = flag.String("kernel", "experiments/artifacts/qemu/bzImage", "guest bzImage with CONFIG_VIRTIO_FS")
+		initramfs  = flag.String("initramfs", "experiments/artifacts/qemu/initramfs-probe.cpio.gz", "probe initramfs")
+		scenario   = flag.String("scenario", "share", "share, net, or f0 (full feasibility experiment)")
+		work       = flag.String("work", "", "private F0 inner work directory")
+		canaryPort = flag.String("canary-port", "", "F0 host-only canary port")
+		timeout    = flag.Duration("timeout", 90*time.Second, "total experiment deadline")
+		verbose    = flag.Bool("verbose", false, "print the guest serial console")
 	)
 	flag.Parse()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), *timeout)
 	defer cancel()
 
 	opts := options{
@@ -340,6 +361,10 @@ func main() {
 		serial, err = runProbe(ctx, opts)
 	case "net":
 		serial, err = runNet(ctx, opts)
+	case "f0":
+		err = f0Outer(ctx, opts)
+	case "f0-inner":
+		err = f0Inner(ctx, opts, *work, *canaryPort)
 	default:
 		fmt.Fprintf(os.Stderr, "unknown scenario %q (want share or net)\n", *scenario)
 		os.Exit(2)

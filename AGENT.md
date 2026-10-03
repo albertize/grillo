@@ -99,6 +99,10 @@ Never report a command as executed unless it was executed, and never omit a fail
 - A success marker never overrides process failure, timeout, or failed cleanup. Test success-followed-by-failure without requiring KVM.
 - Bound the whole operation (including writes), frame size, and aggregate output; per-read timeouts alone do not bound a stream. Propagate cancellation.
 - Do not defer required gates while keeping a task DONE. Keep progress, reports, and ADR evidence consistent; record missing hardware checks as blockers.
+- Fake/stub tools must reproduce the real tool's side effects (for example `podman rm` also removes the `--cidfile`), or the tests assert behavior the real tool does not have. Verify against the real tool once, then encode it.
+- Protocol fixtures and servers must tolerate real-world extensions (for example EDNS0 OPT records in DNS queries) instead of rejecting them, and every such fix needs a regression test.
+- Rebuild the artifact you are actually testing: a stale binary or initramfs silently invalidates a run. After changing guest or harness code, rebuild both before trusting a result.
+- A host security policy can fail silently (SELinux Enforcing killed `pasta` helpers with exit code 2 and no output). Detect it, report it as a blocker, and never escalate privileges or fake success.
 
 ## 8. Progress entry
 

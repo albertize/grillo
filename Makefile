@@ -75,6 +75,17 @@ qemu-guest:
 test-qemu: qemu-guest oci-guest
 	go test -tags kvm -count=1 -v -run 'TestKVMQEMU' ./experiments/boot/qemu/run/ ./experiments/boot/oci/
 
+# Full T02/T03 real hardware evidence. No downloads or preexisting volume deletion.
+.PHONY: f0-guest test-f0
+f0-guest:
+	bash experiments/boot/qemu/build-kernel.sh
+	bash experiments/boot/qemu/build-f0-guest.sh
+
+test-f0: f0-guest
+	mkdir -p bin
+	CGO_ENABLED=0 $(GO) build -o bin/grillo-f0 ./experiments/boot/qemu/run
+	./bin/grillo-f0 -scenario f0 -initramfs experiments/artifacts/qemu/initramfs-f0.cpio.gz -timeout 10m
+
 # Print the guest serial console from the QEMU live-share experiment.
 qemu-share: qemu-guest
 	go run ./experiments/boot/qemu/run -verbose

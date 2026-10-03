@@ -24,11 +24,16 @@ fetch_rootfs() (
     fi
     stage=$(mktemp -d "$out/.rootfs-stage.XXXXXXXX")
     cleanup() {
-        local status=$?
+        local status=$? cid=''
         trap - EXIT
+        # podman rm also removes the cidfile it created, so tolerate a missing
+        # one and only fail when the container is genuinely still present.
         if [[ -s $stage/container.cid ]]; then
-            if ! podman rm -f "$(<"$stage/container.cid")" >/dev/null; then
-                echo "fetch-oci: container cleanup failed; CID retained in $stage/container.cid" >&2
+            cid=$(<"$stage/container.cid")
+        fi
+        if [[ -n $cid ]] && podman container exists "$cid" >/dev/null 2>&1; then
+            if ! podman rm -f "$cid" >/dev/null 2>&1; then
+                echo "fetch-oci: container cleanup failed; container $cid retained" >&2
                 exit 1
             fi
         fi
@@ -47,9 +52,9 @@ fetch_rootfs() (
         exit 1
     }
     printf '%s\n' "$image" > "$stage/rootfs/.grillo-fixture-complete"
-    # Cleanup must succeed before the cache becomes reusable.
+    # The container must be gone before the cache becomes reusable. podman rm
+    # removes $stage/container.cid as a side effect, so nothing else is needed.
     podman rm "$(<"$stage/container.cid")" >/dev/null
-    rm -- "$stage/container.cid"
     mv -T -- "$stage/rootfs" "$out/rootfs"
 )
 

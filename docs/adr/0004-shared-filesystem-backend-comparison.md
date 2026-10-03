@@ -60,12 +60,14 @@ proceed.
 
 ## Validation and follow-up
 
-**Performed (T03).** The comparison was executed on real hardware:
+**Performed (T03).** The comparison was executed on real hardware.
 Firecracker exposes no shared-filesystem device (`make storage-probe` exits 3),
 while QEMU `microvm` + virtiofsd passes live read/write, rename, guest-local
 inotify, and read-only enforcement. The corrected post-mount host-write probe
 observed content updates but no host-originated notification within 2s
-(DEGRADED). See [ADR 0005](0005-platform-qemu-virtiofsd.md) and the
+(DEGRADED). Two-VM networking/DNS/egress, host publishing, management isolation,
+managed ext4 persistence, and filesystem-overhead measurements also pass with
+QEMU (`make test-f0`). See [ADR 0005](0005-platform-qemu-virtiofsd.md) and the
 [T03 report](../experiments/t03-backend-comparison.md). Cloud Hypervisor remains
-untested. T02/T03 are still BLOCKED on the missing topology, persistence, and
-overhead evidence; this comparison is partial, not an accepted F0 gate.
+untested. This ADR's comparison is complete: QEMU `microvm` + virtiofsd is the
+selected F0 backend, pending maintainer acceptance of ADR 0005.

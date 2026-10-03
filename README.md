@@ -140,7 +140,7 @@ Compose frontend          Helm renderer → Kubernetes frontend
 | Host | Linux/amd64 with KVM; other architectures only after validation |
 | Runtime language | Go, standard-library-first |
 | Isolation | One hardware-isolated microVM per Pod |
-| VMM | QEMU microvm + virtiofsd proposed; F0 evidence still incomplete |
+| VMM | QEMU microvm + virtiofsd selected for F0 (ADR 0005, proposed) |
 | Guest | Minimal Linux image, Go PID 1 agent, guest-side runc |
 | Networking | Rootless application networking, DNS, Service proxying, localhost publishing |
 | State | Per-user atomic JSON snapshots and bounded journal initially |
@@ -149,7 +149,7 @@ Compose frontend          Helm renderer → Kubernetes frontend
 | Helm | Official pinned Helm CLI initially; documented SDK trade-off |
 | Builds | Existing rootless OCI builder, initially a Podman adapter |
 
-Backend choice depends on proving **rootless networking and real live bind mounts**, not just booting a guest. Firecracker lacks a shared-filesystem device; the QEMU candidate provides live content sharing but host-originated file-watch notifications are degraded in the tested configuration. Two-VM topology and managed-storage evidence remain outstanding. The [implementation plan](IMPLEMENTATION_PLAN.md) documents alternatives and decision gates.
+Backend choice depended on proving **rootless networking and real live bind mounts**, not just booting a guest. The F0 gate now passes on QEMU `microvm` + virtiofsd: rootless two-VM networking, DNS, egress, loopback publishing, enforced isolation, live virtiofs binds, and a persistent ext4 volume were all measured on real hardware (`make test-f0`). Firecracker was rejected for the product because it exposes no shared-filesystem device. Two limitations are recorded honestly: host-originated virtiofs notifications are degraded (polling required), and SELinux Enforcing silently breaks the `pasta` helper on the tested Fedora policy. See [ADR 0005](docs/adr/0005-platform-qemu-virtiofsd.md) and the [T03 report](docs/experiments/t03-backend-comparison.md). The [implementation plan](IMPLEMENTATION_PLAN.md) documents alternatives and decision gates.
 
 macOS/Windows hosts, GPU support, snapshots, and alternative VMMs are not part of the first release target. No current performance or platform-support claim is implied by this table.
 
@@ -180,7 +180,7 @@ Grillo is not intended to be:
 
 | Milestone | Focus |
 |---|---|
-| F0 | Prove a real rootless microVM path, OCI execution, networking, storage, and measurable overhead |
+| F0 | Prove a real rootless microVM path, OCI execution, networking, storage, and measurable overhead (feasibility gate passed — see [progress](docs/progress.md)) |
 | F1 | Build the native runtime, guest agent, images, lifecycle, API, recovery, and probes |
 | F2 | Run a representative multi-service Compose application |
 | F3 | Deliver the Helm subset, local console, and tested product MVP |
