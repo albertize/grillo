@@ -29,6 +29,9 @@ type Agent struct {
 	sandbox    guestproto.SandboxSpec
 	containers map[string]*containerState
 	started    bool
+
+	dnsMu sync.Mutex
+	dns   interface{ Close() error }
 }
 
 type containerState struct {
@@ -84,6 +87,9 @@ func (a *Agent) start(ctx context.Context, req guestproto.Message) (any, *guestp
 	}
 	a.sandbox = *sr.Sandbox
 	if err := MountShares(a.sandbox.Shares); err != nil {
+		return nil, guestproto.Errorf(guestproto.CodeInternal, "%v", err)
+	}
+	if err := a.startDNS(a.sandbox.DNS); err != nil {
 		return nil, guestproto.Errorf(guestproto.CodeInternal, "%v", err)
 	}
 	a.containers = make(map[string]*containerState, len(a.sandbox.Containers))
@@ -146,6 +152,7 @@ func (a *Agent) Shutdown(ctx context.Context) {
 }
 
 func (a *Agent) stopLocked(ctx context.Context) {
+	a.stopDNS()
 	// Stop application containers first, newest first, then remove the rest.
 	for i := len(a.sandbox.Containers) - 1; i >= 0; i-- {
 		c := a.sandbox.Containers[i]

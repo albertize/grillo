@@ -44,6 +44,15 @@ func SetupFilesystems() error {
 			return err
 		}
 	}
+	// A resolver file must exist so the container bind mount always resolves.
+	if err := os.MkdirAll("/etc", 0o755); err != nil {
+		return err
+	}
+	if _, err := os.Stat(resolvConfPath); err != nil {
+		if err := os.WriteFile(resolvConfPath, []byte("nameserver 127.0.0.1\n"), 0o644); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 

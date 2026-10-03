@@ -303,7 +303,44 @@ func (e *Executor) buildSpecs(ctx context.Context, application string, app model
 		containersCopy.Init = i < len(workload.Template.InitContainers)
 		guestSpec.Containers = append(guestSpec.Containers, containersCopy)
 	}
+	guestSpec.DNS = dnsConfig(app, workload)
+	if guestSpec.DNS != nil {
+		guestSpec.Nameservers = []string{"127.0.0.1"}
+	}
 	return spec, guestSpec, nil
+}
+
+// dnsConfig builds the guest resolver records for Services selecting this
+// workload. In the single-guest model a service resolves to the guest itself.
+func dnsConfig(app model.Application, workload model.Workload) *guestproto.DNSConfig {
+	var records []guestproto.DNSRecord
+	for _, service := range app.Services {
+		if !selectorMatches(service.Selector, workload.Labels) {
+			continue
+		}
+		records = append(records, guestproto.DNSRecord{Name: service.Name, Namespace: app.Identity.Namespace, IPs: []string{"127.0.0.1"}})
+	}
+	if len(records) == 0 {
+		return nil
+	}
+	namespace := app.Identity.Namespace
+	return &guestproto.DNSConfig{
+		ClusterDomain: "cluster.local",
+		Search:        []string{namespace + ".svc.cluster.local", "svc.cluster.local", "cluster.local"},
+		Records:       records,
+	}
+}
+
+func selectorMatches(selector, labels map[string]string) bool {
+	if len(selector) == 0 {
+		return true
+	}
+	for key, value := range selector {
+		if labels[key] != value {
+			return false
+		}
+	}
+	return true
 }
 
 func (e *Executor) containerSpec(app model.Application, container model.Container, rootfs string, volumeTargets map[string]string) (guestproto.ContainerSpec, error) {

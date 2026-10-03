@@ -28,6 +28,9 @@ type HelperConfig struct {
 	// NamespaceInterface is the name given to the interface inside the new
 	// namespace (pasta -I). Defaults to "grillo0".
 	NamespaceInterface string
+	// Address, when set, is assigned to the namespace interface (pasta -a),
+	// giving each sandbox a unique address from the IPAM pool.
+	Address string
 	// Env is the child's environment. Defaults to the current environment.
 	Env []string
 }
@@ -67,8 +70,11 @@ func StartHelper(cfg HelperConfig, child ...string) (*Helper, error) {
 		"-f", "-4", "-I", cfg.NamespaceInterface,
 		"--config-net", "--no-map-gw",
 		"-t", "none", "-u", "none", "-T", "none", "-U", "none",
-		"--",
 	}
+	if cfg.Address != "" {
+		args = append(args, "-a", cfg.Address)
+	}
+	args = append(args, "--")
 	args = append(args, child...)
 	cmd := exec.Command(cfg.Pasta, args...)
 	if len(cfg.Env) == 0 {

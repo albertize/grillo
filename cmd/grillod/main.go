@@ -24,6 +24,7 @@ import (
 	"grillo.local/grillo/internal/executor"
 	"grillo.local/grillo/internal/model"
 	"grillo.local/grillo/internal/observe"
+	"grillo.local/grillo/internal/oci"
 	"grillo.local/grillo/internal/reconcile"
 	"grillo.local/grillo/internal/state"
 	"grillo.local/grillo/internal/storage"
@@ -42,7 +43,6 @@ func run() error {
 	kernel := flag.String("kernel", "experiments/artifacts/qemu/bzImage", "guest kernel")
 	initramfs := flag.String("initramfs", "experiments/artifacts/t07/initramfs-agent.cpio.gz", "guest initramfs")
 	keyFile := flag.String("key-file", "experiments/artifacts/t07/key", "base64 per-boot guest key")
-	rootfs := flag.String("rootfs", "experiments/artifacts/t02/rootfs", "container rootfs directory (development image resolver)")
 	qemuPath := flag.String("qemu", "", "qemu binary (default: PATH)")
 	virtiofsd := flag.String("virtiofsd", "", "virtiofsd binary (default: /usr/libexec/virtiofsd)")
 	vsockPort := flag.Uint("vsock-port", 1024, "guest vsock port")
@@ -91,6 +91,14 @@ func run() error {
 	if err != nil {
 		return err
 	}
+	cas, err := oci.OpenCAS(filepath.Join(layout.Cache, "oci"))
+	if err != nil {
+		return err
+	}
+	images := &executor.OCIResolver{
+		Puller:   &oci.Puller{CAS: cas, Registry: oci.NewRegistryClient(), Platform: oci.Platform{OS: "linux", Architecture: "amd64"}},
+		CacheDir: filepath.Join(layout.Cache, "rootfs"),
+	}
 	exec, err := executor.New(executor.Config{
 		Backend:      backend,
 		Volumes:      volumes,
@@ -100,7 +108,7 @@ func run() error {
 		GuestKey:     guestKey,
 		VsockPort:    uint32(*vsockPort),
 		VsockCIDBase: 20,
-		Images:       directoryResolver{dir: *rootfs},
+		Images:       images,
 	})
 	if err != nil {
 		return err
@@ -172,14 +180,6 @@ func (c *core) Exec(ctx context.Context, application, container string, args []s
 	stderr := &boundedBuffer{limit: maxOutput}
 	code, err := c.exec.Exec(ctx, application, container, args, stdout, stderr)
 	return code, stdout.String(), stderr.String(), err
-}
-
-// directoryResolver serves one host rootfs directory for every image. A full
-// OCI-backed resolver is a separate task.
-type directoryResolver struct{ dir string }
-
-func (d directoryResolver) Resolve(context.Context, model.ImageRef) (executor.Image, error) {
-	return executor.Image{HostPath: d.dir, Version: "directory"}, nil
 }
 
 type boundedBuffer struct {

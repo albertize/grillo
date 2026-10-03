@@ -16,8 +16,24 @@ type SandboxSpec struct {
 	ID          string          `json:"id"`
 	Hostname    string          `json:"hostname,omitempty"`
 	Nameservers []string        `json:"nameservers,omitempty"`
+	DNS         *DNSConfig      `json:"dns,omitempty"`
 	Shares      []ShareSpec     `json:"shares,omitempty"`
 	Containers  []ContainerSpec `json:"containers"`
+}
+
+// DNSConfig is the guest resolver configuration: service records the agent
+// serves on 127.0.0.1:53 plus search domains.
+type DNSConfig struct {
+	ClusterDomain string      `json:"clusterDomain,omitempty"`
+	Search        []string    `json:"search,omitempty"`
+	Records       []DNSRecord `json:"records,omitempty"`
+}
+
+// DNSRecord maps a service name to the addresses reachable from the sandbox.
+type DNSRecord struct {
+	Name      string   `json:"name"`
+	Namespace string   `json:"namespace"`
+	IPs       []string `json:"ips"`
 }
 
 // ShareSpec is a volume the guest mounts before starting containers. Virtiofs

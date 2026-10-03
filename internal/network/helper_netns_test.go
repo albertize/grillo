@@ -27,16 +27,18 @@ func TestPastaEgressAndIsolation(t *testing.T) {
 	if selinuxEnforcing() {
 		t.Skip("SKIP: SELinux Enforcing kills pasta helpers on the tested policy")
 	}
-	hostIP := hostIPv4()
-	if hostIP == "" {
-		t.Skip("SKIP: no non-loopback IPv4 address")
-	}
-	canary, err := net.Listen("tcp", net.JoinHostPort(hostIP, "0"))
+	// The management API is a Unix socket; a host-loopback TCP listener stands in
+	// for a host-only service the guest must not reach.
+	canary, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
-		t.Skipf("SKIP: cannot listen on %s: %v", hostIP, err)
+		t.Skipf("SKIP: cannot listen on loopback: %v", err)
 	}
 	defer canary.Close()
 	hostNS := netNSInode()
+	ipam, err := OpenIPAM(t.TempDir(), "10.77.0.0/24", "10.77.0.1")
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	type running struct {
 		helper *Helper
@@ -48,11 +50,15 @@ func TestPastaEgressAndIsolation(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		lease, err := ipam.Allocate(fmt.Sprintf("sbx-%d", i), "app", "", "")
+		if err != nil {
+			t.Fatal(err)
+		}
 		env := append(os.Environ(),
 			"GRILLO_NET_CHILD=1",
 			"GRILLO_MGMT_ADDR="+canary.Addr().String(),
 		)
-		helper, err := StartHelper(HelperConfig{Log: log, Env: env}, os.Args[0], "-test.run=^TestHelperChild$")
+		helper, err := StartHelper(HelperConfig{Log: log, Env: env, Address: lease.IP + "/24"}, os.Args[0], "-test.run=^TestHelperChild$")
 		if err != nil {
 			log.Close()
 			t.Skipf("SKIP: rootless helper unavailable: %v", err)
@@ -72,6 +78,12 @@ func TestPastaEgressAndIsolation(t *testing.T) {
 		}
 	}
 
+	expected := []string{}
+	for i := 0; i < 2; i++ {
+		if lease, ok, _ := ipam.Get(fmt.Sprintf("sbx-%d", i)); ok {
+			expected = append(expected, lease.IP)
+		}
+	}
 	type result struct {
 		netns, addr           string
 		egress, mgmt, isolate bool
@@ -95,6 +107,14 @@ func TestPastaEgressAndIsolation(t *testing.T) {
 	}
 	if results[0].netns == results[1].netns {
 		t.Fatal("two helpers shared a network namespace")
+	}
+	if len(expected) == 2 && results[0].addr == results[1].addr {
+		t.Fatalf("sandboxes share the address %q; expected unique addresses", results[0].addr)
+	}
+	for i, want := range expected {
+		if results[i].addr != want {
+			t.Errorf("helper %d address = %q, want the IPAM address %q", i, results[i].addr, want)
+		}
 	}
 	for i, r := range results {
 		if !r.egress {

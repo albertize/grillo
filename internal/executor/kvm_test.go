@@ -87,10 +87,12 @@ func TestKVMEndToEndApply(t *testing.T) {
 		APIVersion: model.APIVersion,
 		Kind:       model.KindApplication,
 		Identity:   model.Identity{Name: "e2e", Namespace: "default"},
+		Services:   []model.Service{{Name: "api", Selector: map[string]string{"app": "web"}, Ports: []model.ServicePort{{Port: 8080}}}},
 		Workloads: []model.Workload{{
 			ID:       "web",
 			Kind:     model.WorkloadDeployment,
 			Replicas: 1,
+			Labels:   map[string]string{"app": "web"},
 			Template: model.SandboxTemplate{
 				Containers: []model.Container{{
 					Name:  "app",
@@ -142,6 +144,17 @@ running:
 	}
 	if !strings.Contains(stdout.String(), "end-to-end") {
 		t.Fatalf("exec output = %q", stdout.String())
+	}
+
+	// The guest resolver answers the Kubernetes service names.
+	for _, name := range []string{"api", "api.default", "api.default.svc", "api.default.svc.cluster.local"} {
+		var resolved, errOut bytes.Buffer
+		if _, err := exec.Exec(ctx, "e2e", "app", []string{"/bin/nslookup", name}, &resolved, &errOut); err != nil {
+			t.Fatalf("nslookup %s: %v", name, err)
+		}
+		if !strings.Contains(resolved.String(), "127.0.0.1") {
+			t.Fatalf("nslookup %s did not resolve: stdout=%q stderr=%q", name, resolved.String(), errOut.String())
+		}
 	}
 
 	// Down tears the sandbox down.
