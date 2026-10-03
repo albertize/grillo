@@ -82,6 +82,8 @@ type Options struct {
 	Version string
 	// Shutdown stops the daemon (not applications). May be nil.
 	Shutdown func()
+	// Images is the optional image inventory and build surface.
+	Images ImageManager
 	// PeerUID is the only UID allowed to connect. Defaults to the current user.
 	PeerUID uint32
 	// MaxBodyBytes bounds request bodies (default 8 MiB).
@@ -117,6 +119,11 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /v1/operations/{id}", s.handleOperation)
 	mux.HandleFunc("POST /v1/operations/{id}/cancel", s.handleCancel)
 	mux.HandleFunc("GET /v1/events", s.handleEvents)
+	mux.HandleFunc("GET /v1/images", s.handleImages)
+	mux.HandleFunc("GET /v1/images/inspect", s.handleInspectImage)
+	mux.HandleFunc("POST /v1/images/prune", s.handlePruneImages)
+	mux.HandleFunc("POST /v1/images/pin", s.handlePinImage)
+	mux.HandleFunc("POST /v1/build", s.handleBuild)
 	mux.HandleFunc("GET /v1/logs", s.handleLogs)
 	mux.HandleFunc("POST /v1/shutdown", s.handleShutdown)
 	return mux

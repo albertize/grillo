@@ -114,8 +114,13 @@ test-bridged: t07-guest oci-guest
 test-netns:
 	go test -tags netns -count=1 -v -timeout 180s -run TestPastaEgressAndIsolation ./internal/network/
 
+# T18 builder: real rootless Podman build, OCI layout import, and image GC.
+# Missing Podman is a documented SKIP.
+test-builder:
+	go test -tags builder -count=1 -v -timeout 300s ./internal/build/ ./internal/image/ ./internal/oci/
+
 # Full T02/T03 real hardware evidence. No downloads or preexisting volume deletion.
-.PHONY: f0-guest test-f0 t07-guest test-t07 test-t08 test-t10 test-netns test-executor test-netreg test-bridged
+.PHONY: f0-guest test-f0 t07-guest test-t07 test-t08 test-t10 test-netns test-executor test-netreg test-bridged test-builder
 f0-guest:
 	bash experiments/boot/qemu/build-kernel.sh
 	bash experiments/boot/qemu/build-f0-guest.sh

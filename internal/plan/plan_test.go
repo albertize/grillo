@@ -3,6 +3,8 @@
 package plan
 
 import (
+	"os/exec"
+	"strings"
 	"testing"
 
 	"grillo.local/grillo/internal/model"
@@ -202,5 +204,22 @@ func TestPrepareVolume(t *testing.T) {
 	}
 	if len(p.Actions) != 1 || p.Actions[0].Kind != ActionPrepareVolume || p.Actions[0].Volume != "data" {
 		t.Fatalf("actions = %+v", p.Actions)
+	}
+}
+
+// TestPlanDoesNotBuild enforces the guarantee that planning is pure and never
+// invokes an image builder or the runtime.
+func TestPlanDoesNotBuild(t *testing.T) {
+	out, err := exec.Command("go", "list", "-f", "{{join .Imports \"\\n\"}}", ".").CombinedOutput()
+	if err != nil {
+		t.Skipf("SKIP: go list failed: %v", err)
+	}
+	for _, forbidden := range []string{
+		"internal/build", "internal/executor", "internal/backend",
+		"internal/sandbox", "internal/image", "internal/oci", "internal/network",
+	} {
+		if strings.Contains(string(out), forbidden) {
+			t.Fatalf("plan imports %s:\n%s", forbidden, out)
+		}
 	}
 }

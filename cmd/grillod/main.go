@@ -24,7 +24,9 @@ import (
 
 	"grillo.local/grillo/internal/api"
 	"grillo.local/grillo/internal/backend/qemu"
+	"grillo.local/grillo/internal/build"
 	"grillo.local/grillo/internal/executor"
+	"grillo.local/grillo/internal/image"
 	"grillo.local/grillo/internal/model"
 	"grillo.local/grillo/internal/observe"
 	"grillo.local/grillo/internal/oci"
@@ -98,6 +100,16 @@ func run() error {
 	if err != nil {
 		return err
 	}
+	imagesStore, err := image.Open(filepath.Join(layout.Data, "images"), cas)
+	if err != nil {
+		return err
+	}
+	builder := &build.PodmanBuilder{
+		CAS:      cas,
+		Store:    imagesStore,
+		TempDir:  filepath.Join(layout.Cache, "build"),
+		Platform: oci.Platform{OS: "linux", Architecture: "amd64"},
+	}
 	images := &executor.OCIResolver{
 		Puller:   &oci.Puller{CAS: cas, Registry: oci.NewRegistryClient(), Platform: oci.Platform{OS: "linux", Architecture: "amd64"}},
 		CacheDir: filepath.Join(layout.Cache, "rootfs"),
@@ -124,8 +136,17 @@ func run() error {
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
 	defer cancel()
 
+	runtimeCore := &core{
+		reconciler: reconciler,
+		exec:       exec,
+		images:     imagesStore,
+		builder:    builder,
+		apps:       map[string]bool{},
+		desired:    map[string]model.Application{},
+	}
 	server := api.NewServer(api.Options{
-		Core:     &core{reconciler: reconciler, exec: exec, apps: map[string]bool{}},
+		Core:     runtimeCore,
+		Images:   runtimeCore,
 		Events:   events,
 		Logs:     logs,
 		Version:  version,
@@ -155,9 +176,12 @@ func readKey(path string) ([]byte, error) {
 type core struct {
 	reconciler *reconcile.Reconciler
 	exec       *executor.Executor
+	images     *image.Store
+	builder    *build.PodmanBuilder
 
-	mu   sync.Mutex
-	apps map[string]bool
+	mu      sync.Mutex
+	apps    map[string]bool
+	desired map[string]model.Application
 }
 
 func (c *core) Apply(ctx context.Context, app model.Application) (reconcile.Result, error) {
@@ -168,7 +192,11 @@ func (c *core) Apply(ctx context.Context, app model.Application) (reconcile.Resu
 		if c.apps == nil {
 			c.apps = map[string]bool{}
 		}
+		if c.desired == nil {
+			c.desired = map[string]model.Application{}
+		}
 		c.apps[app.Identity.Name] = true
+		c.desired[app.Identity.Name] = app
 		c.mu.Unlock()
 	}
 	return result, err
@@ -214,6 +242,61 @@ func (c *core) Exec(ctx context.Context, application, container string, args []s
 	stderr := &boundedBuffer{limit: maxOutput}
 	code, err := c.exec.Exec(ctx, application, container, args, stdout, stderr)
 	return code, stdout.String(), stderr.String(), err
+}
+
+// Images implements api.ImageManager.
+
+func (c *core) Images(context.Context) ([]image.Record, error) {
+	if c.images == nil {
+		return nil, errors.New("image inventory is not configured")
+	}
+	return c.images.List()
+}
+
+func (c *core) InspectImage(ctx context.Context, reference string) (image.Record, error) {
+	if c.images == nil {
+		return image.Record{}, errors.New("image inventory is not configured")
+	}
+	return c.images.Require(reference)
+}
+
+func (c *core) PinImage(ctx context.Context, reference string, pinned bool) error {
+	if c.images == nil {
+		return errors.New("image inventory is not configured")
+	}
+	if strings.HasPrefix(reference, "sha256:") {
+		return c.images.PinDigest(reference, pinned)
+	}
+	return c.images.Pin(reference, pinned)
+}
+
+func (c *core) PruneImages(ctx context.Context, keep []string) (image.PruneResult, error) {
+	if c.images == nil {
+		return image.PruneResult{}, errors.New("image inventory is not configured")
+	}
+	keepSet := map[string]bool{}
+	for _, reference := range keep {
+		keepSet[reference] = true
+	}
+	c.mu.Lock()
+	for _, app := range c.desired {
+		for _, workload := range app.Workloads {
+			for _, container := range workload.Template.Containers {
+				if container.Image.Reference != "" {
+					keepSet[container.Image.Reference] = true
+				}
+			}
+		}
+	}
+	c.mu.Unlock()
+	return c.images.Prune(ctx, func(record image.Record) bool { return keepSet[record.Reference] })
+}
+
+func (c *core) Build(ctx context.Context, request build.Request, progress func(string)) (build.Result, error) {
+	if c.builder == nil {
+		return build.Result{}, errors.New("no builder configured")
+	}
+	return c.builder.Build(ctx, request, build.Progress(progress))
 }
 
 type boundedBuffer struct {

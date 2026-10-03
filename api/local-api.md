@@ -30,7 +30,19 @@ stderr.
 | `POST /v1/operations/{id}/cancel` | cancel a running operation |
 | `GET /v1/events` | Server-Sent Events of the sequenced event stream |
 | `GET /v1/logs` | log records; `?follow=true` streams them |
+| `GET /v1/images` | image inventory (pull and build records) |
+| `GET /v1/images/inspect?ref=` | one image record by reference |
+| `POST /v1/images/prune` | garbage-collect unused images; body `{"keep":[...]}`; `202` + `operationId` |
+| `POST /v1/images/pin` | protect or release an image (or a bare `sha256:` digest) from pruning |
+| `POST /v1/build` | build with rootless Podman; body is a build request; `202` + `operationId` |
 | `POST /v1/shutdown` | stop the daemon (not applications) |
+
+Image pruning never removes an image that is pinned or referenced by a known
+application, and only then collects unreferenced CAS blobs, so active data is
+preserved. `POST /v1/build` imports the result through a verified OCI layout,
+records it as a `build`-source image, and streams builder output into the event
+stream (`kind=build`, `reason=progress`). A missing Podman is reported as an
+actionable error, not a fallback.
 
 ## Asynchronous operations
 

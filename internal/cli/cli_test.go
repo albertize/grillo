@@ -15,6 +15,8 @@ import (
 	"time"
 
 	"grillo.local/grillo/internal/api"
+	"grillo.local/grillo/internal/build"
+	"grillo.local/grillo/internal/image"
 	"grillo.local/grillo/internal/model"
 	"grillo.local/grillo/internal/observe"
 )
@@ -24,6 +26,9 @@ type fakeClient struct {
 	downCalled bool
 	operation  api.Operation
 	execArgs   []string
+	images     []image.Record
+	lastBuild  build.Request
+	pinned     map[string]bool
 }
 
 func (f *fakeClient) Version(context.Context) (api.VersionInfo, error) { return api.VersionInfo{}, nil }
@@ -61,6 +66,27 @@ func (f *fakeClient) ListLogs(context.Context, uint64, string, string) ([]observ
 }
 func (f *fakeClient) FollowLogs(context.Context, uint64, string, string) (io.ReadCloser, error) {
 	return io.NopCloser(strings.NewReader("")), nil
+}
+func (f *fakeClient) Images(context.Context) ([]image.Record, error) { return f.images, nil }
+func (f *fakeClient) InspectImage(_ context.Context, reference string) (image.Record, error) {
+	for _, record := range f.images {
+		if record.Reference == reference {
+			return record, nil
+		}
+	}
+	return image.Record{}, image.ErrNotFound
+}
+func (f *fakeClient) PruneImages(context.Context, []string) (string, error) { return "op-prune", nil }
+func (f *fakeClient) PinImage(_ context.Context, reference string, pinned bool) error {
+	if f.pinned == nil {
+		f.pinned = map[string]bool{}
+	}
+	f.pinned[reference] = pinned
+	return nil
+}
+func (f *fakeClient) Build(_ context.Context, request build.Request) (string, error) {
+	f.lastBuild = request
+	return "op-build", nil
 }
 
 type fakeTerminal struct {
@@ -285,5 +311,67 @@ func TestPlanRejectsUnsupportedComposeField(t *testing.T) {
 	}
 	if !strings.Contains(stderr.String(), "privileged") {
 		t.Fatalf("stderr = %q", stderr.String())
+	}
+}
+
+func TestBuildCommand(t *testing.T) {
+	client := &fakeClient{operation: api.Operation{Kind: "build", State: "succeeded"}}
+	app, stdout, stderr := newTestApp(t, client, &fakeTerminal{})
+	code := app.Run(context.Background(), []string{
+		"build", "-t", "grillo.local/app:dev", "--build-arg", "VERSION=1.2", "--label", "org.test=1",
+		"--no-cache", "--network", "none", "/tmp/context",
+	})
+	if code != 0 {
+		t.Fatalf("exit = %d: %s", code, stderr.String())
+	}
+	if client.lastBuild.Reference != "grillo.local/app:dev" || client.lastBuild.ContextDir != "/tmp/context" {
+		t.Fatalf("request = %+v", client.lastBuild)
+	}
+	if client.lastBuild.BuildArgs["VERSION"] != "1.2" || client.lastBuild.Labels["org.test"] != "1" || !client.lastBuild.NoCache || client.lastBuild.Network != "none" {
+		t.Fatalf("request = %+v", client.lastBuild)
+	}
+	if !strings.Contains(stdout.String(), "build: succeeded") {
+		t.Fatalf("stdout = %q", stdout.String())
+	}
+}
+
+func TestImageCommands(t *testing.T) {
+	client := &fakeClient{
+		operation: api.Operation{Kind: "prune-images", State: "succeeded"},
+		images: []image.Record{{
+			Reference:      "grillo.local/app:dev",
+			ManifestDigest: "sha256:abc",
+			Source:         image.SourceBuild,
+			Size:           2048,
+		}},
+	}
+	app, stdout, stderr := newTestApp(t, client, &fakeTerminal{})
+	if code := app.Run(context.Background(), []string{"image", "ls"}); code != 0 {
+		t.Fatalf("ls exit = %d: %s", code, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "grillo.local/app:dev") {
+		t.Fatalf("ls output = %q", stdout.String())
+	}
+	if !strings.Contains(stdout.String(), "2.0KiB") {
+		t.Fatalf("ls output = %q", stdout.String())
+	}
+
+	stdout.Reset()
+	if code := app.Run(context.Background(), []string{"image", "inspect", "grillo.local/app:dev"}); code != 0 {
+		t.Fatalf("inspect exit = %d: %s", code, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "sha256:abc") {
+		t.Fatalf("inspect output = %q", stdout.String())
+	}
+
+	if code := app.Run(context.Background(), []string{"image", "pin", "sha256:abc"}); code != 0 {
+		t.Fatalf("pin exit = %d: %s", code, stderr.String())
+	}
+	if !client.pinned["sha256:abc"] {
+		t.Fatal("pin not recorded")
+	}
+
+	if code := app.Run(context.Background(), []string{"image", "prune", "--keep", "grillo.local/app:dev"}); code != 0 {
+		t.Fatalf("prune exit = %d: %s", code, stderr.String())
 	}
 }

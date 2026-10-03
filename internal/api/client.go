@@ -21,6 +21,8 @@ import (
 	"strings"
 	"time"
 
+	"grillo.local/grillo/internal/build"
+	"grillo.local/grillo/internal/image"
 	"grillo.local/grillo/internal/model"
 	"grillo.local/grillo/internal/observe"
 )
@@ -65,6 +67,45 @@ func (c *Client) Apply(ctx context.Context, app model.Application) (string, erro
 		OperationID string `json:"operationId"`
 	}
 	err := c.do(ctx, http.MethodPost, "/v1/applications", app, &out)
+	return out.OperationID, err
+}
+
+// Images lists the image inventory.
+func (c *Client) Images(ctx context.Context) ([]image.Record, error) {
+	var out struct {
+		Images []image.Record `json:"images"`
+	}
+	err := c.do(ctx, http.MethodGet, "/v1/images", nil, &out)
+	return out.Images, err
+}
+
+// InspectImage returns one image record.
+func (c *Client) InspectImage(ctx context.Context, reference string) (image.Record, error) {
+	var out image.Record
+	path := "/v1/images/inspect?ref=" + url.QueryEscape(reference)
+	return out, c.do(ctx, http.MethodGet, path, nil, &out)
+}
+
+// PruneImages garbage collects unused images and returns the operation ID.
+func (c *Client) PruneImages(ctx context.Context, keep []string) (string, error) {
+	var out struct {
+		OperationID string `json:"operationId"`
+	}
+	err := c.do(ctx, http.MethodPost, "/v1/images/prune", map[string]any{"keep": keep}, &out)
+	return out.OperationID, err
+}
+
+// PinImage protects or releases an image from pruning.
+func (c *Client) PinImage(ctx context.Context, reference string, pinned bool) error {
+	return c.do(ctx, http.MethodPost, "/v1/images/pin", map[string]any{"reference": reference, "pinned": pinned}, nil)
+}
+
+// Build starts an image build and returns the operation ID.
+func (c *Client) Build(ctx context.Context, request build.Request) (string, error) {
+	var out struct {
+		OperationID string `json:"operationId"`
+	}
+	err := c.do(ctx, http.MethodPost, "/v1/build", request, &out)
 	return out.OperationID, err
 }
 

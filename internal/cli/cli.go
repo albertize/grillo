@@ -14,11 +14,14 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"text/tabwriter"
 	"time"
 
 	"grillo.local/grillo/internal/api"
+	"grillo.local/grillo/internal/build"
 	"grillo.local/grillo/internal/frontend/compose"
 	"grillo.local/grillo/internal/frontend/detect"
+	"grillo.local/grillo/internal/image"
 	"grillo.local/grillo/internal/model"
 	"grillo.local/grillo/internal/observe"
 	"grillo.local/grillo/internal/plan"
@@ -41,6 +44,11 @@ type Client interface {
 	Events(ctx context.Context, since uint64) (io.ReadCloser, error)
 	ListLogs(ctx context.Context, since uint64, resource, container string) ([]observe.LogRecord, error)
 	FollowLogs(ctx context.Context, since uint64, resource, container string) (io.ReadCloser, error)
+	Images(ctx context.Context) ([]image.Record, error)
+	InspectImage(ctx context.Context, reference string) (image.Record, error)
+	PruneImages(ctx context.Context, keep []string) (string, error)
+	PinImage(ctx context.Context, reference string, pinned bool) error
+	Build(ctx context.Context, request build.Request) (string, error)
 }
 
 // App is the CLI application. Its dependencies are injectable for tests.
@@ -68,6 +76,8 @@ Commands:
   events [-f]              show or follow the event stream
   exec <pod> [container] -- <command>
   shell <pod> [container]
+  build -t <ref> <context> build an image with rootless Podman
+  image <ls|inspect|pin|unpin|prune>
   doctor                   check host readiness (read-only)
   version
 `
@@ -148,6 +158,10 @@ func (a *App) Run(ctx context.Context, args []string) int {
 		return a.cmdExec(ctx, args[1:], false)
 	case "shell":
 		return a.cmdExec(ctx, args[1:], true)
+	case "build":
+		return a.cmdBuild(ctx, args[1:])
+	case "image":
+		return a.cmdImage(ctx, args[1:])
 	default:
 		fmt.Fprintf(a.Stderr, "unknown command %q\n\n%s", args[0], usage)
 		return 2
@@ -692,4 +706,178 @@ func usageError(w io.Writer, command string, err error) int {
 func fail(w io.Writer, err error) int {
 	fmt.Fprintf(w, "grillo: %v\n", err)
 	return 1
+}
+
+func (a *App) cmdBuild(ctx context.Context, args []string) int {
+	fs := flag.NewFlagSet("build", flag.ContinueOnError)
+	fs.SetOutput(a.Stderr)
+	reference := fs.String("t", "", "result reference")
+	fs.StringVar(reference, "tag", "", "result reference")
+	dockerfile := fs.String("file", "", "containerfile path")
+	network := fs.String("network", "", "build network mode")
+	target := fs.String("target", "", "multi-stage build target")
+	platform := fs.String("platform", "", "target platform")
+	noCache := fs.Bool("no-cache", false, "disable the builder cache")
+	pull := fs.Bool("pull", false, "refresh base images")
+	var buildArgs, labels stringSlice
+	fs.Var(&buildArgs, "build-arg", "build argument KEY=VALUE (repeatable)")
+	fs.Var(&labels, "label", "image label KEY=VALUE (repeatable)")
+	flags, positionals, _, err := SplitForFlagSet(args, fs)
+	if err != nil {
+		return usageError(a.Stderr, "build", err)
+	}
+	if err := fs.Parse(flags); err != nil {
+		return 2
+	}
+	if *reference == "" {
+		fmt.Fprintln(a.Stderr, "grillo: build requires -t REFERENCE")
+		return 2
+	}
+	if len(positionals) != 1 {
+		fmt.Fprintln(a.Stderr, "grillo: build requires exactly one context directory")
+		return 2
+	}
+	if code := a.ensureDaemon(ctx); code != 0 {
+		return code
+	}
+	client := a.ClientFactory(a.SocketPath)
+	id, err := client.Build(ctx, build.Request{
+		ContextDir: positionals[0],
+		Dockerfile: *dockerfile,
+		Reference:  *reference,
+		Network:    *network,
+		Target:     *target,
+		Platform:   *platform,
+		NoCache:    *noCache,
+		Pull:       *pull,
+		BuildArgs:  keyValues(buildArgs),
+		Labels:     keyValues(labels),
+	})
+	if err != nil {
+		return fail(a.Stderr, err)
+	}
+	return a.waitOperation(ctx, client, id)
+}
+
+func (a *App) cmdImage(ctx context.Context, args []string) int {
+	if len(args) == 0 {
+		fmt.Fprintln(a.Stderr, "usage: grillo image <ls|inspect|pin|unpin|prune> [options]")
+		return 2
+	}
+	sub, rest := args[0], args[1:]
+	if code := a.ensureDaemon(ctx); code != 0 {
+		return code
+	}
+	client := a.ClientFactory(a.SocketPath)
+	switch sub {
+	case "ls", "list":
+		fs := flag.NewFlagSet("image ls", flag.ContinueOnError)
+		fs.SetOutput(a.Stderr)
+		output := fs.String("output", "text", "text or json")
+		flags, _, _, err := SplitForFlagSet(rest, fs)
+		if err != nil {
+			return usageError(a.Stderr, "image ls", err)
+		}
+		if err := fs.Parse(flags); err != nil {
+			return 2
+		}
+		records, err := client.Images(ctx)
+		if err != nil {
+			return fail(a.Stderr, err)
+		}
+		if *output == "json" {
+			return a.printJSON(records)
+		}
+		writer := tabwriter.NewWriter(a.Stdout, 0, 4, 2, ' ', 0)
+		fmt.Fprintln(writer, "REFERENCE\tDIGEST\tSOURCE\tSIZE\tPINNED")
+		for _, record := range records {
+			fmt.Fprintf(writer, "%s\t%s\t%s\t%s\t%v\n", record.Reference, record.ManifestDigest, record.Source, humanBytes(record.Size), record.Pinned)
+		}
+		return flush(writer, a.Stderr)
+	case "inspect":
+		if len(rest) != 1 {
+			fmt.Fprintln(a.Stderr, "usage: grillo image inspect REFERENCE")
+			return 2
+		}
+		record, err := client.InspectImage(ctx, rest[0])
+		if err != nil {
+			return fail(a.Stderr, err)
+		}
+		return a.printJSON(record)
+	case "pin", "unpin":
+		if len(rest) != 1 {
+			fmt.Fprintf(a.Stderr, "usage: grillo image %s REFERENCE\n", sub)
+			return 2
+		}
+		if err := client.PinImage(ctx, rest[0], sub == "pin"); err != nil {
+			return fail(a.Stderr, err)
+		}
+		fmt.Fprintf(a.Stdout, "%s: %s\n", sub, rest[0])
+		return 0
+	case "prune":
+		fs := flag.NewFlagSet("image prune", flag.ContinueOnError)
+		fs.SetOutput(a.Stderr)
+		var keeps stringSlice
+		fs.Var(&keeps, "keep", "reference to keep (repeatable)")
+		flags, _, _, err := SplitForFlagSet(rest, fs)
+		if err != nil {
+			return usageError(a.Stderr, "image prune", err)
+		}
+		if err := fs.Parse(flags); err != nil {
+			return 2
+		}
+		id, err := client.PruneImages(ctx, keeps)
+		if err != nil {
+			return fail(a.Stderr, err)
+		}
+		return a.waitOperation(ctx, client, id)
+	default:
+		fmt.Fprintf(a.Stderr, "grillo: unknown image subcommand %q\n", sub)
+		return 2
+	}
+}
+
+func (a *App) printJSON(value any) int {
+	encoder := json.NewEncoder(a.Stdout)
+	encoder.SetIndent("", "  ")
+	if err := encoder.Encode(value); err != nil {
+		return fail(a.Stderr, err)
+	}
+	return 0
+}
+
+func flush(writer *tabwriter.Writer, stderr io.Writer) int {
+	if err := writer.Flush(); err != nil {
+		return fail(stderr, err)
+	}
+	return 0
+}
+
+func keyValues(items []string) map[string]string {
+	if len(items) == 0 {
+		return nil
+	}
+	out := make(map[string]string, len(items))
+	for _, item := range items {
+		key, value, found := strings.Cut(item, "=")
+		if !found {
+			out[item] = ""
+			continue
+		}
+		out[key] = value
+	}
+	return out
+}
+
+func humanBytes(n int64) string {
+	const unit = 1024
+	if n < unit {
+		return fmt.Sprintf("%dB", n)
+	}
+	div, exp := int64(unit), 0
+	for m := n / unit; m >= unit; m /= unit {
+		div *= unit
+		exp++
+	}
+	return fmt.Sprintf("%.1f%ciB", float64(n)/float64(div), "KMGT"[exp])
 }
