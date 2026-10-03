@@ -54,6 +54,10 @@ type Config struct {
 	Images       ImageResolver
 	Dial         func(ctx context.Context, cid, port uint32) (*guestproto.Client, error)
 
+	// Secrets resolves Secret-backed environment variables. When nil, a
+	// container that references a Secret fails with a clear error.
+	Secrets SecretResolver
+
 	// Networking (optional). When EnableNetwork is set, each application runs a
 	// network supervisor and sandboxes receive IPAM addresses on its bridge.
 	EnableNetwork bool
@@ -466,7 +470,7 @@ func (e *Executor) containerSpec(app model.Application, container model.Containe
 	if len(args) == 0 {
 		return guestproto.ContainerSpec{}, fmt.Errorf("executor: container %q has no command", container.Name)
 	}
-	env, err := resolveEnv(app, container)
+	env, err := e.resolveEnv(app, container)
 	if err != nil {
 		return guestproto.ContainerSpec{}, err
 	}
@@ -641,7 +645,12 @@ func containerArgs(container model.Container) []string {
 	return args
 }
 
-func resolveEnv(app model.Application, container model.Container) ([]string, error) {
+// SecretResolver reads secret values by reference.
+type SecretResolver interface {
+	Get(ref model.SecretRef) (map[string][]byte, error)
+}
+
+func (e *Executor) resolveEnv(app model.Application, container model.Container) ([]string, error) {
 	var env []string
 	for _, variable := range container.Env {
 		if variable.ValueFrom == nil {
@@ -656,9 +665,37 @@ func resolveEnv(app model.Application, container model.Container) ([]string, err
 			env = append(env, variable.Name+"="+text)
 			continue
 		}
+		if variable.ValueFrom.SecretRef != nil {
+			if e.cfg.Secrets == nil {
+				return nil, fmt.Errorf("executor: container %q env %q references secret %q but no secret store is configured", container.Name, variable.Name, variable.ValueFrom.SecretRef.Secret)
+			}
+			ref, ok := secretRefFor(app, variable.ValueFrom.SecretRef.Secret)
+			if !ok {
+				return nil, fmt.Errorf("executor: container %q env %q references undeclared secret %q", container.Name, variable.Name, variable.ValueFrom.SecretRef.Secret)
+			}
+			values, err := e.cfg.Secrets.Get(ref)
+			if err != nil {
+				return nil, fmt.Errorf("executor: container %q env %q: %w", container.Name, variable.Name, err)
+			}
+			value, ok := values[variable.ValueFrom.SecretRef.Key]
+			if !ok {
+				return nil, fmt.Errorf("executor: container %q env %q references missing key %q in secret %q", container.Name, variable.Name, variable.ValueFrom.SecretRef.Key, ref.Name)
+			}
+			env = append(env, variable.Name+"="+string(value))
+			continue
+		}
 		return nil, fmt.Errorf("executor: container %q env %q uses an unsupported source", container.Name, variable.Name)
 	}
 	return env, nil
+}
+
+func secretRefFor(app model.Application, name string) (model.SecretRef, bool) {
+	for _, ref := range app.Secrets {
+		if ref.Name == name {
+			return ref, true
+		}
+	}
+	return model.SecretRef{}, false
 }
 
 func configText(app model.Application, name, key string) (string, bool) {

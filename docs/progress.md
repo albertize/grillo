@@ -39,6 +39,8 @@ real KVM/QEMU and passes OCI scenario A plus an init-failure case.
 
 **T15 is complete.** `internal/api` serves the local Unix-socket API with `SO_PEERCRED` UID checks, bounded bodies, the `{code,message,resource,retryable,details}` error DTO, asynchronous operations on the daemon lifetime context, SSE events with `Last-Event-ID` and gap records, log streaming, and distinct daemon-shutdown/application-down endpoints. `cmd/grillod` holds the single-instance state lock, builds the QEMU backend, storage manager, and `internal/executor`, and serves status and exec endpoints.
 
+**T20 (Kubernetes MVP compiler) is complete.** `internal/frontend/kubernetes` compiles multi-document YAML/`List` for Pod, Deployment, Service, Ingress, ConfigMap, Secret, and PVC into the IR, rejects privileged/hostNetwork/Tier3/NodePort and unknown fields, keeps Secret values out of the public IR, and discloses the default RollingUpdate as a Recreate downgrade requiring consent. `make test-k8s` runs a compiled multi-container Pod on KVM. See `docs/experiments/t20-kubernetes-compiler.md` and `docs/compatibility.md`.
+
 **T19 (F2 gate) is complete.** A complete Compose application (web + worker, one named network, service DNS, a managed volume) runs on the real runtime: `make test-f2` proves cross-VM fetch by service name, volume persistence across `down`/`up`, idempotent re-apply, and clean `down --volumes`. The gate also fixed three runtime defects (per-workload DNS filtering, volume metadata exposure, and PID-namespace VMM tracking). See `docs/experiments/t19-f2-compose.md`.
 
 **T18 and T18b are complete (ADR 0006).** Grillo has a native build system as the default and required path: `internal/dockerfile` parses a supported Dockerfile subset and `.dockerignore`, `internal/build.NativeBuilder` assembles the image without any external container engine, and `RUN` executes inside a sandboxed guest that shares the build root (T18b). Podman is an explicit opt-in (`--podman`) only. The Podman backend, `internal/oci.ImportLayout`, and `internal/image` (inventory/inspect/pin/GC, API/CLI) are retained.
@@ -74,7 +76,7 @@ Hosted CI has not yet been executed.
 | T18 | Native build system and image tooling | DONE | `internal/dockerfile` + `internal/build.NativeBuilder`; copy-only and sandboxed `RUN` builds, Podman opt-in, image store/GC, API/CLI (ADR 0006) |
 | T18b | Build execution in the guest (protocol) | DONE | `run` guest message + `SandboxRunner`; real KVM evidence |
 | T19 | F2 gate: Compose application | DONE | `make test-f2` real KVM: DNS, volume persistence, idempotent re-apply, down/recovery/cleanup; report `docs/experiments/t19-f2-compose.md` |
-| T20 | Kubernetes MVP compiler | TODO | T04; runtime verification T14 |
+| T20 | Kubernetes MVP compiler | DONE | `internal/frontend/kubernetes`; goldens, rejections, secret separation, RollingUpdate consent, multi-container KVM; `docs/experiments/t20-kubernetes-compiler.md` |
 | T21 | Helm rendering and OCI charts | TODO | T20 |
 | T22 | Helm gate and compatibility reporting | TODO | T19, T21 |
 | T23 | Web console and secure bridge | IN_PROGRESS | Bridge + minimal console in `internal/ui` and `grillo ui`; full views pending |
@@ -1002,6 +1004,35 @@ historical evidence only.
   disabled with a warning when they are unavailable.
 - **Next task:** T19 (F2 gate: Compose application).
 
+## T20 Kubernetes MVP compiler - 2026-10-03
+
+- **Task:** T20 - Kubernetes MVP compiler
+- **Status:** DONE
+- **Dependencies verified:** T04 (IR), T14 (reconciler), T06/T07 (guest) complete.
+- **Files and contracts changed:** `internal/frontend/kubernetes` (parser,
+  support registry, compiler, tests, fixtures, golden),
+  `internal/frontend/detect` and `internal/cli` (Kubernetes input, secret
+  persistence, `--allow-degraded`), `internal/executor` (`SecretResolver` and
+  `secretKeyRef` env resolution), `cmd/grillod` (secret store),
+  `docs/compatibility.md`, `docs/experiments/t20-kubernetes-compiler.md`,
+  `Makefile` (`test-k8s`).
+- **Decisions/ADRs:** No new ADR. Uses the existing IR and source diagnostics.
+- **Tests run:** `make test-k8s` PASS on real KVM (init + app + sidecar, shared
+  localhost, `emptyDir` write). Compiler unit tests: deployment golden,
+  secret-leak check, RollingUpdate consent gate, explicit Recreate,
+  privileged/hostNetwork/Tier3/NodePort rejection, multi-container Pod, `List`,
+  namespace rejection, unknown field, selector mismatch. CLI tests:
+  `TestPlanKubernetesInput`, `TestPlanKubernetesRejectsPrivileged`. `make check`
+  PASS.
+- **Tests NOT run and why:** hosted CI has not run; the KVM test SKIPs without
+  `/dev/kvm`, `pasta`, or the guest artifacts.
+- **Integration evidence:** `docs/experiments/t20-kubernetes-compiler.md`.
+- **Known limitations:** StatefulSet/Job/CronJob (F4), NetworkPolicy, and
+  projected/configMap/secret/downwardAPI volumes are rejected; `fieldRef` and
+  scheduling fields are rejected; Secret values are written by the CLI to the
+  shared per-user secret store.
+- **Next task:** T21 (Helm rendering and OCI charts).
+
 ## T19 F2 gate: Compose application - 2026-10-03
 
 - **Task:** T19 - F2 gate: Compose application
@@ -1028,7 +1059,7 @@ historical evidence only.
 - **Known limitations:** one network per application (multi-network rejected);
   Compose `build:` is not yet wired to run automatically from `up`; the gate uses
   prebuilt images.
-- **Next task:** T20 (Kubernetes MVP compiler).
+- **Next task:** T21 (Helm rendering and OCI charts).
 
 ## T18b Build execution in the guest - 2026-10-03
 

@@ -31,6 +31,7 @@ import (
 	"grillo.local/grillo/internal/observe"
 	"grillo.local/grillo/internal/oci"
 	"grillo.local/grillo/internal/reconcile"
+	"grillo.local/grillo/internal/secrets"
 	"grillo.local/grillo/internal/state"
 	"grillo.local/grillo/internal/storage"
 )
@@ -106,6 +107,10 @@ func run() error {
 	if err != nil {
 		return err
 	}
+	secretStore, err := secrets.Open(filepath.Join(layout.Data, "secrets"), state.Ops{})
+	if err != nil {
+		return err
+	}
 	podmanBuilder := &build.PodmanBuilder{
 		CAS:      cas,
 		Store:    imagesStore,
@@ -176,6 +181,7 @@ func run() error {
 		VsockPort:    uint32(*vsockPort),
 		VsockCIDBase: 20,
 		Images:       images,
+		Secrets:      secretStore,
 	})
 	if err != nil {
 		return err

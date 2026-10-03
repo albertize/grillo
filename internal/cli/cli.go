@@ -21,10 +21,12 @@ import (
 	"grillo.local/grillo/internal/build"
 	"grillo.local/grillo/internal/frontend/compose"
 	"grillo.local/grillo/internal/frontend/detect"
+	"grillo.local/grillo/internal/frontend/kubernetes"
 	"grillo.local/grillo/internal/image"
 	"grillo.local/grillo/internal/model"
 	"grillo.local/grillo/internal/observe"
 	"grillo.local/grillo/internal/plan"
+	"grillo.local/grillo/internal/secrets"
 	"grillo.local/grillo/internal/source"
 	"grillo.local/grillo/internal/state"
 	"grillo.local/grillo/internal/ui"
@@ -174,7 +176,9 @@ func (a *App) cmdPlan(ctx context.Context, args []string) int {
 	var files stringSlice
 	fs.Var(&files, "f", "manifest file (repeatable)")
 	output := fs.String("output", "text", "text or json")
-	format := fs.String("format", "", "input format (compose|native)")
+	format := fs.String("format", "", "input format (compose|native|kubernetes)")
+	var allowDegraded stringSlice
+	fs.Var(&allowDegraded, "allow-degraded", "accept a degraded diagnostic code (repeatable)")
 	flags, positionals, _, err := SplitForFlagSet(args, fs)
 	if err != nil {
 		return usageError(a.Stderr, "plan", err)
@@ -182,7 +186,7 @@ func (a *App) cmdPlan(ctx context.Context, args []string) int {
 	if err := fs.Parse(flags); err != nil {
 		return 2
 	}
-	app, code := a.loadApplication(ctx, *format, files, positionals)
+	app, code := a.loadApplication(ctx, *format, files, positionals, allowDegraded)
 	if code != 0 {
 		return code
 	}
@@ -214,7 +218,9 @@ func (a *App) cmdUp(ctx context.Context, args []string) int {
 	fs.SetOutput(a.Stderr)
 	var files stringSlice
 	fs.Var(&files, "f", "manifest file (repeatable)")
-	format := fs.String("format", "", "input format (compose|native)")
+	format := fs.String("format", "", "input format (compose|native|kubernetes)")
+	var allowDegraded stringSlice
+	fs.Var(&allowDegraded, "allow-degraded", "accept a degraded diagnostic code (repeatable)")
 	flags, positionals, _, err := SplitForFlagSet(args, fs)
 	if err != nil {
 		return usageError(a.Stderr, "up", err)
@@ -222,7 +228,7 @@ func (a *App) cmdUp(ctx context.Context, args []string) int {
 	if err := fs.Parse(flags); err != nil {
 		return 2
 	}
-	app, code := a.loadApplication(ctx, *format, files, positionals)
+	app, code := a.loadApplication(ctx, *format, files, positionals, allowDegraded)
 	if code != 0 {
 		return code
 	}
@@ -602,7 +608,7 @@ func DefaultSocketPath() string {
 	return filepath.Join(layout.Runtime, "grillod.sock")
 }
 
-func (a *App) loadApplication(ctx context.Context, format string, files stringSlice, positionals []string) (model.Application, int) {
+func (a *App) loadApplication(ctx context.Context, format string, files stringSlice, positionals []string, allowDegraded []string) (model.Application, int) {
 	sources := append([]string(nil), positionals...)
 	sources = append(sources, files...)
 	if len(sources) == 0 {
@@ -653,8 +659,18 @@ func (a *App) loadApplication(ctx context.Context, format string, files stringSl
 		fmt.Fprintln(a.Stderr, "grillo: Helm charts are not supported by this build")
 		return model.Application{}, 2
 	case source.KindKubernetes:
-		fmt.Fprintln(a.Stderr, "grillo: Kubernetes manifests are not supported by this build")
-		return model.Application{}, 2
+		result, err := kubernetes.Compile(ctx, data, kubernetes.Options{Path: path, AllowDegraded: allowDegraded})
+		if err != nil {
+			return model.Application{}, fail(a.Stderr, err)
+		}
+		if len(result.Secrets) > 0 {
+			refs, err := a.persistSecrets(result.Secrets)
+			if err != nil {
+				return model.Application{}, fail(a.Stderr, err)
+			}
+			result.Application.Secrets = refs
+		}
+		app, diagnostics = result.Application, result.Diagnostics
 	default:
 		fmt.Fprintf(a.Stderr, "grillo: unknown input format %q\n", kind)
 		return model.Application{}, 2
@@ -670,6 +686,31 @@ func (a *App) loadApplication(ctx context.Context, format string, files stringSl
 		return model.Application{}, 1
 	}
 	return app, 0
+}
+
+// persistSecrets writes compiled secret values to the local secret store and
+// returns the references that go into the public IR.
+func (a *App) persistSecrets(values []kubernetes.SecretData) ([]model.SecretRef, error) {
+	layout, err := state.NewLayout(state.DefaultConfig())
+	if err != nil {
+		return nil, err
+	}
+	if err := layout.Prepare(); err != nil {
+		return nil, err
+	}
+	store, err := secrets.Open(filepath.Join(layout.Data, "secrets"), state.Ops{})
+	if err != nil {
+		return nil, err
+	}
+	refs := make([]model.SecretRef, 0, len(values))
+	for _, secret := range values {
+		ref, err := store.Put(secret.Name, secret.Data)
+		if err != nil {
+			return nil, err
+		}
+		refs = append(refs, ref)
+	}
+	return refs, nil
 }
 
 // composeEnvironment merges the project .env file with the host environment;

@@ -385,3 +385,50 @@ func TestImageCommands(t *testing.T) {
 		t.Fatalf("prune exit = %d: %s", code, stderr.String())
 	}
 }
+
+const k8sDeployment = `apiVersion: apps/v1
+kind: Deployment
+metadata: {name: web}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: web}}
+  strategy: {type: Recreate}
+  template:
+    metadata: {labels: {app: web}}
+    spec:
+      containers:
+        - name: web
+          image: busybox:1.37
+          command: ["sh", "-c", "sleep infinity"]
+`
+
+func TestPlanKubernetesInput(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "deploy.yaml")
+	if err := os.WriteFile(path, []byte(k8sDeployment), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	app, stdout, stderr := newTestApp(t, &fakeClient{}, &fakeTerminal{})
+	if code := app.Run(context.Background(), []string{"plan", path}); code != 0 {
+		t.Fatalf("plan kubernetes exit = %d: %s", code, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "CreateSandbox") {
+		t.Fatalf("plan output = %q", stdout.String())
+	}
+}
+
+func TestPlanKubernetesRejectsPrivileged(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "pod.yaml")
+	privileged := "apiVersion: v1\nkind: Pod\nmetadata: {name: p}\nspec:\n  containers:\n    - name: app\n      image: busybox:1.37\n      securityContext: {privileged: true}\n"
+	if err := os.WriteFile(path, []byte(privileged), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	app, _, stderr := newTestApp(t, &fakeClient{}, &fakeTerminal{})
+	if code := app.Run(context.Background(), []string{"plan", path}); code == 0 {
+		t.Fatalf("privileged pod was accepted: %s", stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "privileged") {
+		t.Fatalf("stderr = %q", stderr.String())
+	}
+}

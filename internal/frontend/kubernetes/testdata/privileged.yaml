@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: dangerous
+spec:
+  containers:
+    - name: app
+      image: busybox:1.37
+      securityContext:
+        privileged: true

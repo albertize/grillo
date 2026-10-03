@@ -126,13 +126,17 @@ test-builder:
 test-f2: t07-guest
 	go test -tags kvm -count=1 -v -timeout 300s -run TestKVMComposeF2Application ./internal/executor/
 
+# T20 Kubernetes MVP compiler: a compiled multi-container Pod on the real runtime.
+test-k8s: t07-guest
+	go test -tags kvm -count=1 -v -timeout 300s -run TestKVMKubernetesMultiContainer ./internal/executor/
+
 # T18b native builder: real RUN execution inside a sandboxed guest.
 # Missing /dev/kvm or guest artifacts is a documented SKIP.
 test-builder-kvm: t07-guest
 	go test -tags kvm -count=1 -v -timeout 240s -run 'TestKVMBuildGuestRun|TestKVMBuildNativeBuilderRun|TestKVMBuildNativeMultiStage|TestKVMBuildGuestNetwork' ./internal/build/
 
 # Full T02/T03 real hardware evidence. No downloads or preexisting volume deletion.
-.PHONY: f0-guest test-f0 t07-guest test-t07 test-t08 test-t10 test-netns test-executor test-netreg test-bridged test-builder test-builder-kvm test-f2
+.PHONY: f0-guest test-f0 t07-guest test-t07 test-t08 test-t10 test-netns test-executor test-netreg test-bridged test-builder test-builder-kvm test-f2 test-k8s
 f0-guest:
 	bash experiments/boot/qemu/build-kernel.sh
 	bash experiments/boot/qemu/build-f0-guest.sh

@@ -1,0 +1,182 @@
+{
+  "apiVersion": "grillo.dev/v1alpha1",
+  "kind": "Application",
+  "metadata": {
+    "name": "deployment",
+    "namespace": "default"
+  },
+  "workloads": [
+    {
+      "id": "web",
+      "kind": "Deployment",
+      "labels": {
+        "app": "web"
+      },
+      "replicas": 2,
+      "template": {
+        "initContainers": [
+          {
+            "name": "init",
+            "image": {
+              "reference": "busybox:1.37"
+            },
+            "command": [
+              "sh",
+              "-c",
+              "echo init"
+            ],
+            "resources": {
+              "requests": {},
+              "limits": {}
+            },
+            "probes": {}
+          }
+        ],
+        "containers": [
+          {
+            "name": "web",
+            "image": {
+              "reference": "busybox:1.37"
+            },
+            "command": [
+              "httpd",
+              "-f",
+              "-p",
+              "8080",
+              "-h",
+              "/www"
+            ],
+            "env": [
+              {
+                "name": "GREETING",
+                "valueFrom": {
+                  "configRef": {
+                    "config": "app-config",
+                    "key": "GREETING"
+                  }
+                }
+              },
+              {
+                "name": "PASSWORD",
+                "valueFrom": {
+                  "secretRef": {
+                    "secret": "app-secret",
+                    "key": "PASSWORD"
+                  }
+                }
+              }
+            ],
+            "mounts": [
+              {
+                "volume": "data",
+                "mountPath": "/data"
+              }
+            ],
+            "ports": [
+              {
+                "name": "http",
+                "containerPort": 8080,
+                "protocol": "TCP"
+              }
+            ],
+            "resources": {
+              "requests": {},
+              "limits": {
+                "cpu": 500,
+                "memory": 134217728
+              }
+            },
+            "probes": {
+              "readiness": {
+                "kind": "http",
+                "http": {
+                  "path": "/",
+                  "port": {
+                    "name": "http"
+                  },
+                  "scheme": "HTTP"
+                },
+                "periodSeconds": 5
+              }
+            },
+            "user": "1000"
+          }
+        ],
+        "guestResources": {
+          "requests": {},
+          "limits": {}
+        },
+        "volumes": [
+          "data"
+        ],
+        "securityProfile": {
+          "readOnlyRootFilesystem": true,
+          "runAsUser": 1000
+        }
+      },
+      "restartPolicy": "Always",
+      "updatePolicy": {
+        "strategy": "Recreate"
+      }
+    }
+  ],
+  "services": [
+    {
+      "name": "web",
+      "selector": {
+        "app": "web"
+      },
+      "ports": [
+        {
+          "name": "http",
+          "protocol": "TCP",
+          "port": 80,
+          "targetPort": {
+            "name": "http"
+          }
+        }
+      ]
+    }
+  ],
+  "routes": [
+    {
+      "hostname": "web.local",
+      "path": "/",
+      "pathType": "Prefix",
+      "service": "web",
+      "port": {
+        "number": 80
+      }
+    }
+  ],
+  "volumes": [
+    {
+      "name": "data",
+      "kind": "pvc",
+      "accessMode": "ReadWriteOnce",
+      "capacity": 67108864
+    },
+    {
+      "name": "data",
+      "kind": "pvc",
+      "source": "data"
+    }
+  ],
+  "configs": [
+    {
+      "name": "app-config",
+      "entries": [
+        {
+          "key": "GREETING",
+          "text": "hello"
+        }
+      ]
+    }
+  ],
+  "secrets": [
+    {
+      "name": "app-secret",
+      "version": "4ea3f8f2dc481309"
+    }
+  ]
+}

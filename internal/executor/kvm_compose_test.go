@@ -14,6 +14,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -211,6 +212,7 @@ func sandboxKeys(infos []SandboxInfo) []string {
 	for _, info := range infos {
 		keys = append(keys, info.Key)
 	}
+	sort.Strings(keys)
 	return keys
 }
 
