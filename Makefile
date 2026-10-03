@@ -95,13 +95,18 @@ test-t08: t07-guest
 test-t10: t07-guest
 	go test -tags kvm -count=1 -v -timeout 180s -run TestKVMBindPersistence ./internal/storage/
 
+# End-to-end: apply a native manifest through the reconciler and executor on
+# real KVM (boot sandbox, start container, status, exec, down).
+test-executor: t07-guest oci-guest
+	go test -tags kvm -count=1 -v -timeout 180s -run TestKVMEndToEndApply ./internal/executor/
+
 # T11 networking: real rootless helper (pasta) with egress, application isolation,
 # and management unreachability. Missing pasta/userns/loopback is a SKIP.
 test-netns:
 	go test -tags netns -count=1 -v -timeout 180s -run TestPastaEgressAndIsolation ./internal/network/
 
 # Full T02/T03 real hardware evidence. No downloads or preexisting volume deletion.
-.PHONY: f0-guest test-f0 t07-guest test-t07 test-t08 test-t10 test-netns
+.PHONY: f0-guest test-f0 t07-guest test-t07 test-t08 test-t10 test-netns test-executor
 f0-guest:
 	bash experiments/boot/qemu/build-kernel.sh
 	bash experiments/boot/qemu/build-f0-guest.sh

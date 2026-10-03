@@ -23,6 +23,7 @@ type fakeClient struct {
 	applied    model.Application
 	downCalled bool
 	operation  api.Operation
+	execArgs   []string
 }
 
 func (f *fakeClient) Version(context.Context) (api.VersionInfo, error) { return api.VersionInfo{}, nil }
@@ -39,6 +40,13 @@ func (f *fakeClient) Down(_ context.Context, _ string, _ bool) (string, error) {
 }
 func (f *fakeClient) Operation(context.Context, string) (api.Operation, error) {
 	return f.operation, nil
+}
+func (f *fakeClient) Status(context.Context, string) ([]api.ContainerStatus, error) {
+	return []api.ContainerStatus{{Container: "app", State: "running"}}, nil
+}
+func (f *fakeClient) Exec(_ context.Context, _, _ string, args []string) (int, string, string, error) {
+	f.execArgs = args
+	return 3, "out:" + strings.Join(args, " "), "", nil
 }
 func (f *fakeClient) Events(context.Context, uint64) (io.ReadCloser, error) {
 	return io.NopCloser(strings.NewReader("")), nil
@@ -146,15 +154,32 @@ func TestDownAppliesVolumesFlag(t *testing.T) {
 	}
 }
 
-func TestExecRestoresTerminal(t *testing.T) {
+func TestExecRunsAndRestoresTerminal(t *testing.T) {
 	terminal := &fakeTerminal{tty: true}
-	app, _, _ := newTestApp(t, &fakeClient{}, terminal)
+	client := &fakeClient{}
+	app, stdout, _ := newTestApp(t, client, terminal)
 	code := app.Run(context.Background(), []string{"exec", "pod/backend-0", "api", "--", "sh", "-c", "echo hi"})
-	if code == 0 {
-		t.Fatal("exec unexpectedly succeeded without a guest session")
+	if code != 3 {
+		t.Fatalf("exec exit = %d, want the container exit code 3", code)
 	}
 	if terminal.raw != 1 || terminal.restored != 1 {
 		t.Fatalf("raw=%d restored=%d, want 1/1", terminal.raw, terminal.restored)
+	}
+	if len(client.execArgs) != 3 || !strings.Contains(stdout.String(), "echo hi") {
+		t.Fatalf("exec args=%v stdout=%q", client.execArgs, stdout.String())
+	}
+}
+
+func TestStatusCommand(t *testing.T) {
+	app, stdout, _ := newTestApp(t, &fakeClient{}, &fakeTerminal{})
+	if code := app.Run(context.Background(), []string{"status", "backend"}); code != 0 {
+		t.Fatalf("status exit = %d", code)
+	}
+	if !strings.Contains(stdout.String(), "backend/app") {
+		t.Fatalf("status output = %q", stdout.String())
+	}
+	if code := app.Run(context.Background(), []string{"inspect", "application/backend"}); code != 0 {
+		t.Fatalf("inspect exit = %d", code)
 	}
 }
 

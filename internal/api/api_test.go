@@ -47,6 +47,14 @@ func (f *fakeCore) Down(_ context.Context, application string, _ bool) (reconcil
 	return reconcile.Result{Application: application}, f.err
 }
 
+func (f *fakeCore) Status(_ context.Context, _ string) ([]ContainerStatus, error) {
+	return []ContainerStatus{{Container: "app", State: "running"}}, f.err
+}
+
+func (f *fakeCore) Exec(_ context.Context, _, _ string, args []string, _ int64) (int, string, string, error) {
+	return 0, "ran " + strings.Join(args, " "), "", f.err
+}
+
 func startServer(t *testing.T, opts Options) (string, func()) {
 	t.Helper()
 	socket := filepath.Join(t.TempDir(), "grillod.sock")
@@ -258,5 +266,19 @@ func TestStreamSessionsDoNotLeak(t *testing.T) {
 	after := runtime.NumGoroutine()
 	if after > baseline+8 {
 		t.Fatalf("goroutines grew from %d to %d after closing streams", baseline, after)
+	}
+}
+
+func TestStatusAndExecEndpoints(t *testing.T) {
+	socket, stop := startServer(t, Options{Core: &fakeCore{}})
+	defer stop()
+	client := NewClient(socket)
+	status, err := client.Status(context.Background(), "backend")
+	if err != nil || len(status) != 1 || status[0].Container != "app" {
+		t.Fatalf("status = %+v err=%v", status, err)
+	}
+	code, stdout, _, err := client.Exec(context.Background(), "backend", "app", []string{"echo", "hi"})
+	if err != nil || code != 0 || !strings.Contains(stdout, "echo hi") {
+		t.Fatalf("exec code=%d stdout=%q err=%v", code, stdout, err)
 	}
 }

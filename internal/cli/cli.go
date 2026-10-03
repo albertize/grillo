@@ -30,6 +30,8 @@ type Client interface {
 	Apply(ctx context.Context, app model.Application) (string, error)
 	Down(ctx context.Context, application string, removeVolumes bool) (string, error)
 	Operation(ctx context.Context, id string) (api.Operation, error)
+	Status(ctx context.Context, application string) ([]api.ContainerStatus, error)
+	Exec(ctx context.Context, application, container string, args []string) (int, string, string, error)
 	Events(ctx context.Context, since uint64) (io.ReadCloser, error)
 	ListLogs(ctx context.Context, since uint64, resource, container string) ([]observe.LogRecord, error)
 	FollowLogs(ctx context.Context, since uint64, resource, container string) (io.ReadCloser, error)
@@ -122,6 +124,10 @@ func (a *App) Run(ctx context.Context, args []string) int {
 		return a.cmdUp(ctx, args[1:])
 	case "down":
 		return a.cmdDown(ctx, args[1:])
+	case "status":
+		return a.cmdStatus(ctx, args[1:])
+	case "inspect":
+		return a.cmdInspect(ctx, args[1:])
 	case "logs":
 		return a.cmdLogs(ctx, args[1:])
 	case "events":
@@ -201,6 +207,76 @@ func (a *App) cmdUp(ctx context.Context, args []string) int {
 		return fail(a.Stderr, err)
 	}
 	return a.waitOperation(ctx, client, id)
+}
+
+func (a *App) cmdStatus(ctx context.Context, args []string) int {
+	fs := flag.NewFlagSet("status", flag.ContinueOnError)
+	fs.SetOutput(a.Stderr)
+	output := fs.String("output", "text", "text or json")
+	flags, positionals, _, err := SplitForFlagSet(args, fs)
+	if err != nil {
+		return usageError(a.Stderr, "status", err)
+	}
+	if err := fs.Parse(flags); err != nil {
+		return 2
+	}
+	if len(positionals) != 1 {
+		fmt.Fprintln(a.Stderr, "usage: grillo status <application>")
+		return 2
+	}
+	if code := a.ensureDaemon(ctx); code != 0 {
+		return code
+	}
+	containers, err := a.ClientFactory(a.SocketPath).Status(ctx, positionals[0])
+	if err != nil {
+		return fail(a.Stderr, err)
+	}
+	if *output == "json" {
+		encoder := json.NewEncoder(a.Stdout)
+		encoder.SetIndent("", "  ")
+		if err := encoder.Encode(map[string]any{"application": positionals[0], "containers": containers}); err != nil {
+			return fail(a.Stderr, err)
+		}
+		return 0
+	}
+	if len(containers) == 0 {
+		fmt.Fprintf(a.Stdout, "%s: no containers\n", positionals[0])
+		return 0
+	}
+	for _, container := range containers {
+		fmt.Fprintf(a.Stdout, "%s/%s\t%s\n", positionals[0], container.Container, container.State)
+	}
+	return 0
+}
+
+func (a *App) cmdInspect(ctx context.Context, args []string) int {
+	fs := flag.NewFlagSet("inspect", flag.ContinueOnError)
+	fs.SetOutput(a.Stderr)
+	flags, positionals, _, err := SplitForFlagSet(args, fs)
+	if err != nil {
+		return usageError(a.Stderr, "inspect", err)
+	}
+	if err := fs.Parse(flags); err != nil {
+		return 2
+	}
+	if len(positionals) != 1 {
+		fmt.Fprintln(a.Stderr, "usage: grillo inspect <application>")
+		return 2
+	}
+	application := strings.TrimPrefix(positionals[0], "application/")
+	if code := a.ensureDaemon(ctx); code != 0 {
+		return code
+	}
+	containers, err := a.ClientFactory(a.SocketPath).Status(ctx, application)
+	if err != nil {
+		return fail(a.Stderr, err)
+	}
+	encoder := json.NewEncoder(a.Stdout)
+	encoder.SetIndent("", "  ")
+	if err := encoder.Encode(map[string]any{"application": application, "containers": containers}); err != nil {
+		return fail(a.Stderr, err)
+	}
+	return 0
 }
 
 func (a *App) cmdDown(ctx context.Context, args []string) int {
@@ -325,6 +401,22 @@ func (a *App) cmdExec(ctx context.Context, args []string, shell bool) int {
 		fmt.Fprintf(a.Stderr, "usage: grillo exec <pod> [container] -- <command>\n")
 		return 2
 	}
+	if shell {
+		fmt.Fprintln(a.Stderr, "grillo: interactive shell sessions are not supported yet; use exec -- <command>")
+		return 1
+	}
+	application := strings.TrimPrefix(positionals[0], "pod/")
+	container := ""
+	if len(positionals) > 1 {
+		container = positionals[1]
+	}
+	if container == "" {
+		fmt.Fprintln(a.Stderr, "grillo: a container name is required")
+		return 2
+	}
+	if code := a.ensureDaemon(ctx); code != 0 {
+		return code
+	}
 	// Put the local terminal in raw mode and always restore it, even if the
 	// session fails, so an interrupted CLI never leaves a broken terminal.
 	if a.Terminal.IsTerminal() {
@@ -334,10 +426,13 @@ func (a *App) cmdExec(ctx context.Context, args []string, shell bool) int {
 		}
 		defer restore()
 	}
-	// Exec sessions require a live guest connection, which the daemon does not
-	// expose in this build.
-	fmt.Fprintln(a.Stderr, "grillo: exec sessions are not available in this build")
-	return 1
+	exitCode, stdout, stderr, err := a.ClientFactory(a.SocketPath).Exec(ctx, application, container, afterDD)
+	if err != nil {
+		return fail(a.Stderr, err)
+	}
+	fmt.Fprint(a.Stdout, stdout)
+	fmt.Fprint(a.Stderr, stderr)
+	return exitCode
 }
 
 func (a *App) ensureDaemon(ctx context.Context) int {

@@ -55,10 +55,19 @@ type Operation struct {
 	FinishedAt  time.Time `json:"finishedAt,omitempty"`
 }
 
-// Core is the subset of the reconciler the API uses.
+// ContainerStatus is the public observed state of one container.
+type ContainerStatus struct {
+	Container string `json:"container"`
+	State     string `json:"state"`
+	ExitCode  int    `json:"exitCode,omitempty"`
+}
+
+// Core is the subset of the runtime the API uses.
 type Core interface {
 	Apply(ctx context.Context, desired model.Application) (reconcile.Result, error)
 	Down(ctx context.Context, application string, removeVolumes bool) (reconcile.Result, error)
+	Status(ctx context.Context, application string) ([]ContainerStatus, error)
+	Exec(ctx context.Context, application, container string, args []string, maxOutput int64) (int, string, string, error)
 }
 
 // Options configures the API server.
@@ -95,8 +104,10 @@ func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /v1/version", s.handleVersion)
 	mux.HandleFunc("GET /v1/health", s.handleHealth)
+	mux.HandleFunc("GET /v1/applications/{id}", s.handleStatus)
 	mux.HandleFunc("POST /v1/applications", s.handleApply)
 	mux.HandleFunc("POST /v1/applications/{id}/down", s.handleDown)
+	mux.HandleFunc("POST /v1/exec", s.handleExec)
 	mux.HandleFunc("GET /v1/operations/{id}", s.handleOperation)
 	mux.HandleFunc("POST /v1/operations/{id}/cancel", s.handleCancel)
 	mux.HandleFunc("GET /v1/events", s.handleEvents)
@@ -139,6 +150,46 @@ func (s *Server) handleApply(w http.ResponseWriter, r *http.Request) {
 		return err
 	})
 	writeJSON(w, http.StatusAccepted, map[string]string{"operationId": operation.ID})
+}
+
+func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	if s.opts.Core == nil {
+		writeError(w, http.StatusServiceUnavailable, "unavailable", "no core configured")
+		return
+	}
+	containers, err := s.opts.Core.Status(r.Context(), id)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "status_failed", err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"application": id, "containers": containers})
+}
+
+func (s *Server) handleExec(w http.ResponseWriter, r *http.Request) {
+	var request struct {
+		Application string   `json:"application"`
+		Container   string   `json:"container"`
+		Args        []string `json:"args"`
+	}
+	if err := decodeJSON(w, r, s.maxBody(), &request); err != nil {
+		writeError(w, http.StatusBadRequest, "bad_request", err.Error())
+		return
+	}
+	if request.Application == "" || request.Container == "" || len(request.Args) == 0 {
+		writeError(w, http.StatusBadRequest, "bad_request", "application, container, and args are required")
+		return
+	}
+	if s.opts.Core == nil {
+		writeError(w, http.StatusServiceUnavailable, "unavailable", "no core configured")
+		return
+	}
+	code, stdout, stderr, err := s.opts.Core.Exec(r.Context(), request.Application, request.Container, request.Args, 1<<20)
+	if err != nil {
+		writeError(w, http.StatusBadGateway, "exec_failed", err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"exitCode": code, "stdout": stdout, "stderr": stderr})
 }
 
 func (s *Server) handleDown(w http.ResponseWriter, r *http.Request) {

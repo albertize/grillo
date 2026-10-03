@@ -238,3 +238,26 @@ func (c *Client) FollowLogs(ctx context.Context, since uint64, resource, contain
 	}
 	return resp.Body, nil
 }
+
+// Status returns an application's container states.
+func (c *Client) Status(ctx context.Context, application string) ([]ContainerStatus, error) {
+	var out struct {
+		Containers []ContainerStatus `json:"containers"`
+	}
+	err := c.do(ctx, http.MethodGet, "/v1/applications/"+url.PathEscape(application), nil, &out)
+	return out.Containers, err
+}
+
+// Exec runs a command in a container and returns captured output.
+func (c *Client) Exec(ctx context.Context, application, container string, args []string) (int, string, string, error) {
+	request := map[string]any{"application": application, "container": container, "args": args}
+	var out struct {
+		ExitCode int    `json:"exitCode"`
+		Stdout   string `json:"stdout"`
+		Stderr   string `json:"stderr"`
+	}
+	if err := c.do(ctx, http.MethodPost, "/v1/exec", request, &out); err != nil {
+		return 0, "", "", err
+	}
+	return out.ExitCode, out.Stdout, out.Stderr, nil
+}

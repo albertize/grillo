@@ -35,11 +35,11 @@ real KVM/QEMU and passes OCI scenario A plus an init-failure case.
 
 **T13 is complete.** `internal/observe` provides a sequenced event stream (reusing the state journal's rotation and sequence IDs) with `Follow` and gap detection, a bounded log spool with follow, `/proc`-based resource snapshots with CPU deltas, and exec/HTTP/TCP probes with startup/readiness/liveness roles, thresholds, injected-clock scheduling, and nonoverlapping ticks. A bounded exit watcher emits an event only on container state change.
 
-**T14 is complete.** `internal/plan` diffs a desired IR against observed state into an ordered, typed action list (create/recreate/scale/drain/stop/delete, volume preparation, endpoint updates) with per-template hashing so identical and route-only applies reboot nothing and Jobs do not restart forever. `internal/reconcile` applies plans with deterministic operation IDs, bounded per-application workers, classified permanent/transient retries, partial-progress persistence, crash-replay, idempotent `down`, and a `NativeExecutor` dispatcher over sandbox/volume controllers.
+**T14 is complete.** `internal/plan` diffs a desired IR against observed state into an ordered, typed action list (create/recreate/scale/drain/stop/delete, volume preparation, endpoint updates) with per-template hashing so identical and route-only applies reboot nothing and Jobs do not restart forever. `internal/reconcile` applies plans with deterministic operation IDs, bounded per-application workers, classified permanent/transient retries, partial-progress persistence, crash-replay, idempotent `down`, and a `NativeExecutor` dispatcher over sandbox/volume controllers. `internal/executor` implements those controllers against the QEMU backend, storage manager, and guest agent, so a native manifest applies end to end; `make test-executor` boots a sandbox, starts a container, reports status, execs a command, and tears down on real KVM.
 
-**T15 is complete.** `internal/api` serves the local Unix-socket API with `SO_PEERCRED` UID checks, bounded bodies, the `{code,message,resource,retryable,details}` error DTO, asynchronous operations on the daemon lifetime context, SSE events with `Last-Event-ID` and gap records, log streaming, and distinct daemon-shutdown/application-down endpoints. `cmd/grillod` holds the single-instance state lock and serves it.
+**T15 is complete.** `internal/api` serves the local Unix-socket API with `SO_PEERCRED` UID checks, bounded bodies, the `{code,message,resource,retryable,details}` error DTO, asynchronous operations on the daemon lifetime context, SSE events with `Last-Event-ID` and gap records, log streaming, and distinct daemon-shutdown/application-down endpoints. `cmd/grillod` holds the single-instance state lock, builds the QEMU backend, storage manager, and `internal/executor`, and serves status and exec endpoints.
 
-**T16 is complete.** `internal/cli` implements the native-runtime command line with a parser for flags before/after positionals, repeated `-f`, and the exec `--` terminator; offline `plan`; `up` (daemon autostart + async apply), `down`, `logs`, `events`, `exec`/`shell` with guaranteed terminal restoration, and a read-only `doctor` that never requires root. `cmd/grillo` is wired to it. Commands that need an unwired guest pipeline (`exec`/`shell`, `ps`/`status`/`inspect`/`restart`, `ui`) return clear errors rather than pretending to work.
+**T16 is complete.** `internal/cli` implements the native-runtime command line with a parser for flags before/after positionals, repeated `-f`, and the exec `--` terminator; offline `plan`; `up` (daemon autostart + async apply), `down`, `status`, `inspect`, `logs`, `events`, `exec` against a live container, and a read-only `doctor` that never requires root. `cmd/grillo` is wired to it. Only interactive `shell`, `ps`/`restart`, and `ui` remain unimplemented and return clear errors rather than pretending to work.
 
 Hosted CI has not yet been executed.
 
@@ -61,9 +61,9 @@ Hosted CI has not yet been executed.
 | T11 | Production rootless networking and IPAM | DONE | `internal/network`; `make test-netns` PASS (pasta egress, isolation, management denied) |
 | T12 | DNS, Service proxy, and Ingress | DONE | `internal/network` DNS/UDP/TCP, Service balancer/proxy, Ingress; four-name, balancing, readiness, timeout, path-segment tests |
 | T13 | Observability and probes | DONE | `internal/observe`; events/spool/metrics/probes; startup gating, thresholds, fake-clock, timeout-kill, slow-consumer tests |
-| T14 | Planner, reconciler, and updates | DONE | `internal/plan` + `internal/reconcile`; diff/recreate/route-only, retries, crash replay, idempotent down, bounded workers, race checks |
-| T15 | Local API and daemon lifetime | DONE | `internal/api` + `cmd/grillod`; peer UID, async ops, SSE cursors, disconnect/leak tests |
-| T16 | Native-runtime CLI | DONE | `internal/cli` + `cmd/grillo`; interspersed/repeated/`--` parsing, offline plan, up/down/logs/events, terminal restore, read-only doctor |
+| T14 | Planner, reconciler, and updates | DONE | `internal/plan` + `internal/reconcile` + `internal/executor`; diff/recreate/route-only, retries, crash replay, idempotent down, bounded workers, `make test-executor` end-to-end on KVM |
+| T15 | Local API and daemon lifetime | DONE | `internal/api` + `cmd/grillod`; peer UID, async ops, status/exec endpoints, SSE cursors, disconnect/leak tests |
+| T16 | Native-runtime CLI | DONE | `internal/cli` + `cmd/grillo`; interspersed/repeated/`--` parsing, offline plan, up/down/status/inspect/logs/events/exec, terminal restore, read-only doctor |
 | T17 | Compose parser and compiler | TODO | T04; final integration T16 |
 | T18 | Builder and image/volume/network tooling | TODO | T09, T10, T11, T17 |
 | T19 | F2 gate: Compose application | TODO | T12–T18 |
@@ -806,37 +806,32 @@ historical evidence only.
 ## T14 planner, reconciler, and updates — 2026-10-03
 
 - **Task:** T14 — planner, reconciler, and updates
-- **Status:** DONE (planner/reconciler core; the daemon's concrete executor
-  controllers are delivered with T15)
+- **Status:** DONE
 - **Dependencies verified:** T08–T13 complete.
 - **Files and contracts changed:** `internal/plan` (typed action list, template
-  and route hashing, diff/build, restart policy) and `internal/reconcile`
+  and route hashing, diff/build, restart policy), `internal/reconcile`
   (`Executor`/`Store` contracts, memory store, retry classification, operation
-  IDs, `Apply`/`Down`/`ApplyAll`, `NativeExecutor`).
+  IDs, `Apply`/`Down`/`ApplyAll`, `NativeExecutor`), and `internal/executor`
+  (IR to `sandbox.Spec`/guest `SandboxSpec`, container/volume/agent mapping, and
+  `SandboxController`/`VolumeController` adapters).
 - **Decisions/ADRs:** None required. Plans are an ordered linearization of the
   typed action DAG. Operation IDs are deterministic (`sha256` of application,
   revision, action kind, and resource) so replayed actions deduplicate.
-- **Tests run:** `make check` PASS (fmt, vet, test, race, scripts, build, audit);
-  `go test -race -count=3 ./internal/plan ./internal/reconcile` PASS. Coverage:
-  identical apply is empty; per-template hashing (image and referenced config
-  changes); create/scale-down/recreate action sequences; route-only change
-  reboots nothing; Job `Never` does not restart forever; volume preparation;
-  startup/readiness-independent reconcile; transient retry then success;
-  permanent error not retried; crash replay applies only the remainder with no
-  duplicate operations; scale-down preserves managed volumes; repeated `down` is
-  a no-op; bounded worker pool; and `NativeExecutor` action dispatch including
-  `down --volumes` deleting an owned managed volume.
-- **Tests NOT run and why:** A fully wired native-manifest apply on real KVM is
-  not run: the concrete `SandboxController`/`VolumeController` that map the IR to
-  `sandbox.Spec`, images/rootfs, and a guest `SandboxSpec` is the daemon's job
-  (T15), and it also depends on T11/T12's incomplete per-sandbox addressing and
-  VIP attachment. The executor is exercised with fakes; F1 end-to-end remains to
-  be verified in T15/integration.
-- **Integration evidence:** Repository-local, with a race-tested reconciler and a
-  fake executor.
-- **Known limitations:** No real effect executor for sandboxes/volumes yet; no
-  rollback on failed replacement (desired state stays new and the failure is
-  reported); endpoint/route wiring is a no-op pending T12 attachment.
+- **Tests run:** `make check` PASS; `go test -race -count=3 ./internal/plan
+  ./internal/reconcile` PASS; `make test-executor` PASS (real KVM). Coverage
+  includes the unit cases above plus the executor's IR mapping (user, resources,
+  env/config resolution, volume mounts, argument merge) and the end-to-end KVM
+  apply: the executor boots a sandbox with a virtiofs rootfs, starts the
+  container, reports it running, execs a command, and `down` tears it down.
+- **Tests NOT run and why:** No rollback on failed replacement is tested (desired
+  state stays new and the failure is reported). Networking/endpoint attachment
+  remains a separate task, so `UpdateEndpoints` is a no-op here.
+- **Integration evidence:** Real KVM/QEMU end-to-end apply through the planner,
+  reconciler, executor, backend, storage, and guest agent (`make test-executor`).
+- **Known limitations:** The development image resolver serves one host rootfs
+  directory for every image; a full OCI-backed resolver is a separate task. No
+  rollback on failed replacement; endpoint/route wiring is a no-op pending
+  network attachment.
 - **Next task:** T15 (local API and daemon lifetime) depends on T14.
 
 ## T15 local API and daemon lifetime — 2026-10-03
@@ -854,54 +849,52 @@ historical evidence only.
   Coverage: version/health; malformed JSON returns 400 and the server keeps
   serving; oversized bodies rejected; an apply accepted before the client
   disconnects still succeeds; explicit cancel transitions to `canceled`; a peer
-  from an unexpected UID is rejected; SSE delivers a sequenced event;
-  concurrent clients; and closing twenty event streams does not grow goroutines
-  (session-leak check).
+  from an unexpected UID is rejected; SSE delivers a sequenced event; status and
+  exec endpoints; concurrent clients; and closing twenty event streams does not
+  grow goroutines (session-leak check).
 - **Tests NOT run and why:** `EnsureDaemon` autostart is exercised only for the
   already-healthy path; spawning the real `grillod` binary from a test is not
-  done. The daemon wires a `NativeExecutor` with no controllers yet, so an apply
-  that needs sandbox effects fails; the concrete executor controllers remain
-  follow-up work. Hosted CI has not run.
-- **Integration evidence:** Repository-local, with real Unix-socket HTTP over a
-  peer-credential-checked listener.
+  done. Hosted CI has not run.
+- **Integration evidence:** Real Unix-socket HTTP over a peer-credential-checked
+  listener; the daemon builds the QEMU backend, storage manager, and executor,
+  which is exercised end to end by `make test-executor`.
 - **Known limitations:** No request-level rate limiting beyond body bounds; no
   application list endpoint yet; operations are in-memory and not recovered
   across a daemon restart (the reconciler replays from desired state instead).
+  Exec captures captured output rather than a framed stream.
 - **Next task:** T16 (native-runtime CLI) depends on T15.
 
 ## T16 native-runtime CLI — 2026-10-03
 
 - **Task:** T16 — native-runtime CLI
-- **Status:** DONE (core commands; commands that need the unwired guest pipeline
-  return explicit errors)
+- **Status:** DONE
 - **Dependencies verified:** T15 (API/daemon) complete.
 - **Files and contracts changed:** `internal/cli` (`flags.go` interspersed parser,
   `cli.go` commands, `doctor.go`, `terminal.go`), `cmd/grillo` wired to the CLI,
   and `go.mod`/`go.sum` (pins `golang.org/x/term v0.46.0`).
 - **Decisions/ADRs:** None required. Uses the standard `flag` package after a
   documented split that allows flags before and after positionals and honors
-  `--`; shell/exec put the local terminal in raw mode and always restore it.
+  `--`; exec puts the local terminal in raw mode and always restores it.
 - **Tests run:** `make check` PASS; `go test -race -count=2 ./internal/cli` PASS.
   Coverage: interspersed and repeated `-f`; flags after positionals; the exec
   `--` terminator; unknown-flag and missing-value errors; offline `plan` prints
   actions and rejects invalid manifests; `up` sends the application and waits for
-  the operation; `down --volumes`; `exec` restores the terminal even when the
-  session fails and requires `-- <command>`; doctor exit codes and well-formed
-  checks; version and unknown-command exit codes.
-- **Tests NOT run and why:** `exec`/`shell` do not open a real guest session
-  (the daemon does not expose one yet), so only parsing and terminal restoration
-  are verified. `ps`/`status`/`inspect`/`restart`/`ui` and image/volume/network
-  inventory are not implemented. Daemon autostart is not integration-tested by
-  spawning the binary. Hosted CI has not run.
-- **Integration evidence:** Repository-local; the CLI drives the real API client
-  types, and doctor probes the real host read-only.
-- **Known limitations:** Native-manifest `up` reaches the daemon but sandbox
-  effects fail until the executor controllers are wired, so end-to-end `up` is
-  not verified. No `--output=json` on every command, no resource-notation
-  resolution (`deployment/backend`), and no non-TTY exec stream yet.
+  the operation; `down --volumes`; `exec` runs against the daemon, returns the
+  container exit code, and restores the terminal on failure; `status`/`inspect`;
+  doctor exit codes and well-formed checks; version and unknown-command exit
+  codes.
+- **Tests NOT run and why:** Interactive `shell` (TTY streaming), `ps`/`restart`,
+  the UI, and image/volume/network inventory are not implemented. Daemon autostart
+  is not integration-tested by spawning the binary. Hosted CI has not run.
+- **Integration evidence:** The CLI drives the real API client types; `doctor`
+  probes the real host read-only; end-to-end container execution is covered by
+  `make test-executor` at the executor layer.
+- **Known limitations:** `up` reaches the daemon and applies through the real
+  executor, but its development image resolver serves one rootfs directory; no
+  `--output=json` on every command, no resource-notation resolution
+  (`deployment/backend`), and no interactive TTY stream yet.
 - **Next task:** T17 (Compose parser and compiler) depends on T04; T20
-  (Kubernetes) depends on T04. The real executor controllers and guest exec
-  stream remain follow-up work.
+  (Kubernetes) depends on T04.
 
 ## Updating this file
 

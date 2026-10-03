@@ -22,6 +22,8 @@ stderr.
 | --- | --- |
 | `GET /v1/version` | daemon version and API version |
 | `GET /v1/health` | liveness and uptime |
+| `GET /v1/applications/{id}` | application container status |
+| `POST /v1/exec` | run a command in a container and return captured output |
 | `POST /v1/applications` | submit a desired application; `202` + `operationId` |
 | `POST /v1/applications/{id}/down` | stop an application; `?volumes=true` deletes owned managed volumes |
 | `GET /v1/operations/{id}` | operation status |
