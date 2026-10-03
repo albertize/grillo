@@ -2,17 +2,21 @@
 GO ?= go
 GOVULNCHECK_VERSION := v1.8.0
 
-.PHONY: fmt vet test race build check audit vulncheck test-kvm
+.PHONY: fmt vet test test-scripts race build check audit vulncheck test-kvm
 
 # Check formatting without modifying source files.
 fmt:
-	@test -z "$$(gofmt -l cmd internal)" || { gofmt -l cmd internal; exit 1; }
+	@files=$$(gofmt -l cmd internal experiments/boot) || exit 1; \
+		test -z "$$files" || { printf '%s\n' "$$files"; exit 1; }
 
 vet:
 	$(GO) vet ./...
 
 test:
 	$(GO) test ./...
+
+test-scripts:
+	bash scripts/bootstrap_test.sh
 
 race:
 	CGO_ENABLED=1 $(GO) test -race ./...
@@ -22,7 +26,7 @@ build:
 	CGO_ENABLED=0 $(GO) build -trimpath -buildvcs=false -o bin/grillo ./cmd/grillo
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 $(GO) build -trimpath -buildvcs=false -o bin/grillo-agent ./cmd/grillo-agent
 
-check: fmt vet test race build audit
+check: fmt vet test test-scripts race build audit
 
 audit:
 	$(GO) mod verify

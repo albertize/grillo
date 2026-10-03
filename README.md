@@ -2,6 +2,8 @@
 
 **Local Kubernetes semantics. No Kubernetes required.**
 
+![A cricket whispering to an expressive wooden ship’s wheel, illustrated in sepia.](media/Whispering%20Cricket%20and%20Ship%E2%80%99s%20Wheel.png)
+
 Grillo is a planned rootless-first application runtime that runs local workloads in hardware-isolated microVMs. It accepts Compose projects and Helm/Kubernetes application definitions, translates them into a shared model, and maps each Kubernetes Pod to one microVM.
 
 The goal is a development experience closer to `docker compose up` than to operating a cluster, while preserving the application-facing contracts that matter in production.
@@ -208,7 +210,12 @@ Design reviews, rootless feasibility experiments, adversarial test cases, docume
 
 ### Development
 
-Use Go **1.26.8**, Make, and a C compiler for race tests on Linux:
+Use Go **1.26.8**, Make, and a C compiler for race tests on Linux.
+The [dependency bootstrap](scripts/README.md) provides an opt-in Fedora package
+setup and checksum-pinned Linux/amd64 Go, Firecracker, and guest-kernel source
+downloads. Preview it safely with `bash scripts/bootstrap.sh`.
+
+Routine checks:
 
 ```sh
 make check          # formatting, vet, unit/race tests, host/agent builds, module audit
