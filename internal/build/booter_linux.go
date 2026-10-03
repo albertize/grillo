@@ -29,6 +29,12 @@ type GuestBoot struct {
 	MemoryMiB    int
 	ShareTag     string
 	ShareTarget  string
+	// Network, when set, gives the build guest outbound connectivity. The
+	// backend used here must have been created with Launch = Network.Launch.
+	Network *BuildNetwork
+	// Nameservers are upstream resolvers passed to the guest when it has no
+	// cluster DNS configuration.
+	Nameservers []string
 	// Dial connects to the guest. It defaults to AF_VSOCK with the guest key.
 	Dial func(ctx context.Context, cid, port uint32) (SandboxClient, error)
 
@@ -84,11 +90,28 @@ func (g *GuestBoot) Boot(ctx context.Context, rootfsDir string) (SandboxClient, 
 		VsockPort:   g.VsockPort,
 		GuestKey:    g.GuestKey,
 	}
+	guestSpec := &guestproto.SandboxSpec{
+		ID:     id,
+		Build:  true,
+		Shares: []guestproto.ShareSpec{{Tag: tag, Target: target}},
+	}
 	cleanup := func() error {
 		background := context.Background()
 		_ = g.Backend.Stop(background, sandbox.Handle{ID: id}, 5*time.Second)
 		_ = g.Backend.Delete(background, sandbox.Handle{ID: id})
+		if g.Network != nil {
+			g.Network.Release(id)
+		}
 		return nil
+	}
+	if g.Network != nil {
+		ip, prefix, gateway, err := g.Network.Prepare(ctx, id)
+		if err != nil {
+			return nil, nil, err
+		}
+		spec.Application = g.Network.application()
+		guestSpec.Network = &guestproto.NetworkConfig{Interface: "eth0", Address: ip, PrefixLen: prefix, Gateway: gateway}
+		guestSpec.Nameservers = g.Nameservers
 	}
 	if _, err := g.Backend.Create(ctx, spec, sandbox.OperationID("build-"+id)); err != nil {
 		return nil, nil, err
@@ -112,11 +135,6 @@ func (g *GuestBoot) Boot(ctx context.Context, rootfsDir string) (SandboxClient, 
 	if err != nil {
 		_ = cleanup()
 		return nil, nil, err
-	}
-	guestSpec := &guestproto.SandboxSpec{
-		ID:     id,
-		Build:  true,
-		Shares: []guestproto.ShareSpec{{Tag: tag, Target: target}},
 	}
 	if _, err := client.Start(ctx, guestproto.StartRequest{Sandbox: guestSpec}); err != nil {
 		_ = client.Close()

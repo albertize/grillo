@@ -978,7 +978,10 @@ historical evidence only.
   tests cover the parser, `.dockerignore`, `ARG`/`ENV` expansion, `COPY`/`ADD`
   with `--chown`/`--chmod`, `FROM scratch`/local-base/multi-stage builds,
   whiteouts, unsupported-instruction rejection, `RUN` requiring a runner,
-  `SandboxRunner` boot reuse and exit-code handling, image import/list/pin/verify
+  `SandboxRunner` boot reuse and exit-code handling, build egress through pasta
+  (`TestKVMBuildGuestNetwork` proves the guest interface is configured and can
+  reach the internet; it SKIPs when the host has no internet), image
+  import/list/pin/verify
   and GC, OCI-layout import/corruption, API endpoints, and CLI `build`/`image`
   (`--podman` opt-in asserted). `TestPlanDoesNotBuild` enforces that planning
   never imports a builder.
@@ -988,13 +991,12 @@ historical evidence only.
 - **Integration evidence:** Real native build with sandboxed `RUN` executed on
   this host (Linux/amd64, kernel `7.2.8-200.fc44.x86_64`, KVM API 12) in 11.4 s;
   the guest agent initramfs was rebuilt before testing.
-- **Known limitations:** the build guest is currently **offline** (no network in
-  the sandbox), so `RUN` steps that install packages are not yet supported -
-  in-image tooling and local commands work; per-instruction layer caching is not
-  yet implemented (one layer per stage); non-numeric `USER`/`--chown` names and
-  `ADD` URLs/tar extraction are rejected; `prune` preserves images referenced by
-  applications applied in the current daemon session only (not persisted across
-  restarts).
+- **Known limitations:** per-instruction layer caching is not yet implemented
+  (one layer per stage); non-numeric `USER`/`--chown` names and `ADD` URLs/tar
+  extraction are rejected; `prune` preserves images referenced by applications
+  applied in the current daemon session only (not persisted across restarts);
+  build egress requires the `grillo-netns` supervisor and `pasta`, and is
+  disabled with a warning when they are unavailable.
 - **Next task:** T19 (F2 gate: Compose application).
 
 ## T18b Build execution in the guest - 2026-10-03
@@ -1006,7 +1008,8 @@ historical evidence only.
   message types, `RunRequest`/`RunResult`, `SandboxSpec.Build`, `SandboxClient`
   surface), `internal/guest` (`RunStreaming` on the runtime, the agent `run`
   handler that resolves the share target itself, and `stderrWriter`),
-  `internal/build` (`SandboxRunner`, `GuestBoot`).
+  `internal/build` (`SandboxRunner`, `GuestBoot`, `BuildNetwork`). `make build`
+  now also builds `bin/grillod` and `bin/grillo-netns`.
 - **Decisions/ADRs:** ADR 0006 (option A: execute `RUN` inside the sandbox).
 - **Tests run:** `make test-builder-kvm` PASS; `make check` PASS. The agent's
   `run` handler rejects an unknown share and requires a share and command.
@@ -1015,7 +1018,10 @@ historical evidence only.
 - **Integration evidence:** repeated `RUN` commands ran against one booted guest;
   output and exit codes were correct; writes propagated to the host share.
 - **Known limitations:** streaming is delivered per read chunk and bounded by the
-  runtime capture limit; build networking is not yet wired.
+  runtime capture limit. Build egress is provided by `build.BuildNetwork` (a
+  pasta namespace with a TAP and IPAM lease); the guest writes the host
+  nameservers into `/etc/resolv.conf`, and it is disabled with a warning when
+  `grillo-netns`/`pasta` are unavailable.
 - **Next task:** T19 (F2 gate: Compose application).
 
 ## T17 Compose parser and compiler - 2026-10-03

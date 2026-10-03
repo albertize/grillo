@@ -51,6 +51,8 @@ func run() error {
 	qemuPath := flag.String("qemu", "", "qemu binary (default: PATH)")
 	virtiofsd := flag.String("virtiofsd", "", "virtiofsd binary (default: /usr/libexec/virtiofsd)")
 	vsockPort := flag.Uint("vsock-port", 1024, "guest vsock port")
+	netnsBinary := flag.String("netns-binary", "bin/grillo-netns", "network supervisor for build egress (empty disables build networking)")
+	pasta := flag.String("pasta", "pasta", "pasta binary for build egress")
 	flag.Parse()
 
 	layout, err := state.NewLayout(state.DefaultConfig())
@@ -112,6 +114,10 @@ func run() error {
 	}
 	platform := oci.Platform{OS: "linux", Architecture: "amd64"}
 	puller := &oci.Puller{CAS: cas, Registry: oci.NewRegistryClient(), Platform: platform}
+	qemuBinary := *qemuPath
+	if qemuBinary == "" {
+		qemuBinary = "qemu-system-x86_64"
+	}
 	guestBoot := &build.GuestBoot{
 		Backend:      backend,
 		Kernel:       *kernel,
@@ -123,6 +129,36 @@ func run() error {
 		MemoryMiB:    512,
 		ShareTag:     "build",
 		ShareTarget:  "/build",
+	}
+	var buildNetwork *build.BuildNetwork
+	if *netnsBinary != "" {
+		if _, err := os.Stat(*netnsBinary); err != nil {
+			fmt.Fprintf(os.Stderr, "grillod: build networking disabled: %v (build 'make build' or pass -netns-binary)\n", err)
+		} else {
+			buildNetwork = &build.BuildNetwork{
+				QEMU:        qemuBinary,
+				NetnsBinary: *netnsBinary,
+				Pasta:       *pasta,
+				RuntimeDir:  layout.Runtime,
+				Application: "grillo-build",
+				Nameservers: hostNameservers(),
+			}
+			defer buildNetwork.Close()
+			buildBackend, err := qemu.Open(qemu.Config{
+				QEMU:      *qemuPath,
+				VirtioFSD: *virtiofsd,
+				Kernel:    *kernel,
+				Initramfs: *initramfs,
+				WorkDir:   filepath.Join(layout.Data, "build-backend"),
+				Launch:    buildNetwork.Launch,
+			})
+			if err != nil {
+				return err
+			}
+			guestBoot.Backend = buildBackend
+			guestBoot.Network = buildNetwork
+			guestBoot.Nameservers = hostNameservers()
+		}
 	}
 	images := &executor.OCIResolver{
 		Puller:   &oci.Puller{CAS: cas, Registry: oci.NewRegistryClient(), Platform: oci.Platform{OS: "linux", Architecture: "amd64"}},
@@ -173,6 +209,25 @@ func run() error {
 	socket := filepath.Join(layout.Runtime, "grillod.sock")
 	fmt.Fprintf(os.Stderr, "grillod: serving %s (version %s)\n", socket, version)
 	return server.Serve(ctx, socket)
+}
+
+// hostNameservers reads the host resolver configuration so a build guest can
+// reach package repositories. It falls back to well-known public resolvers.
+func hostNameservers() []string {
+	data, err := os.ReadFile("/etc/resolv.conf")
+	if err == nil {
+		var servers []string
+		for _, line := range strings.Split(string(data), "\n") {
+			fields := strings.Fields(line)
+			if len(fields) >= 2 && fields[0] == "nameserver" {
+				servers = append(servers, fields[1])
+			}
+		}
+		if len(servers) > 0 {
+			return servers
+		}
+	}
+	return []string{"1.1.1.1", "8.8.8.8"}
 }
 
 func readKey(path string) ([]byte, error) {

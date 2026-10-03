@@ -10,7 +10,9 @@ package build
 import (
 	"context"
 	"encoding/base64"
+	"net"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -212,4 +214,142 @@ func TestKVMBuildNativeBuilderRun(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(unpacked, "bin", "sh")); err != nil {
 		t.Fatalf("base rootfs content missing: %v", err)
 	}
+}
+
+// TestKVMBuildGuestNetwork verifies that a build guest gets a network interface
+// and outbound connectivity through pasta, so RUN steps can download packages.
+func TestKVMBuildGuestNetwork(t *testing.T) {
+	if _, err := os.Stat("/dev/kvm"); err != nil {
+		t.Skip("SKIP: /dev/kvm is not available")
+	}
+	if _, err := exec.LookPath("pasta"); err != nil {
+		t.Skip("SKIP: pasta is not installed")
+	}
+	root := buildRepoRoot(t)
+	kernel := filepath.Join(root, "experiments/artifacts/qemu/bzImage")
+	initramfs := filepath.Join(root, "experiments/artifacts/t07/initramfs-agent.cpio.gz")
+	keyPath := filepath.Join(root, "experiments/artifacts/t07/key")
+	sourceRootfs := filepath.Join(root, "experiments/artifacts/t02/rootfs")
+	for _, path := range []string{kernel, initramfs, keyPath, sourceRootfs} {
+		if _, err := os.Stat(path); err != nil {
+			t.Skipf("SKIP: missing %s (run 'make t07-guest' and 'make oci-guest')", path)
+		}
+	}
+	netnsBin := filepath.Join(t.TempDir(), "grillo-netns")
+	build := exec.Command("go", "build", "-o", netnsBin, "./cmd/grillo-netns")
+	build.Dir = root
+	if out, err := build.CombinedOutput(); err != nil {
+		t.Fatalf("build grillo-netns: %v: %s", err, out)
+	}
+	runtimeDir := t.TempDir()
+	if err := os.MkdirAll(runtimeDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	keyData, err := os.ReadFile(keyPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	key, err := base64.StdEncoding.DecodeString(strings.TrimSpace(string(keyData)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	network := &BuildNetwork{
+		QEMU:        "qemu-system-x86_64",
+		NetnsBinary: netnsBin,
+		Pasta:       "pasta",
+		RuntimeDir:  runtimeDir,
+		Application: "grillo-build-net",
+		Nameservers: testNameservers(),
+	}
+	defer network.Close()
+	backend, err := qemu.Open(qemu.Config{
+		Kernel:      kernel,
+		Initramfs:   initramfs,
+		WorkDir:     filepath.Join(t.TempDir(), "backend"),
+		CIDBase:     240,
+		BootTimeout: 30 * time.Second,
+		Launch:      network.Launch,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	workroot := filepath.Join(t.TempDir(), "rootfs")
+	if err := copyTree(sourceRootfs, workroot, copyOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	boot := &GuestBoot{
+		Backend:      backend,
+		Kernel:       kernel,
+		Initramfs:    initramfs,
+		KernelArgs:   "console=ttyS0 reboot=k panic=1 rdinit=/init",
+		GuestKey:     key,
+		VsockCIDBase: 240,
+		VsockPort:    1024,
+		MemoryMiB:    512,
+		ShareTag:     "build",
+		ShareTarget:  "/build",
+		Network:      network,
+		Nameservers:  testNameservers(),
+	}
+	runner := &SandboxRunner{Share: "build", Boot: boot.Boot}
+	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+	defer cancel()
+	defer runner.Close()
+
+	if err := runner.Run(ctx, RunStep{
+		RootfsDir: workroot,
+		Command:   []string{"/bin/sh", "-c", "ip -o -4 addr show eth0 > /iface.txt; ip route > /route.txt"},
+		WorkDir:   "/",
+	}, nil); err != nil {
+		t.Fatalf("interface probe: %v", err)
+	}
+	iface, err := os.ReadFile(filepath.Join(workroot, "iface.txt"))
+	if err != nil || !strings.Contains(string(iface), "10.77.0.") {
+		t.Fatalf("eth0 address = %q err=%v", iface, err)
+	}
+
+	// Outbound connectivity through pasta, matching the T11 egress probe. If the
+	// host itself has no internet, the egress assertion is skipped.
+	if err := runner.Run(ctx, RunStep{
+		RootfsDir: workroot,
+		Command:   []string{"/bin/sh", "-c", "nc -w 10 -z 1.1.1.1 443 && echo ok > /egress.txt || echo fail > /egress.txt"},
+		WorkDir:   "/",
+	}, nil); err != nil {
+		t.Fatalf("egress probe: %v", err)
+	}
+	egress, err := os.ReadFile(filepath.Join(workroot, "egress.txt"))
+	if err != nil {
+		t.Fatalf("egress result missing: %v", err)
+	}
+	if !strings.Contains(string(egress), "ok") {
+		if !hostHasInternet() {
+			t.Skip("SKIP: the host has no internet to test egress")
+		}
+		t.Fatalf("build guest egress failed: %q", egress)
+	}
+}
+
+func hostHasInternet() bool {
+	conn, err := net.DialTimeout("tcp", "1.1.1.1:443", 5*time.Second)
+	if err != nil {
+		return false
+	}
+	_ = conn.Close()
+	return true
+}
+
+func testNameservers() []string {
+	if data, err := os.ReadFile("/etc/resolv.conf"); err == nil {
+		var servers []string
+		for _, line := range strings.Split(string(data), "\n") {
+			fields := strings.Fields(line)
+			if len(fields) >= 2 && fields[0] == "nameserver" {
+				servers = append(servers, fields[1])
+			}
+		}
+		if len(servers) > 0 {
+			return servers
+		}
+	}
+	return []string{"1.1.1.1", "8.8.8.8"}
 }

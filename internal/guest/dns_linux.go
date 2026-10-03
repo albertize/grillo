@@ -55,6 +55,23 @@ func (a *Agent) stopDNS() {
 	}
 }
 
+// writeNameservers points the guest resolver at the given upstream servers.
+// Build sandboxes use this so RUN steps can reach package repositories.
+func writeNameservers(nameservers []string) error {
+	if len(nameservers) == 0 {
+		return nil
+	}
+	var builder strings.Builder
+	for _, server := range nameservers {
+		builder.WriteString("nameserver " + server + "\n")
+	}
+	builder.WriteString("options ndots:1\n")
+	if err := os.MkdirAll("/etc", 0o755); err != nil {
+		return err
+	}
+	return os.WriteFile(resolvConfPath, []byte(builder.String()), 0o644)
+}
+
 func writeResolvConf(search []string) error {
 	var builder strings.Builder
 	builder.WriteString("nameserver 127.0.0.1\n")

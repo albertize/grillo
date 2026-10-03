@@ -102,6 +102,11 @@ func (a *Agent) start(ctx context.Context, req guestproto.Message) (any, *guestp
 	if err := a.startDNS(a.sandbox.DNS); err != nil {
 		return nil, guestproto.Errorf(guestproto.CodeInternal, "%v", err)
 	}
+	if a.sandbox.DNS == nil && len(a.sandbox.Nameservers) > 0 {
+		if err := writeNameservers(a.sandbox.Nameservers); err != nil {
+			return nil, guestproto.Errorf(guestproto.CodeInternal, "%v", err)
+		}
+	}
 	if a.sandbox.Build {
 		a.started = true
 		return guestproto.StartResult{State: "ready"}, nil

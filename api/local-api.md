@@ -43,11 +43,13 @@ preserved.
 
 `POST /v1/build` uses Grillo's **native builder by default**: it parses a
 supported Dockerfile subset, executes `RUN` steps inside a sandboxed guest that
-shares the build root, and publishes a verified OCI image. `builder: "podman"`
-selects rootless Podman as an explicit opt-in accelerator; it is never selected
-automatically. Builder output streams into the event stream (`kind=build`,
-`reason=progress`). A missing guest artifact or a missing Podman binary is
-reported as an actionable error, not a fallback.
+shares the build root, and publishes a verified OCI image. When the
+`grillo-netns` supervisor and `pasta` are available the build guest gets outbound
+connectivity (so `RUN` can install packages); otherwise it builds offline and the
+daemon logs a warning. `builder: "podman"` selects rootless Podman as an explicit
+opt-in accelerator; it is never selected automatically. Builder output streams
+into the event stream (`kind=build`, `reason=progress`). A missing guest artifact
+or a missing Podman binary is reported as an actionable error, not a fallback.
 
 ## Asynchronous operations
 
