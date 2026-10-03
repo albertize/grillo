@@ -84,8 +84,14 @@ t07-guest:
 test-t07: t07-guest
 	go test -tags kvm -count=1 -v -run TestKVMAgent ./internal/guest/
 
+# T08 backend lifecycle: real create/start/inspect/stop/delete cycles with no
+# leaked VMM processes or directories. GRILLO_KVM_CYCLES=100 runs the 100-cycle
+# gate (~90s). Missing /dev/kvm or the T07 image is a SKIP.
+test-t08: t07-guest
+	go test -tags kvm -count=1 -v -timeout 600s -run TestKVMCreateStartStopDelete ./internal/backend/qemu/
+
 # Full T02/T03 real hardware evidence. No downloads or preexisting volume deletion.
-.PHONY: f0-guest test-f0 t07-guest test-t07
+.PHONY: f0-guest test-f0 t07-guest test-t07 test-t08
 f0-guest:
 	bash experiments/boot/qemu/build-kernel.sh
 	bash experiments/boot/qemu/build-f0-guest.sh

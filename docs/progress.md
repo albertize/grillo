@@ -23,6 +23,8 @@ handler that serves `start`/`stop`/`status`/`exec`/`probe` over the T06 protocol
 The guest image is built by `make t07-guest`, and `make test-t07` boots it under
 real KVM/QEMU and passes OCI scenario A plus an init-failure case.
 
+**T08 is complete.** `internal/sandbox` defines the VMM-independent backend contract, `internal/platform/linux` provides PID-reuse-safe process identity, and `internal/backend/qemu` implements the ADR 0005 backend: idempotent `Create`, boot + vsock handshake, `Inspect`, graceful/forced `Stop`, and reverse-order `Delete` with persisted state. `make test-t08` runs 100 real create/start/stop/delete cycles with no leaked VMM process or directory.
+
 Hosted CI has not yet been executed.
 
 ## Task status
@@ -37,7 +39,7 @@ Hosted CI has not yet been executed.
 | T05 | State, secrets, and recovery primitives | DONE | `internal/state` + `internal/secrets`; lock, atomic snapshots, journal, migration, secret GC tests |
 | T06 | Guest protocol and testable client | DONE | `internal/guestproto` + `api/guest-protocol.md`; framing/handshake/client/server, fuzz, partial-I/O, overflow, backpressure, timeout, auth tests |
 | T07 | Guest PID 1 and OCI runtime | DONE | `internal/guest` + `cmd/grillo-agent`; `make test-t07` PASS on real KVM (scenario A, init failure, distinct PIDs, no zombies) |
-| T08 | Backend lifecycle and process supervision | TODO | T05, T07 |
+| T08 | Backend lifecycle and process supervision | DONE | `internal/sandbox` + `internal/platform/linux` + `internal/backend/qemu`; `make test-t08` 100 cycles, no leaks |
 | T09 | OCI registry and CAS | TODO | T04, T03 |
 | T10 | Storage manager | TODO | T05, T08, T09 |
 | T11 | Production rootless networking and IPAM | TODO | T05, T08 |
@@ -554,6 +556,45 @@ historical evidence only.
   the experiment initramfs and production must deliver it per boot over a private
   channel.
 - **Next task:** T08 (backend lifecycle) depends on T05/T07; T09 depends on T04.
+
+## T08 backend lifecycle and process supervision — 2026-10-03
+
+- **Task:** T08 — backend lifecycle and process supervision
+- **Status:** DONE
+- **Dependencies verified:** T05 (state) and T07 (guest agent) complete; real
+  `/dev/kvm`, `/dev/vhost-vsock`, qemu 10.2.2, and virtiofsd 1.14.0 present.
+- **Files and contracts changed:** `internal/sandbox` (VMM-independent
+  `Backend`/`Spec`/`Handle`/`Observation`/`Capabilities` contract),
+  `internal/platform/linux` (`Identify`/`Alive`/`Signal`/`SignalGroup` with
+  boot-ID + start-time + executable identity), `internal/backend/qemu` (config
+  and QEMU/virtiofsd argument rendering, process supervision, persisted sandbox
+  state, and the full lifecycle), and the `test-t08` Makefile target.
+- **Decisions/ADRs:** Implements ADR 0005 (QEMU microvm + virtiofsd). No new ADR.
+- **Tests run:** `make check` PASS (fmt, vet, test, race, scripts, build,
+  audit); `go test -race -count=3 ./internal/backend/... ./internal/platform/...`
+  PASS; `make test-t08` PASS. `TestKVMCreateStartStopDelete` booted the real T07
+  guest through the backend **100 times in 1m25.8s (858 ms/cycle)**, verifying
+  `Inspect` returns running with a live guest and zero zombies, repeated `Start`
+  does not duplicate resources, `Delete` removes the sandbox, no VMM process
+  leaks (identity-checked), and the work directory is empty afterwards. Unit
+  tests cover idempotent `Create` by operation ID, `ErrConflict` on ID reuse,
+  absent `Stop`/`Delete` success, handshake-failure cleanup (VMM killed), reopen
+  loading persisted state, stale-identity kill refusal, capability probing, and
+  100 fake-VMM cycles with an empty work dir.
+- **Tests NOT run and why:** No virtiofsd share or disk attach is exercised in
+  the KVM cycle (the guest agent does not mount them yet; live sharing is T10/T11
+  and was verified in the T03 F0 gate). Networking is a pre-rendered `netdev`
+  field owned by T11. Hosted CI has not run.
+- **Integration evidence:** Real QEMU microVM boots and AF_VSOCK handshakes
+  across 100 create/start/stop/delete cycles with no leaked processes or
+  directories.
+- **Known limitations:** `Stop` sends SIGTERM to the VMM process group after a
+  best-effort guest container stop; there is no ACPI/serial shutdown request to
+  the guest yet (T11/T14). Dependency cycles and guest status details remain
+  T12/T13. The backend serializes operations per sandbox and holds per-sandbox
+  locks; global concurrency/limits are T14.
+- **Next task:** T09 (OCI registry and CAS) depends on T04 and T03; T11
+  (networking) and T10 (storage) depend on T08.
 
 ## Updating this file
 
