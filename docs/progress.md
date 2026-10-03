@@ -25,6 +25,8 @@ real KVM/QEMU and passes OCI scenario A plus an init-failure case.
 
 **T08 is complete.** `internal/sandbox` defines the VMM-independent backend contract, `internal/platform/linux` provides PID-reuse-safe process identity, and `internal/backend/qemu` implements the ADR 0005 backend: idempotent `Create`, boot + vsock handshake, `Inspect`, graceful/forced `Stop`, and reverse-order `Delete` with persisted state. `make test-t08` runs 100 real create/start/stop/delete cycles with no leaked VMM process or directory.
 
+**T09 is complete.** `internal/oci` implements reference parsing, the OCI Distribution API subset with bearer/basic auth and bounded HTTP, schema2/OCI manifest and index handling with `linux/amd64` selection, a content-addressed blob store with atomic verified commits and concurrent-pull deduplication, safe gzip/tar layer unpacking with whiteouts and opaque directories, image-config merging, and `diff_id` verification. Adversarial tars and corrupt blobs are rejected.
+
 Hosted CI has not yet been executed.
 
 ## Task status
@@ -40,7 +42,7 @@ Hosted CI has not yet been executed.
 | T06 | Guest protocol and testable client | DONE | `internal/guestproto` + `api/guest-protocol.md`; framing/handshake/client/server, fuzz, partial-I/O, overflow, backpressure, timeout, auth tests |
 | T07 | Guest PID 1 and OCI runtime | DONE | `internal/guest` + `cmd/grillo-agent`; `make test-t07` PASS on real KVM (scenario A, init failure, distinct PIDs, no zombies) |
 | T08 | Backend lifecycle and process supervision | DONE | `internal/sandbox` + `internal/platform/linux` + `internal/backend/qemu`; `make test-t08` 100 cycles, no leaks |
-| T09 | OCI registry and CAS | TODO | T04, T03 |
+| T09 | OCI registry and CAS | DONE | `internal/oci`; reference/manifest/CAS/unpack/registry/pull tests, 32 cases incl. adversarial tar + concurrent dedup |
 | T10 | Storage manager | TODO | T05, T08, T09 |
 | T11 | Production rootless networking and IPAM | TODO | T05, T08 |
 | T12 | DNS, Service proxy, and Ingress | TODO | T11, T04 |
@@ -595,6 +597,46 @@ historical evidence only.
   locks; global concurrency/limits are T14.
 - **Next task:** T09 (OCI registry and CAS) depends on T04 and T03; T11
   (networking) and T10 (storage) depend on T08.
+
+## T09 OCI registry and CAS — 2026-10-03
+
+- **Task:** T09 — OCI registry and CAS
+- **Status:** DONE
+- **Dependencies verified:** T04 (IR) complete; T03 provided the rootfs
+  materialization path; the pure registry/CAS work has no host prerequisites.
+- **Files and contracts changed:** `internal/oci` (`reference.go`
+  normalization, `manifest.go` schema2/OCI manifests and indexes,
+  `registry.go` Distribution API subset with auth/limits, `cas.go`
+  content-addressed store, `unpack.go` safe extraction, `config.go` image-config
+  merge, `pull.go` orchestration). No VMM, guest, or IR imports.
+- **Decisions/ADRs:** None required. The OCI module list is unchanged; the code
+  uses only the standard library.
+- **Tests run:** `make check` PASS (fmt, vet, test, race, scripts, build, audit);
+  `go test -race -count=3 ./internal/oci` PASS (32 test cases). Coverage:
+  reference normalization and invalid inputs; OCI and Docker schema2 manifests;
+  index platform selection; schema1 and zstd/unimplemented-layer rejection;
+  invalid config descriptors; gzip layer unpack; whiteouts and opaque
+  directories; setuid clearing; absolute paths, `..`, devices, FIFOs, escaping
+  hardlinks, and symlink-parent traversal all refused; `DiffID`; image-config
+  merge (entrypoint/cmd/env/user/workdir/stop-signal) with overrides;
+  CAS commit/open, digest mismatch, size mismatch, byte-limit, collect, and
+  **16 concurrent `Fetch` calls deduplicating to one download**; registry bearer
+  auth (in-process `httptest` registry), token failure, manifest size limit,
+  cross-host redirect stripping `Authorization`, corrupt blob rejection, and
+  `diff_id` mismatch rejection; an end-to-end pull+unpack.
+- **Tests NOT run and why:** No real network registry (Docker Hub / GHCR) and no
+  credential-helper execution; credential helpers are opt-in and not implemented
+  yet. Unpacking maps owners through `MapOwner` and ignores `EPERM` from
+  `Lchown`, retaining metadata for guest-side materialization as the plan
+  requires; that strategy is verified only for the current-user case. Hosted CI
+  has not run.
+- **Integration evidence:** Repository-local, with local `httptest` registries
+  serving real tar/config/manifest fixtures; no live registry contacted.
+- **Known limitations:** `plan`/lockfile integration, pull policies, image GC
+  pins, and credential config parsing are T14/T15. Rootless arbitrary-UID
+  materialization is recorded but not yet projected into the guest by T10.
+- **Next task:** T10 (storage) depends on T05/T08/T09; T11 (networking) on
+  T05/T08.
 
 ## Updating this file
 
