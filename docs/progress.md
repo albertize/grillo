@@ -2,15 +2,15 @@
 
 ## Current state
 
-The repository contains design and contributor documentation only. **No implementation task has been completed.** Adding this tracker, contribution guidelines, and license does not complete T00, which also requires a Go module, build targets, CI, and tested command scaffolding.
+**T00 is implemented and locally verified.** The repository now contains a Go module, tested command scaffolding, build/check targets, and CI configuration. There is still no workload runtime, guest init implementation, or release.
 
-No runtime tests, KVM experiments, or benchmarks have been performed as part of this documentation work.
+No KVM experiments or runtime benchmarks have been performed. Hosted CI has not yet been executed.
 
 ## Task status
 
 | Task | Title | Status | Evidence or next prerequisite |
 |---|---|---|---|
-| T00 | Repository scaffold and conventions | TODO | First implementation task; documentation exists, code/tooling do not |
+| T00 | Repository scaffold and conventions | DONE | Local checks, clean-source builds, audit, and command smoke tests; evidence below |
 | T01 | Rootless VMM and minimal guest spike | TODO | T00 |
 | T02 | OCI, filesystem, and application-network spike | TODO | T01 |
 | T03 | F0 gate and platform ADR | TODO | T02 and measured evidence |
@@ -41,6 +41,43 @@ No runtime tests, KVM experiments, or benchmarks have been performed as part of 
 | T28 | Future research, not a prerequisite | TODO | Stable F3 and measured use cases |
 
 Task contracts and full acceptance criteria live in [IMPLEMENTATION_PLAN.md](../IMPLEMENTATION_PLAN.md). The table is a status summary, not a replacement for those contracts.
+
+## T00 delivery — 2026-10-03
+
+- **Task:** T00 — Repository scaffold and conventions
+- **Status:** DONE
+- **Dependencies verified:** None; initial working tree was clean and no remote was configured.
+- **Files and contracts changed:** `go.mod`, `cmd/grillo`, `cmd/grillo-agent`,
+  `internal/command`, `Makefile`, `.github/workflows/ci.yml`, and contributor docs.
+  Exit codes: 0 success, 1 unavailable functionality/output failure, 2 invalid usage.
+  Unknown arguments are not echoed. No host inspection, mutations, downloads, or
+  workload execution occur in either command. Existing `.gitignore` already
+  excludes `bin/` and runtime artifacts.
+- **Decisions/ADRs:** [0001](adr/0001-scaffold-and-dependencies.md), proposed pending
+  maintainer review. Go 1.26.8; local module identity; standard library only.
+  Maintained YAML v3.0.5 path/license verified for future use, not imported.
+  No external runtime modules, so no go.sum yet. No backend choice made.
+- **Tests run:** Linux/amd64, `go1.26.8-X:nodwarf5`:
+  - `make check`: PASS (fmt, vet, unit/race tests, host and Linux/amd64 agent
+    builds, `go mod verify`, `go list -m all`, `go mod tidy -diff`).
+  - Repeated `make check` in a fresh temporary source copy excluding ignored
+    files/build artifacts: PASS. This is not a remote checkout or hosted CI run.
+  - `make vulncheck`: PASS, pinned v1.8.0 reports no vulnerabilities found.
+  - `go test -cover ./internal/command`: PASS, 100% statement coverage for the
+    small dispatcher only; not a runtime coverage claim.
+  - Built binary smoke tests: version exits 0, doctor exits 1, unknown `up`
+    exits 2, agent without arguments exits 1, as intended.
+  - `git diff --check`: PASS.
+  - `make test-kvm`: expected BLOCKED/nonzero (Make exits 2); no tests exist yet.
+- **Tests NOT run and why:** Hosted GitHub Actions awaits repository push.
+  Real KVM/guest/network tests await T01 artifacts and test implementation.
+  `/dev/kvm` exists locally, but access or functionality was not tested.
+- **Integration/benchmark evidence:** CLI binary smoke tests only; no VM evidence.
+- **Known limitations:** Doctor performs no readiness checks; agent is not PID 1;
+  versions are development scaffold identifiers. No daemon, frontends, API, or
+  workload semantics exist. Compatibility support is unchanged.
+- **Next task:** T01 — rootless VMM and minimal guest spike; T04 is independently
+  eligible for pure model work. Do not substitute scaffold results for F0.
 
 ## Updating this file
 

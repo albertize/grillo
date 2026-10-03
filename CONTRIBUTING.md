@@ -1,6 +1,6 @@
 # Contributing to Grillo
 
-Thank you for helping shape Grillo. The project is currently a specification and implementation plan, not a working runtime. Design reviews, feasibility experiments, test design, and focused documentation improvements are especially useful at this stage.
+Thank you for helping shape Grillo. The project currently has design documents and an initial command scaffold, not a working workload runtime. Design reviews, feasibility experiments, test design, and focused documentation improvements are especially useful at this stage.
 
 ## Before starting
 
@@ -19,7 +19,7 @@ For a substantial change, discuss the problem and proposed approach with the rep
 - Review dependency, licensing, packaging, and guest-artifact choices.
 - Improve the implementation plan without weakening its acceptance gates.
 
-There is no Go module or build system yet. T00 introduces them. Do not add empty scaffolding for every planned package or claim that documentation changes implement a runtime milestone.
+The Go module and build system cover only the initial scaffold; use `make check` with Go 1.26.8. Do not add empty scaffolding for every planned package or claim that scaffold tests implement a runtime milestone.
 
 ## Development workflow
 

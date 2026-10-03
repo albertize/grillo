@@ -4,7 +4,7 @@ These instructions apply to all work in this repository. They are intended for c
 
 ## 1. Current state
 
-Grillo is in the design stage. There is no implemented runtime, Go module, build system, or release. Do not invent successful builds, existing APIs, compatibility support, or benchmark results.
+Grillo has an initial Go command scaffold and build/CI tooling, but no workload runtime or release. Do not invent successful builds, existing APIs, compatibility support, or benchmark results.
 
 Start with:
 
@@ -78,9 +78,7 @@ Do not mark `DONE` until all required acceptance evidence exists. Use `BLOCKED` 
 
 ## 7. Verification
 
-At the current documentation-only stage, check links, Markdown structure, task consistency, and diffs. Do not run `go test ./...` as though a module already exists.
-
-Once T00 establishes the Go module and tooling, applicable routine checks include:
+Check links, Markdown structure, task consistency, and diffs for documentation changes. T00 establishes the Go module and tooling; run `make check` for routine verification. Its component checks include:
 
 ```sh
 gofmt -l .

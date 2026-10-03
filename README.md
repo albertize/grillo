@@ -6,7 +6,7 @@ Grillo is a planned rootless-first application runtime that runs local workloads
 
 The goal is a development experience closer to `docker compose up` than to operating a cluster, while preserving the application-facing contracts that matter in production.
 
-> **Project status: design and feasibility planning.** This repository currently contains the specification, implementation plan, and contributor documentation. There is no executable runtime, installable release, or working command suite yet. Capabilities described below are intended behavior, not claims of implemented support.
+> **Project status: initial scaffold.** The repository includes tested command scaffolding and build/CI tooling. There is no executable workload runtime or installable release. Only help, development version output, and an explicitly incomplete doctor command exist; capabilities described below remain intended behavior.
 
 ## Why Grillo?
 
@@ -206,7 +206,22 @@ The plan contains **29 tasks, T00–T28**, with dependencies, contracts, tests, 
 
 Design reviews, rootless feasibility experiments, adversarial test cases, documentation improvements, and eventually focused Go contributions are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md) before starting work. Coding agents should also follow [AGENT.md](AGENT.md).
 
-There is no Go module or build command to run yet; T00 creates the implementation scaffold. Do not mistake documentation checks for runtime verification.
+### Development
+
+Use Go **1.26.8**, Make, and a C compiler for race tests on Linux:
+
+```sh
+make check          # formatting, vet, unit/race tests, host/agent builds, module audit
+./bin/grillo version
+./bin/grillo doctor # exits 1: readiness checks are not implemented
+make vulncheck      # explicit download/execution of pinned official audit tool
+```
+
+Build outputs stay under `bin/`. The agent is a build scaffold, **not usable as
+guest PID 1**. `make test-kvm` currently fails with an explicit blocker; ordinary
+tests require no KVM. No workload support is implied by passing these checks.
+See the [dependency ADR](docs/adr/0001-scaffold-and-dependencies.md) for pins and
+the provisional local module identifier.
 
 ## Name
 
