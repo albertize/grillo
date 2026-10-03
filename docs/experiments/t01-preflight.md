@@ -1,6 +1,8 @@
 # T01 — Initial rootless prerequisite evidence
 
-Date: 2026-10-03. Status: **BLOCKED (partial prerequisite evidence only)**.
+Date: 2026-10-03. Status: **superseded as the T01 headline result**; see the
+[boot spike report](t01-boot-spike.md), which adds real boot, exec, stop, and
+30-cycle evidence. This report remains the record of the prerequisite probes.
 Starting commit: `d2bf8a4` (T00); probes are subsequent working-tree changes.
 
 ## Environment
@@ -47,6 +49,8 @@ VM stop, helper forwarding, or 30-cycle measurements were performed**. No
 latency, memory, isolation, or backend feasibility claims follow from this
 report. T01 is not complete; T02 remains dependent on completing it.
 
-Next: authorize and provision a pinned VMM/guest toolchain, implement the minimal
-guest, then run the actual boot/stop gate. Firecracker is still only a candidate;
-T02 must validate networking and live sharing before T03 selects a backend.
+Next: the boot spike is implemented in [the T01 boot report](t01-boot-spike.md).
+Helper forwarding (e.g. `pasta`/`slirp4netns`) and real networking remain
+unverified and are T01's outstanding item into T02/T11. Firecracker is still only
+a candidate; T02 must validate networking and live sharing before T03 selects a
+backend.

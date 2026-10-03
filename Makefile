@@ -2,7 +2,7 @@
 GO ?= go
 GOVULNCHECK_VERSION := v1.8.0
 
-.PHONY: fmt vet test test-scripts race build check audit vulncheck test-kvm
+.PHONY: fmt vet test test-scripts race build check audit vulncheck guest test-kvm bench-t01
 
 # Check formatting without modifying source files.
 fmt:
@@ -37,7 +37,15 @@ audit:
 vulncheck:
 	$(GO) run golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION) ./...
 
-# Fail closed until T01 adds real hardware tests. Never report zero tests as PASS.
-test-kvm:
-	@echo 'BLOCKED: no KVM integration tests or guest artifacts yet (T01). No hardware checks performed.' >&2
-	@exit 1
+# Build the T01 experiment guest kernel and initramfs (see experiments/boot).
+guest:
+	bash experiments/boot/build-guest.sh
+
+# Real hardware test. Builds the guest, then boots a microVM under KVM.
+# A missing /dev/kvm is reported as a SKIP by the test, never as a pass.
+test-kvm: guest
+	go test -tags kvm -count=1 -v ./experiments/boot/run/
+
+# 30-cycle measured boot/stop run (T01 evidence). Writes no committed artifacts.
+bench-t01: guest
+	go run ./experiments/boot/run -cycles 30

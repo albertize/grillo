@@ -27,11 +27,14 @@ Use the local module identifier `grillo.local/grillo`; replace it and imports
 when maintainers establish the canonical repository URL. It is not a public
 project domain claim.
 
-The runtime module currently has **zero external dependencies**. No go.sum is
-needed until a dependency is actually imported. The planned YAML parser is
-`go.yaml.in/yaml/v3` at `v3.0.5`; add and checksum it when frontend work starts,
-after rechecking vulnerabilities. Do not add an unused dependency just to
-produce a go.sum. Official x/* modules likewise await concrete consumers.
+The runtime module starts with **no external dependencies**. The planned YAML
+parser is `go.yaml.in/yaml/v3` at `v3.0.5`; add and checksum it when frontend
+work starts, after rechecking vulnerabilities. The plan-approved
+`golang.org/x/sys/unix` module was added later at `v0.48.0` for the T01 guest
+vsock listener (see [ADR 0003](0003-guest-initiated-shutdown.md) and
+[progress](../progress.md)); it is confined to Linux/guest code. Do not add an
+unused dependency just to produce a go.sum. Official x/* modules otherwise await
+concrete consumers.
 
 Pin the separately invoked official audit tool to
 `golang.org/x/vuln/cmd/govulncheck@v1.8.0`. `make vulncheck` explicitly downloads

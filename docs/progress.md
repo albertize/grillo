@@ -2,16 +2,18 @@
 
 ## Current state
 
-**T00 is implemented and locally verified.** The repository now contains a Go module, tested command scaffolding, build/check targets, and CI configuration. There is still no workload runtime, guest init implementation, or release.
+**T00 is implemented and locally verified.** The repository contains a Go module, tested command scaffolding, build/check targets, and CI configuration.
 
-T01 prerequisite probes verified unprivileged KVM API access and private user/network namespace TAP operations. No VM boot or runtime benchmarks have been performed. Hosted CI has not yet been executed.
+**T01's rootless boot spike is implemented.** A real Firecracker microVM boots as the user, completes a vsock handshake, executes a guest command, streams output, and stops cleanly across 30 measured cycles (boot median 260 ms, total median 391 ms). T01's networking-helper forwarding item is still unverified. There is still no workload runtime, OCI execution, or release.
+
+No application-networking, storage-sharing, or OCI experiments have been performed. Hosted CI has not yet been executed.
 
 ## Task status
 
 | Task | Title | Status | Evidence or next prerequisite |
 |---|---|---|---|
 | T00 | Repository scaffold and conventions | DONE | Local checks, clean-source builds, audit, and command smoke tests; evidence below |
-| T01 | Rootless VMM and minimal guest spike | BLOCKED | Prerequisite probes pass; no VMM in PATH or verified guest artifacts |
+| T01 | Rootless VMM and minimal guest spike | IN_PROGRESS | Boot/exec/stop + 30 cycles pass on real KVM; networking-helper forwarding untested |
 | T02 | OCI, filesystem, and application-network spike | TODO | T01 |
 | T03 | F0 gate and platform ADR | TODO | T02 and measured evidence |
 | T04 | IR, diagnostics, and capabilities | TODO | T00 |
@@ -137,8 +139,9 @@ Task contracts and full acceptance criteria live in [IMPLEMENTATION_PLAN.md](../
 
 ## Pre-commit verification after user provisioning
 
-- User reported running the bootstrap; local dependency files are now present.
-  Actual VMM execution and guest boot remain unverified.
+- User reported running the bootstrap; local dependency files are present.
+  Actual VMM execution and guest boot were verified later (see the T01 boot
+  spike entry below).
 - Initial `make check` FAILED because formatting traversed the downloaded Go
   compiler's intentionally invalid test fixtures. No artifact files were reformatted.
 - Restricted formatting to project source directories, preserving formatter
@@ -149,6 +152,38 @@ Task contracts and full acceptance criteria live in [IMPLEMENTATION_PLAN.md](../
 - Repeated `make check` and `git diff --check`: PASS with dependencies installed.
 - README now includes the user-provided illustration with descriptive alt text;
   the URL-decoded image path resolves. Downloaded artifacts remain ignored.
+
+## T01 boot spike — 2026-10-03
+
+- **Task:** T01 — Rootless VMM and minimal guest spike
+- **Status:** IN_PROGRESS (boot spike complete; networking-helper forwarding untested)
+- **Dependencies verified:** T00; bootstrap provisioned pinned Firecracker 1.17.0
+  and Linux 6.1.188 sources; `make check` passes.
+- **Files and contracts changed:** `experiments/boot/` (`guestinit`, `guestcmd`,
+  `run`, `build-guest.sh`), `Makefile` (`guest`, real `test-kvm`, `bench-t01`),
+  `go.mod`/`go.sum` now require `golang.org/x/sys v0.48.0` (plan-approved; guest
+  vsock only). Report: [t01-boot-spike](experiments/t01-boot-spike.md).
+- **Decisions/ADRs:** Throwaway experiment protocol and guest-initiated
+  `reboot(RESTART)` shutdown (host `SendCtrlAltDel` is inert with the pinned
+  guest config, which has `CONFIG_VT` but no `SERIO`/`I8042`). Recorded for
+  T03/T08; no backend selected. `golang.org/x/sys` was already a planned module.
+- **Tests run:** `make test-kvm` PASS (`TestKVMExecBootStop`,
+  `TestKVMExecMissingCommand`) on real KVM; `make bench-t01` / 30 cycles PASS,
+  30/30, boot median 260 ms p95 265 ms, total median 391 ms p95 400 ms;
+  `make check` PASS; `make vulncheck` PASS (no vulnerabilities); `git diff --check` PASS.
+- **Tests NOT run and why:** Networking-helper forwarding (pasta/slirp4netns),
+  OCI execution, storage sharing, cold-cache and competing-workload benchmarks,
+  and hosted CI were not run.
+- **Integration evidence:** real boot, vsock handshake, guest exec, output
+  streaming, and clean stop on `/dev/kvm` as UID 1000; artifacts and hashes in
+  the report.
+- **Cleanup evidence:** no `firecracker` processes, no `/tmp/grillo-t01-*`
+  directories, and no Grillo mounts remained after the runs.
+- **Known limitations:** experiment protocol/binaries are replaced by T06/T07; no
+  Pod/OCI/container semantics; measurements are single-host, warm-cache,
+  1 vCPU/256 MiB; guest is a trusted image; helper networking unproven.
+- **Next task:** finish T01 helper-networking verification or proceed to T02
+  (OCI, filesystem, application networking) with the backend still provisional.
 
 ## Updating this file
 
