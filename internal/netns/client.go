@@ -58,13 +58,32 @@ func (c *Client) Ping() error {
 	return err
 }
 
-// Launch creates a TAP and starts the VMM inside the namespace, returning its PID.
-func (c *Client) Launch(tap, qemu string, args []string, logPath, mac string) (int, error) {
-	response, err := c.request(Request{Op: "launch", Tap: tap, QEMU: qemu, Args: args, LogPath: logPath, MAC: mac})
-	if err != nil {
-		return 0, err
+// Launch creates a TAP and starts the VMM inside the namespace. It returns a
+// handle that stops the VMM through the supervisor, because the VMM runs in the
+// namespace's PID namespace and has no host-visible PID.
+func (c *Client) Launch(tap, qemu string, args []string, logPath, mac string) (*VMM, error) {
+	if _, err := c.request(Request{Op: "launch", Tap: tap, QEMU: qemu, Args: args, LogPath: logPath, MAC: mac}); err != nil {
+		return nil, err
 	}
-	return response.PID, nil
+	return &VMM{tap: tap, client: c}, nil
+}
+
+// VMM is a VMM running inside the namespace.
+type VMM struct {
+	tap    string
+	client *Client
+}
+
+// Alive reports whether the VMM is still running.
+func (v *VMM) Alive() bool {
+	response, err := v.client.request(Request{Op: "alive", Tap: v.tap})
+	return err == nil && response.Alive
+}
+
+// Stop kills the VMM and removes its TAP.
+func (v *VMM) Stop(time.Duration) error {
+	_, err := v.client.request(Request{Op: "stop", Tap: v.tap})
+	return err
 }
 
 // Remove deletes a TAP.

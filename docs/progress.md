@@ -39,6 +39,8 @@ real KVM/QEMU and passes OCI scenario A plus an init-failure case.
 
 **T15 is complete.** `internal/api` serves the local Unix-socket API with `SO_PEERCRED` UID checks, bounded bodies, the `{code,message,resource,retryable,details}` error DTO, asynchronous operations on the daemon lifetime context, SSE events with `Last-Event-ID` and gap records, log streaming, and distinct daemon-shutdown/application-down endpoints. `cmd/grillod` holds the single-instance state lock, builds the QEMU backend, storage manager, and `internal/executor`, and serves status and exec endpoints.
 
+**T19 (F2 gate) is complete.** A complete Compose application (web + worker, one named network, service DNS, a managed volume) runs on the real runtime: `make test-f2` proves cross-VM fetch by service name, volume persistence across `down`/`up`, idempotent re-apply, and clean `down --volumes`. The gate also fixed three runtime defects (per-workload DNS filtering, volume metadata exposure, and PID-namespace VMM tracking). See `docs/experiments/t19-f2-compose.md`.
+
 **T18 and T18b are complete (ADR 0006).** Grillo has a native build system as the default and required path: `internal/dockerfile` parses a supported Dockerfile subset and `.dockerignore`, `internal/build.NativeBuilder` assembles the image without any external container engine, and `RUN` executes inside a sandboxed guest that shares the build root (T18b). Podman is an explicit opt-in (`--podman`) only. The Podman backend, `internal/oci.ImportLayout`, and `internal/image` (inventory/inspect/pin/GC, API/CLI) are retained.
 
 **T17 is complete.** `internal/frontend/compose` parses Compose YAML with source maps, interpolation (`$VAR`, `${VAR}`, defaults, required, alternatives, `$$`), `.env`/host environment precedence, `env_file`, ports, volumes, healthchecks, `depends_on`, restart policies, resources, and networks, and compiles to the IR with field-level support diagnostics and a golden fixture. `internal/frontend/detect` identifies Compose, native, Kubernetes, and Helm input, and the CLI now accepts Compose files.
@@ -71,7 +73,7 @@ Hosted CI has not yet been executed.
 | T17 | Compose parser and compiler | DONE | `internal/frontend/compose` + `detect`; interpolation/env precedence, support diagnostics, golden IR, CLI integration |
 | T18 | Native build system and image tooling | DONE | `internal/dockerfile` + `internal/build.NativeBuilder`; copy-only and sandboxed `RUN` builds, Podman opt-in, image store/GC, API/CLI (ADR 0006) |
 | T18b | Build execution in the guest (protocol) | DONE | `run` guest message + `SandboxRunner`; real KVM evidence |
-| T19 | F2 gate: Compose application | TODO | T12–T18 |
+| T19 | F2 gate: Compose application | DONE | `make test-f2` real KVM: DNS, volume persistence, idempotent re-apply, down/recovery/cleanup; report `docs/experiments/t19-f2-compose.md` |
 | T20 | Kubernetes MVP compiler | TODO | T04; runtime verification T14 |
 | T21 | Helm rendering and OCI charts | TODO | T20 |
 | T22 | Helm gate and compatibility reporting | TODO | T19, T21 |
@@ -999,6 +1001,34 @@ historical evidence only.
   build egress requires the `grillo-netns` supervisor and `pasta`, and is
   disabled with a warning when they are unavailable.
 - **Next task:** T19 (F2 gate: Compose application).
+
+## T19 F2 gate: Compose application - 2026-10-03
+
+- **Task:** T19 - F2 gate: Compose application
+- **Status:** DONE
+- **Dependencies verified:** T12–T18 complete.
+- **Files and contracts changed:** `internal/frontend/compose` (a Service per
+  service for DNS; multi-network topologies rejected with `compose.multi_network`),
+  `internal/executor` (local image store resolution, project-relative bind
+  resolution, all-service DNS records), `internal/storage` (share only
+  `<volume>/data`), `internal/sandbox`/`internal/netns`/`internal/backend/qemu`
+  (`sandbox.VMM` handle so externally launched VMMs are not tracked by
+  namespace-local PID), `examples/f2-compose`, `docs/experiments/t19-f2-compose.md`,
+  `Makefile` (`test-f2`).
+- **Decisions/ADRs:** ADR 0006 (native builds). No new ADR.
+- **Tests run:** `make test-f2` PASS on real KVM (web + worker, DNS by name,
+  cross-VM fetch, managed volume, idempotent re-apply, down/up recovery, cleanup);
+  `make test-bridged`, `make test-executor`, `make test-builder-kvm`, and
+  `make check` PASS. Compose unit tests cover the single-network success and the
+  multi-network rejection.
+- **Tests NOT run and why:** hosted CI has not run; the KVM gate SKIPs without
+  `/dev/kvm`, `pasta`, or the guest artifacts.
+- **Integration evidence:** `docs/experiments/t19-f2-compose.md` with the
+  in-guest resolver configuration and fetched content, and the pass output.
+- **Known limitations:** one network per application (multi-network rejected);
+  Compose `build:` is not yet wired to run automatically from `up`; the gate uses
+  prebuilt images.
+- **Next task:** T20 (Kubernetes MVP compiler).
 
 ## T18b Build execution in the guest - 2026-10-03
 

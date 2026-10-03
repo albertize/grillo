@@ -1,0 +1,10 @@
+services:
+  web:
+    image: busybox:1.37
+    networks: [front]
+  db:
+    image: busybox:1.37
+    networks: [back]
+networks:
+  front:
+  back:

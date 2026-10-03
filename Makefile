@@ -121,13 +121,18 @@ test-netns:
 test-builder:
 	go test -tags builder -count=1 -v -timeout 300s ./internal/build/ ./internal/image/ ./internal/oci/
 
+# T19 F2 gate: a complete Compose application (web + worker + volume + DNS) on
+# the real runtime, including up, re-apply, down, recovery, and persistence.
+test-f2: t07-guest
+	go test -tags kvm -count=1 -v -timeout 300s -run TestKVMComposeF2Application ./internal/executor/
+
 # T18b native builder: real RUN execution inside a sandboxed guest.
 # Missing /dev/kvm or guest artifacts is a documented SKIP.
 test-builder-kvm: t07-guest
 	go test -tags kvm -count=1 -v -timeout 240s -run 'TestKVMBuildGuestRun|TestKVMBuildNativeBuilderRun|TestKVMBuildNativeMultiStage|TestKVMBuildGuestNetwork' ./internal/build/
 
 # Full T02/T03 real hardware evidence. No downloads or preexisting volume deletion.
-.PHONY: f0-guest test-f0 t07-guest test-t07 test-t08 test-t10 test-netns test-executor test-netreg test-bridged test-builder test-builder-kvm
+.PHONY: f0-guest test-f0 t07-guest test-t07 test-t08 test-t10 test-netns test-executor test-netreg test-bridged test-builder test-builder-kvm test-f2
 f0-guest:
 	bash experiments/boot/qemu/build-kernel.sh
 	bash experiments/boot/qemu/build-f0-guest.sh

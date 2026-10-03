@@ -33,7 +33,7 @@ type sandboxEntry struct {
 	mu        sync.Mutex
 	persisted persistedSandbox
 	dir       string
-	qemu      *process
+	qemu      sandbox.VMM
 	virtiofsd []*process
 	guest     GuestConn
 }
@@ -160,7 +160,7 @@ func (b *Backend) Start(ctx context.Context, handle sandbox.Handle) error {
 	}
 	entry.mu.Lock()
 	defer entry.mu.Unlock()
-	if entry.qemu != nil && entry.qemu.alive() {
+	if entry.qemu != nil && entry.qemu.Alive() {
 		return nil
 	}
 	spec := entry.persisted.Spec
@@ -196,18 +196,14 @@ func (b *Backend) Start(ctx context.Context, handle sandbox.Handle) error {
 		}
 	}
 
-	var qemu *process
+	var qemu sandbox.VMM
 	if b.cfg.Launch != nil {
-		pid, launchErr := b.cfg.Launch(ctx, spec, qemuArgs(spec, b.cfg, dir, serialLogPath(dir), shareSockets), vmmLogPath(dir))
+		launched, launchErr := b.cfg.Launch(ctx, spec, qemuArgs(spec, b.cfg, dir, serialLogPath(dir), shareSockets), vmmLogPath(dir))
 		if launchErr != nil {
 			stopHelpers()
 			return fmt.Errorf("qemu: launch vmm: %w", launchErr)
 		}
-		qemu, err = externalProcess(pid)
-		if err != nil {
-			stopHelpers()
-			return fmt.Errorf("qemu: track vmm: %w", err)
-		}
+		qemu = launched
 	} else {
 		qemu, err = startProcess(b.cfg.QEMU, vmmLog, qemuArgs(spec, b.cfg, dir, serialLogPath(dir), shareSockets)...)
 		if err != nil {
@@ -217,23 +213,23 @@ func (b *Backend) Start(ctx context.Context, handle sandbox.Handle) error {
 	}
 	guest, err := b.waitGuest(ctx, spec)
 	if err != nil {
-		_ = qemu.stop(2 * time.Second)
+		_ = qemu.Stop(2 * time.Second)
 		stopHelpers()
 		entry.persisted.State = string(sandbox.StateFailed)
-		entry.persisted.QEMU = processID(qemu)
+		entry.persisted.QEMU = vmmProcessID(qemu)
 		_ = saveSandbox(dir, entry.persisted)
 		return fmt.Errorf("qemu: guest handshake: %w", err)
 	}
 	entry.qemu = qemu
 	entry.virtiofsd = vfs
 	entry.guest = guest
-	entry.persisted.QEMU = processID(qemu)
+	entry.persisted.QEMU = vmmProcessID(qemu)
 	entry.persisted.VirtioFSD = processIDs(vfs)
 	entry.persisted.State = string(sandbox.StateRunning)
 	if err := saveSandbox(dir, entry.persisted); err != nil {
 		return err
 	}
-	b.cfg.Logger("qemu: sandbox %s running pid=%d cid=%d", spec.ID, qemu.id.PID, spec.VsockCID)
+	b.cfg.Logger("qemu: sandbox %s running cid=%d", spec.ID, spec.VsockCID)
 	return nil
 }
 
@@ -251,7 +247,7 @@ func (b *Backend) Inspect(ctx context.Context, handle sandbox.Handle) (sandbox.O
 	defer entry.mu.Unlock()
 
 	obs := sandbox.Observation{}
-	qemuAlive := entry.qemu != nil && entry.qemu.alive()
+	qemuAlive := entry.qemu != nil && entry.qemu.Alive()
 	if !qemuAlive && entry.persisted.QEMU != nil {
 		qemuAlive = processFromPersisted(entry.persisted.QEMU).Alive()
 	}
@@ -313,7 +309,7 @@ func (b *Backend) Stop(ctx context.Context, handle sandbox.Handle, grace time.Du
 		entry.guest = nil
 	}
 	if entry.qemu != nil {
-		_ = entry.qemu.stop(grace)
+		_ = entry.qemu.Stop(grace)
 		entry.qemu = nil
 	} else if entry.persisted.QEMU != nil {
 		stopPersisted(*entry.persisted.QEMU, grace)
@@ -349,6 +345,15 @@ func (b *Backend) Delete(ctx context.Context, handle sandbox.Handle) error {
 	b.mu.Unlock()
 	if err := os.RemoveAll(entry.dir); err != nil {
 		return fmt.Errorf("qemu: remove sandbox dir: %w", err)
+	}
+	return nil
+}
+
+// vmmProcessID persists a host PID only for locally started processes. An
+// externally launched VMM may run in a PID namespace, so it has no host PID.
+func vmmProcessID(vmm sandbox.VMM) *persistedProcess {
+	if p, ok := vmm.(*process); ok {
+		return processID(p)
 	}
 	return nil
 }

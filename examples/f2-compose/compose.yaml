@@ -1,0 +1,20 @@
+# F2 example: two services on one named network, a managed volume, DNS by
+# service name, and startup ordering. Run with: grillo up compose.yaml
+name: f2
+services:
+  web:
+    image: busybox:1.37
+    command: ["/bin/sh", "-c", "mkdir -p /www && echo f2-ok > /www/index.html && exec httpd -f -p 8080 -h /www"]
+    expose: ["8080"]
+    networks: [app]
+  worker:
+    image: busybox:1.37
+    command: ["/bin/sh", "-c", "until wget -q -O /data/result.html http://web:8080/; do sleep 1; done; echo ready > /data/ready; exec sleep infinity"]
+    volumes:
+      - data:/data
+    depends_on: [web]
+    networks: [app]
+volumes:
+  data:
+networks:
+  app:

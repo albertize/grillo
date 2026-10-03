@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -428,9 +429,6 @@ func (e *Executor) buildSpecs(ctx context.Context, application string, app model
 func (e *Executor) dnsConfig(app model.Application, workload model.Workload) *guestproto.DNSConfig {
 	var records []guestproto.DNSRecord
 	for _, service := range app.Services {
-		if !selectorMatches(service.Selector, workload.Labels) {
-			continue
-		}
 		ips := []string{"127.0.0.1"}
 		if e.cfg.EnableNetwork {
 			if resolved := e.serviceIPs(app, service.Selector); len(resolved) > 0 {
@@ -439,6 +437,7 @@ func (e *Executor) dnsConfig(app model.Application, workload model.Workload) *gu
 		}
 		records = append(records, guestproto.DNSRecord{Name: service.Name, Namespace: app.Identity.Namespace, IPs: ips})
 	}
+	_ = workload
 	if len(records) == 0 {
 		return nil
 	}
@@ -562,11 +561,20 @@ func (e *Executor) volumeSpecFor(application string, volume model.Volume) (stora
 	if volume.AccessMode == "ReadOnlyMany" {
 		accessMode = storage.AccessReadOnlyMany
 	}
+	source := volume.Source
+	if kind == storage.KindBind && source != "" && !filepath.IsAbs(source) {
+		e.mu.Lock()
+		app, ok := e.desired[application]
+		e.mu.Unlock()
+		if ok && app.Source != nil && app.Source.Path != "" {
+			source = filepath.Clean(filepath.Join(filepath.Dir(app.Source.Path), source))
+		}
+	}
 	return storage.Volume{
 		ID:            volumeID(application, volume.Name),
 		Name:          volume.Name,
 		Kind:          kind,
-		Source:        volume.Source,
+		Source:        source,
 		ReadOnly:      volume.ReadOnly,
 		AccessMode:    accessMode,
 		CapacityBytes: int64(volume.Capacity),

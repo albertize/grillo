@@ -54,6 +54,12 @@ func externalProcess(pid int) (*process, error) {
 
 func (p *process) alive() bool { return p != nil && p.id.Alive() }
 
+// Alive implements sandbox.VMM.
+func (p *process) Alive() bool { return p.alive() }
+
+// Stop implements sandbox.VMM.
+func (p *process) Stop(grace time.Duration) error { return p.stop(grace) }
+
 func processID(p *process) *persistedProcess {
 	if p == nil {
 		return nil

@@ -21,11 +21,12 @@ import (
 	"strings"
 	"sync"
 	"syscall"
+	"time"
 )
 
 // Request is one supervisor command (JSON line).
 type Request struct {
-	Op      string   `json:"op"` // "ping", "launch", "remove"
+	Op      string   `json:"op"` // "ping", "launch", "remove", "stop", "alive"
 	Tap     string   `json:"tap,omitempty"`
 	QEMU    string   `json:"qemu,omitempty"`
 	Args    []string `json:"args,omitempty"`
@@ -38,6 +39,7 @@ type Response struct {
 	OK    bool   `json:"ok"`
 	Error string `json:"error,omitempty"`
 	PID   int    `json:"pid,omitempty"`
+	Alive bool   `json:"alive,omitempty"`
 }
 
 // Config configures the supervisor.
@@ -184,6 +186,13 @@ func (s *Supervisor) handle(request Request) Response {
 			_ = run(context.Background(), "ip", "link", "del", request.Tap)
 		}
 		return Response{OK: true}
+	case "stop":
+		return s.stopTap(request.Tap)
+	case "alive":
+		s.mu.Lock()
+		cmd := s.children[request.Tap]
+		s.mu.Unlock()
+		return Response{OK: true, Alive: cmd != nil && cmd.ProcessState == nil}
 	default:
 		return Response{Error: "unknown op"}
 	}
@@ -232,7 +241,10 @@ func (s *Supervisor) launch(request Request) (int, error) {
 	if logFile != nil {
 		cmd.Stdout, cmd.Stderr = logFile, logFile
 	}
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true, Pdeathsig: syscall.SIGKILL}
+	// Do not set Pdeathsig here: Go may terminate the OS thread that handled
+	// this request, which would deliver SIGKILL to a healthy VMM. The backend
+	// tracks and stops the VMM explicitly.
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	if err := cmd.Start(); err != nil {
 		if logFile != nil {
 			logFile.Close()
@@ -243,7 +255,9 @@ func (s *Supervisor) launch(request Request) (int, error) {
 	s.mu.Lock()
 	s.children[request.Tap] = cmd
 	s.mu.Unlock()
+	done := make(chan struct{})
 	go func() {
+		defer close(done)
 		_ = cmd.Wait()
 		if logFile != nil {
 			logFile.Close()
@@ -258,7 +272,45 @@ func (s *Supervisor) launch(request Request) (int, error) {
 			_ = run(context.Background(), "ip", "link", "del", request.Tap)
 		}
 	}()
+	// A VMM that exits within the first moments is a failure, not a launch. The
+	// PID would be unusable, so report the captured log instead.
+	select {
+	case <-done:
+		return 0, fmt.Errorf("netns: vmm for %s exited immediately: %s", request.Tap, logTail(request.LogPath))
+	case <-time.After(250 * time.Millisecond):
+	}
 	return cmd.Process.Pid, nil
+}
+
+// stopTap kills the VMM for a TAP and removes the device.
+func (s *Supervisor) stopTap(tap string) Response {
+	if tap == "" {
+		return Response{OK: true}
+	}
+	s.mu.Lock()
+	cmd := s.children[tap]
+	delete(s.children, tap)
+	s.mu.Unlock()
+	if cmd != nil && cmd.Process != nil {
+		_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+		_ = cmd.Wait()
+	}
+	_ = run(context.Background(), "ip", "link", "del", tap)
+	return Response{OK: true}
+}
+
+func logTail(path string) string {
+	if path == "" {
+		return ""
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return ""
+	}
+	if len(data) > 2048 {
+		data = data[len(data)-2048:]
+	}
+	return strings.TrimSpace(string(data))
 }
 
 func macArg(mac string) string {

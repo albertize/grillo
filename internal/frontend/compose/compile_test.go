@@ -93,8 +93,11 @@ func TestCompileFullFixture(t *testing.T) {
 	if bind == nil || bind.Source != filepath.Join("testdata", "static") {
 		t.Fatalf("bind volume = %+v", bind)
 	}
-	if len(app.Services) != 1 || app.Services[0].Name != "web" {
+	if len(app.Services) != 2 || app.Services[0].Name != "web" || app.Services[1].Name != "db" {
 		t.Fatalf("services = %+v", app.Services)
+	}
+	if len(app.Services[0].Ports) != 1 || app.Services[0].Ports[0].Port != 8080 {
+		t.Fatalf("web service ports = %+v", app.Services[0].Ports)
 	}
 	if len(app.Networks) != 1 || app.Networks[0].Name != "front" {
 		t.Fatalf("networks = %+v", app.Networks)
@@ -313,4 +316,27 @@ func envValue(container model.Container, name string) (string, bool) {
 		}
 	}
 	return "", false
+}
+
+func TestSingleSharedNetworkSupported(t *testing.T) {
+	result := compileFixture(t, "network-single.yaml", nil)
+	if result.Diagnostics.HasErrors() {
+		t.Fatalf("shared single network rejected: %+v", result.Diagnostics.Errors())
+	}
+}
+
+func TestMultipleNetworksRejected(t *testing.T) {
+	result := compileFixture(t, "network-multi.yaml", nil)
+	if !result.Diagnostics.HasErrors() {
+		t.Fatal("multi-network topology was accepted")
+	}
+	found := false
+	for _, diagnostic := range result.Diagnostics {
+		if diagnostic.Code == "compose.multi_network" && diagnostic.Compatibility == source.Unsupported {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("diagnostics = %+v", result.Diagnostics)
+	}
 }

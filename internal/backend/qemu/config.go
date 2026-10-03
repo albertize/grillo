@@ -41,7 +41,7 @@ type Config struct {
 	DialGuest func(ctx context.Context, spec sandbox.Spec) (GuestConn, error)
 	// Launch, when set, starts the VMM inside a network namespace (the
 	// supervisor) and returns its PID. When nil, the VMM is started directly.
-	Launch func(ctx context.Context, spec sandbox.Spec, args []string, logPath string) (int, error)
+	Launch func(ctx context.Context, spec sandbox.Spec, args []string, logPath string) (sandbox.VMM, error)
 }
 
 // GuestConn is the subset of the guest protocol client the backend uses.

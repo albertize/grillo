@@ -163,6 +163,8 @@ func run() error {
 	images := &executor.OCIResolver{
 		Puller:   &oci.Puller{CAS: cas, Registry: oci.NewRegistryClient(), Platform: oci.Platform{OS: "linux", Architecture: "amd64"}},
 		CacheDir: filepath.Join(layout.Cache, "rootfs"),
+		Store:    imagesStore,
+		CAS:      cas,
 	}
 	exec, err := executor.New(executor.Config{
 		Backend:      backend,

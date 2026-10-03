@@ -12,6 +12,15 @@ import (
 	"time"
 )
 
+// VMM is a running VMM process the backend did not start itself. An external
+// launcher (for example one that runs the VMM inside a PID namespace) returns
+// this handle so the backend can check liveness and stop it without assuming a
+// host-visible PID.
+type VMM interface {
+	Alive() bool
+	Stop(grace time.Duration) error
+}
+
 // OperationID makes Create idempotent: repeating an operation returns the same
 // sandbox instead of creating a second one.
 type OperationID string

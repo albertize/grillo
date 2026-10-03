@@ -34,9 +34,9 @@ const (
 )
 
 // LaunchSandbox starts a VMM inside the application's network namespace.
-func (e *Executor) LaunchSandbox(ctx context.Context, spec sandbox.Spec, args []string, logPath string) (int, error) {
+func (e *Executor) LaunchSandbox(ctx context.Context, spec sandbox.Spec, args []string, logPath string) (sandbox.VMM, error) {
 	if _, err := e.ensureSupervisor(ctx, spec.Application); err != nil {
-		return 0, err
+		return nil, err
 	}
 	client := &netns.Client{SocketPath: e.socketPath(spec.Application)}
 	return client.Launch(tapName(spec.ID), e.cfg.QEMU, args, logPath, tapMAC(spec.ID))

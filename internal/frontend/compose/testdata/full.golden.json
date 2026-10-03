@@ -141,6 +141,12 @@
   ],
   "services": [
     {
+      "name": "db",
+      "selector": {
+        "io.grillo.compose.service": "db"
+      }
+    },
+    {
       "name": "web",
       "selector": {
         "io.grillo.compose.service": "web"

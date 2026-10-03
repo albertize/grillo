@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -97,8 +98,64 @@ func Compile(ctx context.Context, data []byte, opts Options) (Result, error) {
 		}
 		result.SourceMap.Set("workload/"+name, spanOf(nameNode, file))
 	}
+	if !networkTopologySupported(app) {
+		result.Diagnostics = append(result.Diagnostics, diagnostic(
+			source.SeverityError, source.Unsupported, "compose.multi_network", root, file, "", "networks",
+			"multiple distinct named-network topologies are not supported",
+			"the runtime gives one application one network; services with different network membership would be silently flattened",
+		))
+	}
 	result.Application = app
 	return result, nil
+}
+
+// networkTopologySupported reports whether every workload shares the same
+// effective network set. The current backend runs one network per application,
+// so differing membership would be flattened.
+func networkTopologySupported(app model.Application) bool {
+	if len(app.Workloads) == 0 {
+		return true
+	}
+	var first []string
+	for i := range app.Workloads {
+		set := effectiveNetworks(app.Workloads[i])
+		if i == 0 {
+			first = set
+			continue
+		}
+		if !equalStringSlices(first, set) {
+			return false
+		}
+	}
+	return true
+}
+
+func effectiveNetworks(workload model.Workload) []string {
+	if len(workload.Template.Networks) == 0 {
+		return []string{"default"}
+	}
+	seen := map[string]bool{}
+	var set []string
+	for _, name := range workload.Template.Networks {
+		if !seen[name] {
+			seen[name] = true
+			set = append(set, name)
+		}
+	}
+	sort.Strings(set)
+	return set
+}
+
+func equalStringSlices(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }
 
 func emptyApplication(opts Options) model.Application {
@@ -224,6 +281,11 @@ func compileService(name string, node *yaml.Node, topVolumes map[string]model.Vo
 		}
 	}
 
+	// Every Compose service is reachable by name on its networks, so always
+	// publish a Service (with ports when declared) even without a host port.
+	if service == nil {
+		service = &model.Service{Name: name, Selector: workload.Labels}
+	}
 	if container.Image.Reference == "" && !hasBuild(node) {
 		*diagnostics = append(*diagnostics, diagnostic(source.SeverityError, source.Unsupported, "compose.missing_image", node, file, "services/"+name, "image", "service "+name+" has neither image nor build", ""))
 	}

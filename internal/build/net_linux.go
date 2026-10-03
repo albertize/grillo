@@ -97,9 +97,9 @@ func (n *BuildNetwork) Prepare(ctx context.Context, id string) (string, int, str
 }
 
 // Launch starts the VMM inside the namespace with a TAP for the sandbox.
-func (n *BuildNetwork) Launch(ctx context.Context, spec sandbox.Spec, args []string, logPath string) (int, error) {
+func (n *BuildNetwork) Launch(ctx context.Context, spec sandbox.Spec, args []string, logPath string) (sandbox.VMM, error) {
 	if err := n.ensure(ctx); err != nil {
-		return 0, err
+		return nil, err
 	}
 	client := &netns.Client{SocketPath: n.socketPath()}
 	return client.Launch(buildTapName(spec.ID), n.QEMU, args, logPath, buildTapMAC(spec.ID))

@@ -168,7 +168,13 @@ func (m *Manager) Create(ctx context.Context, volume Volume, op string) (Volume,
 		}
 		volume.Source = resolved
 	} else {
-		volume.Source = dir
+		// Share only the data subdirectory so volume metadata never reaches a
+		// workload.
+		dataDir := filepath.Join(dir, "data")
+		if err := os.MkdirAll(dataDir, 0o700); err != nil {
+			return Volume{}, err
+		}
+		volume.Source = dataDir
 	}
 	volume.CreatedAt = time.Now().UTC()
 	if err := m.save(volume); err != nil {

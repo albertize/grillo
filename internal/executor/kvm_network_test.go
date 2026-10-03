@@ -61,7 +61,7 @@ func TestKVMBridgedApplicationNetwork(t *testing.T) {
 	backend, err := qemu.Open(qemu.Config{
 		Kernel: kernel, Initramfs: initramfs,
 		WorkDir: filepath.Join(work, "backend"), CIDBase: 110, BootTimeout: 30 * time.Second,
-		Launch: func(ctx context.Context, spec sandbox.Spec, args []string, logPath string) (int, error) {
+		Launch: func(ctx context.Context, spec sandbox.Spec, args []string, logPath string) (sandbox.VMM, error) {
 			return exec.LaunchSandbox(ctx, spec, args, logPath)
 		},
 	})
@@ -137,9 +137,27 @@ func TestKVMBridgedApplicationNetwork(t *testing.T) {
 	if len(otherInfos) != 1 {
 		t.Fatalf("other sandboxes = %+v", otherInfos)
 	}
-	otherOut := runInEventually(t, ctx, exec, otherInfos[0].Key, "B", "/bin/wget", "-qO-", "http://"+infos[0].IP+":8080/")
-	if strings.Contains(otherOut, want) {
-		t.Fatalf("application isolation failed: other reached bridged (%q)", otherOut)
+	// Isolation: the two applications reuse the same subnet in separate
+	// namespaces. From `other`, its own address serves its own page, while
+	// bridged's distinct address is unreachable.
+	otherIP := otherInfos[0].IP
+	bridgedOther := ""
+	for _, info := range infos {
+		if info.IP != otherIP {
+			bridgedOther = info.IP
+			break
+		}
+	}
+	if bridgedOther == "" {
+		t.Fatalf("bridged has no address distinct from other (%s)", otherIP)
+	}
+	own := runInEventually(t, ctx, exec, otherInfos[0].Key, "B", "/bin/wget", "-qO-", "http://"+otherIP+":8080/")
+	if strings.Contains(own, want) {
+		t.Fatalf("application isolation failed: other served bridged content (%q)", own)
+	}
+	var crossOut, crossErr bytes.Buffer
+	if code, _ := exec.ExecRuntime(ctx, otherInfos[0].Key, "web", []string{"/bin/wget", "-qO-", "-T", "3", "http://" + bridgedOther + ":8080/"}, &crossOut, &crossErr); code == 0 {
+		t.Fatalf("application isolation failed: other reached bridged at %s (%q)", bridgedOther, crossOut.String())
 	}
 }
 
