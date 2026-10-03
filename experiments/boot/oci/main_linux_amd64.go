@@ -20,7 +20,11 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
+	"path/filepath"
+	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"grillo.local/grillo/experiments/boot/spike"
@@ -29,51 +33,65 @@ import (
 const runcRoot = "/run/runc"
 
 func main() {
+	backend := flag.String("backend", "firecracker", "backend: firecracker or qemu")
 	fcPath := flag.String("firecracker", "experiments/artifacts/dependencies-v1/bin/firecracker", "firecracker binary")
-	kernel := flag.String("kernel", "experiments/artifacts/t02/vmlinux", "uncompressed guest kernel")
+	kernel := flag.String("kernel", "experiments/artifacts/t02/vmlinux", "Firecracker guest kernel")
 	initramfs := flag.String("initramfs", "experiments/artifacts/t02/initramfs-oci.cpio.gz", "OCI guest initramfs")
-	keep := flag.Bool("keep", false, "print the firecracker console log")
+	qemu := flag.String("qemu", "qemu-system-x86_64", "qemu binary (qemu backend)")
+	bzImage := flag.String("bzImage", "experiments/artifacts/qemu/bzImage", "QEMU guest bzImage (qemu backend)")
+	vsockCID := flag.Uint("vsock-cid", 3, "guest vsock CID (qemu backend)")
+	keep := flag.Bool("keep", false, "print the VMM log on failure")
 	flag.Parse()
 
-	var log *os.File
-	if *keep {
-		f, err := os.CreateTemp("", "grillo-oci-firecracker-*.log")
-		if err != nil {
-			fmt.Fprintln(os.Stderr, "oci: create log:", err)
-			os.Exit(1)
-		}
-		defer f.Close()
-		log = f
-		fmt.Println("firecracker log:", f.Name())
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 150*time.Second)
 	defer cancel()
 
-	var sink io.Writer
-	if log != nil {
-		sink = log
-	}
-	opts := spike.Options{Firecracker: *fcPath, Kernel: *kernel, Initramfs: *initramfs, Log: sink}
-	if err := runAll(ctx, opts); err != nil {
-		fmt.Fprintln(os.Stderr, "oci:", err)
+	var err error
+	switch *backend {
+	case "firecracker":
+		var log *os.File
+		if *keep {
+			f, cerr := os.CreateTemp("", "grillo-oci-firecracker-*.log")
+			if cerr != nil {
+				fmt.Fprintln(os.Stderr, "oci: create log:", cerr)
+				os.Exit(1)
+			}
+			defer f.Close()
+			log = f
+		}
+		var sink io.Writer
 		if log != nil {
+			sink = log
+		}
+		err = runAll(ctx, spike.Options{Firecracker: *fcPath, Kernel: *kernel, Initramfs: *initramfs, Log: sink})
+		if err != nil && log != nil {
 			dumpLog(log)
 		}
+	case "qemu":
+		err = runQemu(ctx, *qemu, *bzImage, *initramfs, uint32(*vsockCID), *keep)
+	default:
+		fmt.Fprintf(os.Stderr, "unknown backend %q (want firecracker or qemu)\n", *backend)
+		os.Exit(2)
+	}
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "oci:", err)
 		os.Exit(1)
 	}
 	fmt.Println("RESULT: PASS")
 }
 
-// runAll boots the OCI guest and runs both scenarios, returning the first
-// failure. It always attempts a clean stop.
+// runAll boots the OCI guest via Firecracker and runs both scenarios.
 func runAll(ctx context.Context, opts spike.Options) error {
 	session, err := spike.Boot(ctx, opts)
 	if err != nil {
 		return fmt.Errorf("boot: %w", err)
 	}
 	defer func() { _ = session.Stop() }()
+	return runScenarios(session)
+}
 
+// runScenarios runs both OCI scenarios against a connected session.
+func runScenarios(session *spike.Session) error {
 	h := &harness{session: session}
 	h.scenarioExec()
 	h.scenarioLocalhost()
@@ -81,6 +99,85 @@ func runAll(ctx context.Context, opts spike.Options) error {
 		return errors.New("one or more OCI scenario checks failed")
 	}
 	return nil
+}
+
+// runQemu validates the same OCI scenarios on the QEMU backend. QEMU exposes
+// vhost-vsock, so the guest agent and harness protocol are unchanged; the host
+// connects over AF_VSOCK instead of a Firecracker Unix socket.
+func runQemu(ctx context.Context, qemu, bzImage, initramfs string, cid uint32, keep bool) error {
+	work, err := os.MkdirTemp("", "grillo-qemu-oci-")
+	if err != nil {
+		return err
+	}
+	defer os.RemoveAll(work)
+	serialLog := filepath.Join(work, "serial.log")
+	qemuLog := filepath.Join(work, "qemu.log")
+
+	args := []string{
+		"-machine", "microvm,accel=kvm,pcie=off,rtc=on,memory-backend=mem",
+		"-cpu", "host", "-smp", "1", "-m", "256",
+		"-object", "memory-backend-memfd,id=mem,size=256M,share=on",
+		"-no-user-config",
+		"-kernel", bzImage,
+		"-initrd", initramfs,
+		"-append", "console=ttyS0 reboot=k panic=1 rdinit=/init",
+		"-device", fmt.Sprintf("vhost-vsock-device,guest-cid=%d", cid),
+		"-display", "none",
+		"-serial", "file:" + serialLog,
+		"-no-reboot",
+	}
+	logf, err := os.Create(qemuLog)
+	if err != nil {
+		return err
+	}
+	defer logf.Close()
+	cmd := exec.Command(qemu, args...)
+	cmd.Stdout, cmd.Stderr = logf, logf
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true, Pdeathsig: syscall.SIGKILL}
+	qemuStart := time.Now()
+	if err := cmd.Start(); err != nil {
+		return fmt.Errorf("start qemu: %w", err)
+	}
+	done := make(chan error, 1)
+	go func() { done <- cmd.Wait() }()
+	kill := func() {
+		if cmd.Process != nil {
+			_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+		}
+	}
+
+	session, err := spike.Boot(ctx, spike.Options{Kernel: bzImage, Initramfs: initramfs, VsockCID: cid})
+	if err != nil {
+		kill()
+		<-done
+		if keep {
+			dumpFile(qemuLog)
+		}
+		return fmt.Errorf("boot: %w", err)
+	}
+	if rss, ok := qemuRSS(cmd.Process.Pid); ok {
+		fmt.Printf("qemu-oci: boot=%s rss=%d KiB\n", time.Since(qemuStart).Round(time.Millisecond), rss)
+	} else {
+		fmt.Printf("qemu-oci: boot=%s\n", time.Since(qemuStart).Round(time.Millisecond))
+	}
+	runErr := runScenarios(session)
+	stopErr := session.Stop()
+	select {
+	case <-done:
+	case <-time.After(10 * time.Second):
+		kill()
+		<-done
+		if stopErr == nil {
+			stopErr = errors.New("qemu did not exit after stop")
+		}
+	}
+	if runErr != nil {
+		if keep {
+			dumpFile(qemuLog)
+		}
+		return runErr
+	}
+	return stopErr
 }
 
 type harness struct {
@@ -193,6 +290,34 @@ func (h *harness) scenarioLocalhost() {
 	_, _, _, _ = h.runc("kill", "grillo-serve", "TERM")
 	_, _, _, _ = h.runc("delete", "--force", "grillo-client")
 	_, _, _, _ = h.runc("delete", "--force", "grillo-serve")
+}
+
+// qemuRSS reads the resident set size of the QEMU process from /proc.
+func qemuRSS(pid int) (uint64, bool) {
+	data, err := os.ReadFile(fmt.Sprintf("/proc/%d/status", pid))
+	if err != nil {
+		return 0, false
+	}
+	for _, line := range strings.Split(string(data), "\n") {
+		if !strings.HasPrefix(line, "VmRSS:") {
+			continue
+		}
+		fields := strings.Fields(line)
+		if len(fields) >= 2 {
+			if n, err := strconv.ParseUint(fields[1], 10, 64); err == nil {
+				return n, true
+			}
+		}
+	}
+	return 0, false
+}
+
+func dumpFile(path string) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return
+	}
+	fmt.Fprintf(os.Stderr, "--- %s ---\n%s\n", path, data)
 }
 
 func dumpLog(f *os.File) {

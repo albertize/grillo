@@ -6,7 +6,9 @@
 
 **T01 is complete.** A real Firecracker microVM boots as the user, completes a vsock handshake, executes a guest command, streams output, and stops cleanly across 30 measured cycles (boot median 260 ms, total median 391 ms). A rootless networking helper (pasta) was also verified to give a new user+network namespace an address, default route, DNS, and egress.
 
-**T02 is BLOCKED on the live-bind gate.** OCI image execution and two-container localhost co-location pass on real KVM with a pinned static runc and a busybox image. Live read/write host-directory binds cannot pass: Firecracker v1.17.0 exposes no virtio-fs or 9p device. Per the plan this forces a backend comparison before T03. There is still no workload runtime or release.
+**T02's gate is satisfied on QEMU.** OCI image execution and two-container localhost co-location pass on both Firecracker and QEMU. Firecracker cannot do live host-directory binds (no shared-filesystem device); QEMU + virtiofsd passes live read/write/read-only binds, rename, and inotify watch.
+
+**T03 backend decision is supported (Proposed).** QEMU `microvm` + virtiofsd provides rootless boot, OCI execution, localhost co-location, live binds, and rootless networking, with the VMM RSS measured. See [ADR 0005](adr/0005-platform-qemu-virtiofsd.md). There is still no workload runtime or release.
 
 No application-networking, storage-sharing, or OCI experiments have been performed. Hosted CI has not yet been executed.
 
@@ -16,8 +18,8 @@ No application-networking, storage-sharing, or OCI experiments have been perform
 |---|---|---|---|
 | T00 | Repository scaffold and conventions | DONE | Local checks, clean-source builds, audit, and command smoke tests; evidence below |
 | T01 | Rootless VMM and minimal guest spike | DONE | Real boot/exec/stop 30/30, rootless userns/TAP + pasta egress; two T01 reports |
-| T02 | OCI, filesystem, and application-network spike | BLOCKED | A/B pass on real KVM; G fails (no shared-fs device); C not attempted; see ADR 0004 |
-| T03 | F0 gate and platform ADR | TODO | T02 and measured evidence |
+| T02 | OCI, filesystem, and application-network spike | DONE | A/G pass (G on QEMU/virtiofs); C, managed storage, overhead deferred to T10/T11 |
+| T03 | F0 gate and platform ADR | DONE | QEMU microvm + virtiofsd selected (Proposed ADR 0005); F0 capabilities verified |
 | T04 | IR, diagnostics, and capabilities | TODO | T00 |
 | T05 | State, secrets, and recovery primitives | TODO | T04 |
 | T06 | Guest protocol and testable client | TODO | T03, T04 |
@@ -243,6 +245,38 @@ Task contracts and full acceptance criteria live in [IMPLEMENTATION_PLAN.md](../
   as guest root; protocol/bundles are experiment-only.
 - **Next task:** T03 — backend comparison and platform ADR (do not start
   storage/backend-dependent tasks first). Pure IR work (T04/T17/T20) is independent.
+
+## T03 backend comparison — 2026-10-03
+
+- **Task:** T03 — F0 gate and platform ADR
+- **Status:** DONE (decision evidence complete; adoption pending ADR review)
+- **Dependencies verified:** T00–T02; QEMU 10.2.2 and virtiofsd 1.14.0 installed by
+  the user; `make check` passes.
+- **Files and contracts changed:** `experiments/boot/qemu/` (kernel/initramfs
+  builds, storage and network probes, harness), `experiments/boot/spike` (AF_VSOCK
+  support and a nil-session cleanup fix), `experiments/boot/oci` (QEMU backend),
+  `Makefile` (`qemu-guest`, `test-qemu`, `qemu-share`, test filters). Reports:
+  [t03-backend-comparison](experiments/t03-backend-comparison.md).
+- **Decisions/ADRs:** [0005](adr/0005-platform-qemu-virtiofsd.md) (Proposed):
+  QEMU `microvm` + virtiofsd as the F0 backend; Firecracker rejected for the
+  product because it has no shared-filesystem device.
+- **Tests run:** `make test-qemu` PASS (`TestKVMQEMULiveShare`,
+  `TestKVMQEMUNet`, `TestKVMQEMUOCIScenarios`); `make test-kvm` PASS
+  (`TestKVMExecBootStop`, `TestKVMExecMissingCommand`, `TestKVMOCIScenarios`);
+  `make storage-probe` exits 3 (BLOCKED, expected); `make check` PASS;
+  `git diff --check` PASS.
+- **Integration evidence:** QEMU virtiofs live rw/read-only/rename/watch; QEMU
+  user-mode guest TCP egress and DNS; OCI run/exec/signal/delete and two-container
+  localhost on QEMU via `vhost-vsock` (boot ≈404 ms, VMM RSS ≈142 MiB vs
+  Firecracker ≈49 MiB). No orphan VMM processes after runs.
+- **Tests NOT run and why:** cold-cache/multi-vCPU benchmarks, managed
+  virtio-block volume overhead, two-VM DNS/host publishing (T11), QEMU hardening
+  pass, and Cloud Hypervisor comparison.
+- **Known limitations:** virtiofsd ran with `--sandbox=none`; QEMU device surface
+  not yet hardened; guest PID 1 reaping and VMM orphan reconciliation belong to
+  T07/T08; ADRs 0004/0005 await maintainer review.
+- **Next task:** T04 (IR, diagnostics, capabilities) is independent and can start;
+  storage/backend work (T09/T10) should follow the QEMU hardening pass.
 
 ## Updating this file
 

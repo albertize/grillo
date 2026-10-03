@@ -23,6 +23,7 @@ Linux/amd64 only. Run as the normal host user; never with sudo.
 | `build-oci-guest.sh` | Build the T02 OCI guest initramfs |
 | `oci/` | T02 host harness: runc run/exec/signal and two-container localhost |
 | `storage-probe.sh` | Records the shared-filesystem device limitation (scenario G) |
+| `qemu/` | T03 QEMU `microvm` experiments: kernel/initramfs builds, storage and network probes, QEMU-backend OCI |
 | `build-guest.sh` | Builds the guest kernel and initramfs from pinned downloads |
 
 ## Build and run
@@ -42,7 +43,10 @@ make oci-guest                             # fetch runc/busybox, build OCI initr
 go run ./experiments/boot/oci              # OCI run/exec/signal + localhost
 go run ./experiments/boot/oci -keep        # ... printing the console log
 make storage-probe                         # live-bind limitation (exit 3 = BLOCKED)
-make test-kvm                              # kvm-tagged Go tests (spike + OCI)
+make qemu-guest                            # QEMU bzImage (VIRTIO_FS) + probes
+make qemu-share                            # QEMU + virtiofsd live-bind probe
+make test-kvm                              # Firecracker KVM tests (spike + OCI)
+make test-qemu                             # QEMU KVM tests (share, net, OCI)
 make bench-t01                             # 30 measured cycles
 ```
 
@@ -103,6 +107,18 @@ separate command so they do not hold the management channel open. Live binds are
 **not** supported by Firecracker; see the [T02 report](../../docs/experiments/t02-oci-and-storage.md)
 and `make storage-probe`.
 
+## QEMU backend (T03)
+
+`experiments/boot/qemu/` evaluates the backend that replaces Firecracker for
+product use. It builds a guest bzImage with `CONFIG_VIRTIO_FS` (the Firecracker
+config omits it), a storage probe that mounts a virtiofs tag, and a network probe
+that uses QEMU user-mode networking with `ip=dhcp`. `make qemu-share` proves live
+read/write, rename, inotify watch, and read-only enforcement; `-scenario net`
+proves rootless TCP egress and DNS; `make test-qemu` also runs the OCI scenarios
+on QEMU via `vhost-vsock`. Results are in the
+[T03 report](../../docs/experiments/t03-backend-comparison.md) and ADR 0005.
+QEMU/virtiofsd are system packages, not bootstrapped here.
+
 ## Safety
 
 - Runs as the calling user; no sudo, no jailer, no host network configuration.
@@ -112,12 +128,13 @@ and `make storage-probe`.
 
 ## Limits
 
-No OCI runtime in the *host* runtime sense, no DNS, and no guest networking: the
-networking helper is verified as a prerequisite (`netns-helper.sh`), but the VM's
-`virtio-net` is not connected through it here (T02 scenario C, T11). Live
-host-directory binds are not supported by the candidate backend (T02 scenario G,
-[ADR 0004](../../docs/adr/0004-shared-filesystem-backend-comparison.md)).
-Containers run as guest root without user-namespace isolation. The protocol and
-payload binaries are experiment-only and are replaced by T06/T07. Real evidence
-is in the [T01](../../docs/experiments/t01-boot-spike.md) and
-[T02](../../docs/experiments/t02-oci-and-storage.md) reports.
+No OCI runtime in the *host* runtime sense, no DNS, and no packaged guest
+networking: the networking helper is verified standalone (`netns-helper.sh`) and
+QEMU user-mode networking/tested rootless, but the production data plane is T11.
+Firecracker cannot do live host-directory binds; QEMU + virtiofsd can (T03,
+[ADR 0005](../../docs/adr/0005-platform-qemu-virtiofsd.md)). Containers run as
+root without user-namespace isolation. The protocol and payload binaries are
+experiment-only and are replaced by T06/T07. Real evidence is in the
+[T01](../../docs/experiments/t01-boot-spike.md),
+[T02](../../docs/experiments/t02-oci-and-storage.md), and
+[T03](../../docs/experiments/t03-backend-comparison.md) reports.

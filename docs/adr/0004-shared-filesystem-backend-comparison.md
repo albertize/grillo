@@ -60,7 +60,9 @@ proceed.
 
 ## Validation and follow-up
 
-Run the same scenarios on each candidate with real hardware, compare live-bind
-correctness (write-through, read-only enforcement, rename/watch) and overhead, and
-accept the platform ADR only with that evidence. Revisit this ADR if a maintained,
-auditable shared-filesystem component for Firecracker becomes available.
+**Performed (T03).** The comparison was executed on real hardware:
+Firecracker exposes no shared-filesystem device (`make storage-probe` exits 3),
+while QEMU `microvm` + virtiofsd passes live read/write, rename, inotify watch,
+and read-only enforcement. See [ADR 0005](0005-platform-qemu-virtiofsd.md) and the
+[T03 report](../experiments/t03-backend-comparison.md). Cloud Hypervisor remains
+untested. Accept this ADR as fulfilled and keep ADR 0005 as the platform record.

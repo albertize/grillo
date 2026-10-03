@@ -2,7 +2,7 @@
 GO ?= go
 GOVULNCHECK_VERSION := v1.8.0
 
-.PHONY: fmt vet test test-scripts race build check audit vulncheck guest oci-guest test-kvm bench-t01 net-helper storage-probe
+.PHONY: fmt vet test test-scripts race build check audit vulncheck guest oci-guest test-kvm bench-t01 net-helper storage-probe qemu-guest test-qemu qemu-share
 
 # Check formatting without modifying source files.
 fmt:
@@ -49,7 +49,7 @@ oci-guest:
 # Real hardware test. Builds the guests, then boots microVMs under KVM.
 # A missing /dev/kvm is reported as a SKIP by the tests, never as a pass.
 test-kvm: guest oci-guest
-	go test -tags kvm -count=1 -v ./experiments/boot/spike/ ./experiments/boot/oci/
+	go test -tags kvm -count=1 -v -run 'TestKVMExecBootStop|TestKVMExecMissingCommand|TestKVMOCIScenarios' ./experiments/boot/spike/ ./experiments/boot/oci/
 
 # 30-cycle measured boot/stop run (T01 evidence). Writes no committed artifacts.
 bench-t01: guest
@@ -62,3 +62,18 @@ net-helper:
 # T02 storage/live-bind feasibility probe: documents the Firecracker limitation.
 storage-probe:
 	sh experiments/boot/storage-probe.sh
+
+# T03 backend-comparison artifacts: QEMU guest kernel with VIRTIO_FS + probe initramfs.
+qemu-guest:
+	bash experiments/boot/qemu/build-kernel.sh
+	bash experiments/boot/qemu/build-initramfs.sh
+	PROBE_PKG=./experiments/boot/qemu/netprobe PROBE_NAME=initramfs-net.cpio.gz bash experiments/boot/qemu/build-initramfs.sh
+
+# Real KVM tests for the QEMU backend: virtiofs live sharing, rootless networking,
+# and the OCI scenarios. These cover the gate Firecracker failed.
+test-qemu: qemu-guest oci-guest
+	go test -tags kvm -count=1 -v -run 'TestKVMQEMU' ./experiments/boot/qemu/run/ ./experiments/boot/oci/
+
+# Print the guest serial console from the QEMU live-share experiment.
+qemu-share: qemu-guest
+	go run ./experiments/boot/qemu/run -verbose

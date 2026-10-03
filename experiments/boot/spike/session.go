@@ -25,6 +25,8 @@ import (
 	"strings"
 	"syscall"
 	"time"
+
+	"golang.org/x/sys/unix"
 )
 
 // Options configures one microVM session.
@@ -34,7 +36,8 @@ type Options struct {
 	Initramfs   string        // path to a gzip-compressed cpio initramfs
 	WorkDir     string        // parent for the per-session temporary directory
 	VsockPort   uint32        // guest port the agent listens on
-	GuestCID    uint32        // vsock guest context id
+	GuestCID    uint32        // vsock guest context id (Firecracker device)
+	VsockCID    uint32        // if >0, connect via AF_VSOCK to this guest CID and skip launching Firecracker (QEMU vhost-vsock)
 	VCPU        uint32        // vCPU count
 	MemMiB      uint32        // guest memory
 	BootTimeout time.Duration // boot + handshake deadline
@@ -95,32 +98,40 @@ type Session struct {
 	stopped  bool
 }
 
-// Boot starts Firecracker, configures it, and waits for the guest handshake.
-func Boot(ctx context.Context, raw Options) (s *Session, err error) {
+// Boot connects to a guest and waits for the handshake. By default it starts and
+// configures Firecracker; if Options.VsockCID is set it instead assumes the
+// caller launched a VMM exposing vsock (QEMU vhost-vsock) and dials AF_VSOCK.
+func Boot(ctx context.Context, raw Options) (session *Session, err error) {
 	opts := raw.withDefaults()
 	start := time.Now()
 	dir, err := os.MkdirTemp(opts.WorkDir, "grillo-spike-")
 	if err != nil {
 		return nil, fmt.Errorf("create work dir: %w", err)
 	}
-	vm, err := startFirecracker(opts, dir)
-	if err != nil {
-		_ = os.RemoveAll(dir)
-		return nil, err
-	}
-	s = &Session{opts: opts, dir: dir, vm: vm}
-	// Ensure cleanup on any post-start error.
+	// s is local, not the named return, so return nil, err does not nil it out
+	// before the deferred cleanup runs.
+	s := &Session{opts: opts, dir: dir}
 	defer func() {
 		if err != nil {
 			_ = s.Close()
 		}
 	}()
 
-	vsockPath := filepath.Join(dir, "vsock.sock")
-	if err := vm.configure(ctx, opts, vsockPath); err != nil {
-		return nil, err
+	var conn *vsockConn
+	if opts.VsockCID > 0 {
+		conn, err = waitVsockAF(ctx, opts.VsockCID, opts.VsockPort, opts.BootTimeout)
+	} else {
+		vm, verr := startFirecracker(opts, dir)
+		if verr != nil {
+			return nil, verr
+		}
+		s.vm = vm
+		vsockPath := filepath.Join(dir, "vsock.sock")
+		if verr := vm.configure(ctx, opts, vsockPath); verr != nil {
+			return nil, verr
+		}
+		conn, err = waitVsockHandshake(ctx, vsockPath, opts.VsockPort, opts.BootTimeout)
 	}
-	conn, err := waitVsockHandshake(ctx, vsockPath, opts.VsockPort, opts.BootTimeout)
 	if err != nil {
 		return nil, err
 	}
@@ -150,7 +161,10 @@ func (s *Session) Stop() error {
 	}
 	s.stopped = true
 	stopErr := s.conn.stop()
-	shutdownErr := s.vm.shutdown(s.opts.StopTimeout)
+	var shutdownErr error
+	if s.vm != nil {
+		shutdownErr = s.vm.shutdown(s.opts.StopTimeout)
+	}
 	_ = s.conn.Close()
 	removeErr := os.RemoveAll(s.dir)
 	return errors.Join(stopErr, shutdownErr, removeErr)
@@ -323,18 +337,31 @@ func (v *firecracker) shutdown(timeout time.Duration) error {
 // vsockConn is the host side of a Firecracker vsock connection. It keeps the
 // buffered reader because the guest handshake may share a read with the
 // Firecracker CONNECT acknowledgement.
+// deadlineConn is the subset of net.Conn used by the session; *os.File (used for
+// AF_VSOCK) satisfies it as well.
+type deadlineConn interface {
+	io.Reader
+	io.Writer
+	io.Closer
+	SetReadDeadline(t time.Time) error
+}
+
 type vsockConn struct {
-	net.Conn
+	c deadlineConn
 	r *bufio.Reader
 }
 
 func (c *vsockConn) readLine(timeout time.Duration) (string, error) {
-	if err := c.SetReadDeadline(time.Now().Add(timeout)); err != nil {
+	if err := c.c.SetReadDeadline(time.Now().Add(timeout)); err != nil {
 		return "", err
 	}
 	line, err := c.r.ReadString('\n')
 	return strings.TrimRight(line, "\n"), err
 }
+
+func (c *vsockConn) Close() error { return c.c.Close() }
+
+func (c *vsockConn) Write(p []byte) (int, error) { return c.c.Write(p) }
 
 func (c *vsockConn) pingPong() error {
 	if _, err := io.WriteString(c, "PING\n"); err != nil {
@@ -447,7 +474,7 @@ func tryVsock(path string, port uint32) (*vsockConn, error) {
 		conn.Close()
 		return nil, err
 	}
-	c := &vsockConn{Conn: conn, r: bufio.NewReader(conn)}
+	c := &vsockConn{c: conn, r: bufio.NewReader(conn)}
 	line, err := c.readLine(5 * time.Second)
 	if err != nil {
 		conn.Close()
@@ -458,6 +485,64 @@ func tryVsock(path string, port uint32) (*vsockConn, error) {
 		return nil, fmt.Errorf("vsock CONNECT rejected: %q", line)
 	}
 	return c, nil
+}
+
+// waitVsockAF retries an AF_VSOCK connection to a QEMU guest (vhost-vsock) until
+// the agent handshakes or the deadline passes.
+func waitVsockAF(ctx context.Context, cid, port uint32, timeout time.Duration) (*vsockConn, error) {
+	deadline := time.Now().Add(timeout)
+	var lastErr error
+	for {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		conn, err := dialAFVSock(cid, port)
+		if err == nil {
+			line, herr := conn.readLine(10 * time.Second)
+			if herr == nil && strings.HasPrefix(line, "GRILLO-T01 ") {
+				return conn, nil
+			}
+			conn.Close()
+			lastErr = fmt.Errorf("unexpected handshake %q (%v)", line, herr)
+		} else {
+			lastErr = err
+		}
+		if time.Now().After(deadline) {
+			return nil, fmt.Errorf("vsock AF handshake timed out: %w", lastErr)
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+}
+
+func dialAFVSock(cid, port uint32) (*vsockConn, error) {
+	fd, err := unix.Socket(unix.AF_VSOCK, unix.SOCK_STREAM|unix.SOCK_CLOEXEC|unix.SOCK_NONBLOCK, 0)
+	if err != nil {
+		return nil, err
+	}
+	if err := unix.Connect(fd, &unix.SockaddrVM{CID: cid, Port: port}); err != nil {
+		if !errors.Is(err, unix.EINPROGRESS) {
+			_ = unix.Close(fd)
+			return nil, err
+		}
+		pfd := []unix.PollFd{{Fd: int32(fd), Events: unix.POLLOUT}}
+		if _, perr := unix.Poll(pfd, 5000); perr != nil {
+			_ = unix.Close(fd)
+			return nil, perr
+		}
+		soErr, serr := unix.GetsockoptInt(fd, unix.SOL_SOCKET, unix.SO_ERROR)
+		if serr != nil {
+			_ = unix.Close(fd)
+			return nil, serr
+		}
+		if soErr != 0 {
+			_ = unix.Close(fd)
+			return nil, unix.Errno(soErr)
+		}
+	}
+	// A non-blocking fd lets os.File register with the runtime poller, so
+	// SetReadDeadline works for line reads.
+	f := os.NewFile(uintptr(fd), "vsock")
+	return &vsockConn{c: f, r: bufio.NewReader(f)}, nil
 }
 
 func waitForPath(path string, timeout time.Duration) error {
