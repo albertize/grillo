@@ -658,14 +658,23 @@ Each task produces the required code/tests, consistent documentation, and verifi
 
 **Done when:** every supported feature has positive/negative fixtures; injection and secret leakage tests pass; absent/empty behavior is verified; frontend does not call the backend directly.
 
-### T18 — Builder and image/volume/network tooling
+### T18 — Native build system and image tooling
 
-**Dependencies:** T09, T10, T11, T17.
+**Dependencies:** T07, T09, T10, T11, T17.
 
-- Add rootless Podman build/export/import and cancellation; inventory/inspect/prune and CAS pins.
-- Delegate build context and dockerignore interpretation to the builder.
+- Implement a native build system as the default and required path: parse a supported Dockerfile subset with structured diagnostics for unsupported features, interpret build context and `.dockerignore` in-process, assemble the root filesystem, and execute `RUN` steps inside a sandboxed Guest microVM (virtiofs build root), with no Podman or Docker dependency.
+- Publish verified OCI images into the CAS and image store with a content-addressed layer cache; add inventory/inspect/prune and CAS pins.
+- Keep an external rootless Podman backend only as an explicit opt-in (`--podman`); never select it automatically and never require it.
 
-**Done when:** a real local build executes successfully; plan never builds; GC preserves active data; missing tools produce actionable errors.
+**Done when:** a real local `RUN` build executes successfully inside the microVM; a copy-only build needs no guest; unsupported instructions fail with a structured diagnostic; plan never builds; GC preserves active data; a host without Podman or Docker can still build; missing guest artifacts produce actionable errors.
+
+### T18b — Build execution in the guest (protocol)
+
+**Dependencies:** T06, T07, T18.
+
+- Add a guest operation that runs a command against a shared build root filesystem, streams output, and returns the exit code; add cancellation and output bounds.
+
+**Done when:** repeated commands run against one booted build guest; output and exit codes are correct; cancellation and disconnect are handled; real KVM evidence exists.
 
 ### T19 — F2 gate: Compose application
 
@@ -761,7 +770,7 @@ Snapshots, warm pools, alternate VMMs, macOS outer VMs, confidential computing, 
 
 ### 15.1 Recommended single-agent order
 
-`T00 → T01 → T02 → T03 → T04 → T05 → T06 → T07 → T08 → T09 → T10 → T11 → T12 → T13 → T14 → T15 → T16 → T17 → T18 → T19 → T20 → T21 → T22 → T23 → T24 → T25 → T26 → T27`.
+`T00 → T01 → T02 → T03 → T04 → T05 → T06 → T07 → T08 → T09 → T10 → T11 → T12 → T13 → T14 → T15 → T16 → T17 → T18 → T18b → T19 → T20 → T21 → T22 → T23 → T24 → T25 → T26 → T27`.
 
 Pure portions of T04/T17/T20 can progress offline while hardware is unavailable, but cannot complete runtime gates. Multiple agents must agree on versioned contracts before concurrently editing dependent components.
 

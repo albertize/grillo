@@ -4,7 +4,18 @@ ADRs explain consequential decisions and preserve the reasoning behind them. Use
 
 ## Current status
 
-No accepted ADRs exist yet. The implementation plan contains **provisional choices**, not evidence that a backend has passed its feasibility gate. T03 records the measured platform decision; earlier tasks may propose related records.
+| ADR | Title | Status |
+| --- | --- | --- |
+| [0001](0001-scaffold-and-dependencies.md) | Scaffold and dependencies | Accepted |
+| [0002](0002-explicit-dependency-bootstrap.md) | Explicit dependency bootstrap | Accepted |
+| [0003](0003-guest-initiated-shutdown.md) | Guest-initiated shutdown | Accepted |
+| [0004](0004-shared-filesystem-backend-comparison.md) | Shared-filesystem backend comparison | Accepted |
+| [0005](0005-platform-qemu-virtiofsd.md) | Platform: QEMU `microvm` + virtiofsd | Proposed |
+| [0006](0006-native-build-system.md) | Native build system with an optional Podman accelerator | Proposed |
+
+The implementation plan still contains **provisional choices**, not evidence that a
+backend has passed its feasibility gate. An ADR without required hardware
+evidence remains `Proposed`.
 
 ## Process
 

@@ -39,7 +39,7 @@ real KVM/QEMU and passes OCI scenario A plus an init-failure case.
 
 **T15 is complete.** `internal/api` serves the local Unix-socket API with `SO_PEERCRED` UID checks, bounded bodies, the `{code,message,resource,retryable,details}` error DTO, asynchronous operations on the daemon lifetime context, SSE events with `Last-Event-ID` and gap records, log streaming, and distinct daemon-shutdown/application-down endpoints. `cmd/grillod` holds the single-instance state lock, builds the QEMU backend, storage manager, and `internal/executor`, and serves status and exec endpoints.
 
-**T18 is complete.** `internal/build` integrates rootless Podman (build, `podman save --format oci-dir`, cancellation) and delegates Dockerfile/.dockerignore interpretation to the builder; `internal/oci.ImportLayout` imports a verified OCI image layout into the CAS; `internal/image` records pulled/built images, supports inventory/inspect/pin, and garbage collects unreferenced blobs while preserving pinned and active data. The daemon exposes image and build endpoints and the CLI adds `grillo build` and `grillo image`.
+**T18 is IN_PROGRESS and its scope was revised (ADR 0006).** The maintainer required Grillo to build without Podman or Docker, so a native build system is the default and required path; Podman is an opt-in accelerator only. The existing Podman backend, `internal/oci.ImportLayout`, and `internal/image` (inventory/inspect/pin/GC, API/CLI) are retained. The native Dockerfile parser, host-side assembly, guest `RUN` execution (T18b), and the `--podman` opt-in wiring are the remaining work.
 
 **T17 is complete.** `internal/frontend/compose` parses Compose YAML with source maps, interpolation (`$VAR`, `${VAR}`, defaults, required, alternatives, `$$`), `.env`/host environment precedence, `env_file`, ports, volumes, healthchecks, `depends_on`, restart policies, resources, and networks, and compiles to the IR with field-level support diagnostics and a golden fixture. `internal/frontend/detect` identifies Compose, native, Kubernetes, and Helm input, and the CLI now accepts Compose files.
 
@@ -69,7 +69,8 @@ Hosted CI has not yet been executed.
 | T15 | Local API and daemon lifetime | DONE | `internal/api` + `cmd/grillod`; peer UID, async ops, status/exec endpoints, SSE cursors, disconnect/leak tests |
 | T16 | Native-runtime CLI | DONE | `internal/cli` + `cmd/grillo`; plan, up/down/status/inspect/ps/restart/logs/events/exec/shell/ui, terminal restore, read-only doctor |
 | T17 | Compose parser and compiler | DONE | `internal/frontend/compose` + `detect`; interpolation/env precedence, support diagnostics, golden IR, CLI integration |
-| T18 | Builder and image/volume/network tooling | DONE | `internal/build` + `internal/image` + `oci.ImportLayout`; rootless Podman, CAS pins, image GC, API/CLI |
+| T18 | Native build system and image tooling | IN_PROGRESS | Podman backend/image store done; native builder + guest `RUN` (T18b) pending (ADR 0006) |
+| T18b | Build execution in the guest (protocol) | TODO | T06, T07, T18 |
 | T19 | F2 gate: Compose application | TODO | T12–T18 |
 | T20 | Kubernetes MVP compiler | TODO | T04; runtime verification T14 |
 | T21 | Helm rendering and OCI charts | TODO | T20 |
@@ -954,8 +955,8 @@ historical evidence only.
 
 ## T18 Builder and image tooling - 2026-10-03
 
-- **Task:** T18 - Builder and image/volume/network tooling
-- **Status:** DONE
+- **Task:** T18 - Native build system and image tooling
+- **Status:** IN_PROGRESS (scope revised by ADR 0006: native builder required, Podman opt-in only)
 - **Dependencies verified:** T09 (OCI/CAS), T10 (storage), T11 (network), T17 (Compose) complete.
 - **Files and contracts changed:** `internal/build` (`Builder`, `Request`,
   `Result`, `PodmanBuilder` with rootless build, OCI-dir export, import, and

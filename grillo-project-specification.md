@@ -626,7 +626,7 @@ Image responsibilities include:
 - image metadata inspection;
 - garbage collection.
 
-For Compose `build:` and local development workflows, Grillo should integrate with an existing OCI build engine rather than initially implementing a full Dockerfile/BuildKit replacement. The exact integration should remain modular.
+For Compose `build:` and local development workflows, Grillo should provide its own build system so that building works on a host without Podman or Docker. The native builder parses a supported Dockerfile subset, assembles the root filesystem, and executes `RUN` steps inside a sandboxed Guest microVM, publishing a verified OCI image into the content-addressed store. An external builder (rootless Podman) may be offered as an explicit opt-in accelerator, but it must never be required and must never be selected automatically. The integration should remain modular behind one builder contract.
 
 A long-term optimization may cache sandbox-ready root filesystem representations so repeated guest creation does not repeatedly perform expensive extraction work.
 
