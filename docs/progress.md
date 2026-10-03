@@ -6,11 +6,11 @@
 
 **T01 is complete.** A real Firecracker microVM boots as the user, completes a vsock handshake, executes a guest command, streams output, and stops cleanly across 30 measured cycles (boot median 260 ms, total median 391 ms). A rootless networking helper (pasta) was also verified to give a new user+network namespace an address, default route, DNS, and egress.
 
-**T02's gate is satisfied on QEMU.** OCI image execution and two-container localhost co-location pass on both Firecracker and QEMU. Firecracker cannot do live host-directory binds (no shared-filesystem device); QEMU + virtiofsd passes live read/write/read-only binds, rename, and inotify watch.
+**T02 remains BLOCKED on outstanding acceptance evidence.** OCI execution and two-container localhost pass on Firecracker and QEMU. The corrected QEMU probe verifies post-mount host writes, guest writes, rename, and read-only enforcement. Guest-local inotify passes, but host-originated notifications were not observed within 2 seconds (`DEGRADED`; polling needed).
 
-**T03 backend decision is supported (Proposed).** QEMU `microvm` + virtiofsd provides rootless boot, OCI execution, localhost co-location, live binds, and rootless networking, with the VMM RSS measured. See [ADR 0005](adr/0005-platform-qemu-virtiofsd.md). There is still no workload runtime or release.
+**T03 remains BLOCKED; QEMU is a proposed candidate, not a completed F0 gate.** Two-VM DNS/egress/publishing/management isolation, managed-volume persistence, and filesystem overhead remain unverified T02 requirements. See [ADR 0005](adr/0005-platform-qemu-virtiofsd.md). There is still no workload runtime or release.
 
-No application-networking, storage-sharing, or OCI experiments have been performed. Hosted CI has not yet been executed.
+Hosted CI has not yet been executed.
 
 ## Task status
 
@@ -18,8 +18,8 @@ No application-networking, storage-sharing, or OCI experiments have been perform
 |---|---|---|---|
 | T00 | Repository scaffold and conventions | DONE | Local checks, clean-source builds, audit, and command smoke tests; evidence below |
 | T01 | Rootless VMM and minimal guest spike | DONE | Real boot/exec/stop 30/30, rootless userns/TAP + pasta egress; two T01 reports |
-| T02 | OCI, filesystem, and application-network spike | DONE | A/G pass (G on QEMU/virtiofs); C, managed storage, overhead deferred to T10/T11 |
-| T03 | F0 gate and platform ADR | DONE | QEMU microvm + virtiofsd selected (Proposed ADR 0005); F0 capabilities verified |
+| T02 | OCI, filesystem, and application-network spike | BLOCKED | Partial real evidence; two-VM topology, managed storage, and overhead missing; host-watch degraded |
+| T03 | F0 gate and platform ADR | BLOCKED | Proposed QEMU candidate; complete T02 evidence and review ADR 0005 before confirming F0 |
 | T04 | IR, diagnostics, and capabilities | TODO | T00 |
 | T05 | State, secrets, and recovery primitives | TODO | T04 |
 | T06 | Guest protocol and testable client | TODO | T03, T04 |
@@ -248,6 +248,11 @@ Task contracts and full acceptance criteria live in [IMPLEMENTATION_PLAN.md](../
 
 ## T03 backend comparison — 2026-10-03
 
+**Historical entry, corrected by the review follow-up below:** the original
+completion/watch claims exceeded the tests' coverage. The current task table
+and review follow-up supersede those claims; the original measurements remain
+historical evidence only.
+
 - **Task:** T03 — F0 gate and platform ADR
 - **Status:** DONE (decision evidence complete; adoption pending ADR review)
 - **Dependencies verified:** T00–T02; QEMU 10.2.2 and virtiofsd 1.14.0 installed by
@@ -277,6 +282,53 @@ Task contracts and full acceptance criteria live in [IMPLEMENTATION_PLAN.md](../
   T07/T08; ADRs 0004/0005 await maintainer review.
 - **Next task:** T04 (IR, diagnostics, capabilities) is independent and can start;
   storage/backend work (T09/T10) should follow the QEMU hardening pass.
+
+## T01–T03 review follow-up — 2026-10-03
+
+- **Task:** T02/T03 — repair experiment safety and acceptance evidence.
+- **Status:** BLOCKED (code fixes implemented; full feasibility gate still open).
+- **Dependencies verified:** T00/T01 implementation, existing pinned guest
+  artifacts, UID 1000, accessible KVM and vhost-vsock, QEMU and virtiofsd.
+- **Files and contracts changed:** OCI fixture creation now owns a unique
+  container ID, serializes builders, publishes validated rootfs atomically, and
+  rejects unmarked caches. Cached runc is verified before execution. Host exec
+  has total deadlines, cancellation, 64 KiB frames and 4 MiB aggregate output;
+  failed exchanges close the channel. QEMU probes propagate wait failures and
+  cancellation. Storage probes distinguish post-mount content coherence from
+  host-originated and guest-local inotify. Added offline regression tests and
+  short preventive rules to `AGENT.md`.
+- **Decisions/ADRs:** ADRs 0004/0005 evidence narrowed; no acceptance or scope
+  reduction approved. T02/T03 reverted to BLOCKED, not silently deferred.
+- **Tests run:** `make qemu-share` PASS for content/rw/ro/rename/guest-watch;
+  host-watch explicitly DEGRADED (no event within 2s). Direct existing-artifact
+  test command `go test -tags kvm -count=1 -v -run 'TestKVMQEMU'
+  ./experiments/boot/qemu/run/ ./experiments/boot/oci/` PASS: three real tests,
+  including networking and OCI. Offline OCI failure/retry/cache/concurrency
+  tests PASS. Initial `make check` failed on a prematurely closed net.Pipe
+  fixture; repeated race tests then exposed a frame-limit boundary waiting for
+  more input. Both failures were corrected, not treated as successful checks.
+  Final `make check` PASS; `go test -race -count=10
+  ./experiments/boot/spike ./experiments/boot/qemu/run` PASS. Existing-artifact
+  Firecracker command `go test -tags kvm -count=1 -v -run
+  'TestKVMExecBootStop|TestKVMExecMissingCommand|TestKVMOCIScenarios'
+  ./experiments/boot/spike/ ./experiments/boot/oci/` PASS (three real tests).
+  `bash -n experiments/boot/fetch-oci.sh scripts/fetch_oci_test.sh` and
+  `git diff --check` PASS; process inspection found no remaining QEMU,
+  virtiofsd, or Firecracker processes.
+- **Tests NOT run and why:** Full `make test-qemu` provisioning not run: existing
+  OCI artifacts were reused to avoid downloads and deleting/replacing the old
+  unmarked rootfs. Fresh real Podman export remains unverified; offline doubles
+  test script behavior only. No cold-cache/30-cycle benchmark or hosted CI run.
+- **Integration evidence:** updated storage initramfs SHA-256
+  `ab2df454d2d8fdb3f88d603b769ad63cb0fc7be8cd4a9bce3e7e0ba5e49bf5f8`;
+  real QEMU host-update visibility with degraded remote notifications.
+- **Known limitations:** two-VM networking/isolation, managed persistent storage,
+  and filesystem overhead remain required evidence; virtiofsd sandbox and guest
+  PID 1 reaping remain unhardened. Protocol is still a trusted-image experiment,
+  not the authenticated production protocol. Legacy rootfs directories must be
+  reviewed and moved aside explicitly, never automatically deleted.
+- **Next task:** finish the missing T02 experiments and assess the host-watch
+  limitation before closing T03; pure T04 work remains independent.
 
 ## Updating this file
 

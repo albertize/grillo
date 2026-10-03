@@ -81,12 +81,12 @@ func main() {
 }
 
 // runAll boots the OCI guest via Firecracker and runs both scenarios.
-func runAll(ctx context.Context, opts spike.Options) error {
+func runAll(ctx context.Context, opts spike.Options) (err error) {
 	session, err := spike.Boot(ctx, opts)
 	if err != nil {
 		return fmt.Errorf("boot: %w", err)
 	}
-	defer func() { _ = session.Stop() }()
+	defer func() { err = errors.Join(err, session.Stop()) }()
 	return runScenarios(session)
 }
 
@@ -163,7 +163,8 @@ func runQemu(ctx context.Context, qemu, bzImage, initramfs string, cid uint32, k
 	runErr := runScenarios(session)
 	stopErr := session.Stop()
 	select {
-	case <-done:
+	case exitErr := <-done:
+		stopErr = errors.Join(stopErr, exitErr)
 	case <-time.After(10 * time.Second):
 		kill()
 		<-done

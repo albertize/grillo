@@ -11,6 +11,7 @@
 package main
 
 import (
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"os"
@@ -48,9 +49,12 @@ func main() {
 		if err != nil {
 			return err
 		}
-		fmt.Printf("STORAGE host-sentinel %q\n", string(data))
+		if string(data) != "host-sentinel-v1\n" {
+			return fmt.Errorf("unexpected initial sentinel: %q", data)
+		}
 		return nil
 	})
+	step("host-update", liveHostUpdate)
 	step("write-host", func() error {
 		return os.WriteFile(rwTarget+"/guest-wrote.txt", []byte(payload), 0o644)
 	})
@@ -74,7 +78,7 @@ func main() {
 		}
 		return nil
 	})
-	step("watch", watchChange)
+	step("guest-watch", watchChange)
 
 	if failed {
 		fmt.Println("STORAGE RESULT: FAIL")
@@ -103,7 +107,55 @@ func setup() error {
 	return nil
 }
 
-// watchChange verifies the shared filesystem delivers inotify events: it watches
+// liveHostUpdate verifies a host write made AFTER the guest read and installed
+// its watch. Content coherence and remote inotify delivery are separate results.
+func liveHostUpdate() error {
+	fd, err := unix.InotifyInit1(unix.IN_CLOEXEC | unix.IN_NONBLOCK)
+	if err != nil {
+		return err
+	}
+	defer unix.Close(fd)
+	if _, err := unix.InotifyAddWatch(fd, rwTarget+"/host-sentinel.txt", unix.IN_MODIFY|unix.IN_CLOSE_WRITE); err != nil {
+		return err
+	}
+	if err := os.WriteFile(rwTarget+"/guest-ready", []byte("ready\n"), 0o644); err != nil {
+		return err
+	}
+	deadline := time.Now().Add(10 * time.Second)
+	var visibleAt time.Time
+	notified := false
+	buf := make([]byte, 4096)
+	for time.Now().Before(deadline) {
+		data, err := os.ReadFile(rwTarget + "/host-sentinel.txt")
+		if err != nil {
+			return err
+		}
+		if string(data) == "host-sentinel-v2\n" && visibleAt.IsZero() {
+			visibleAt = time.Now()
+		}
+		n, err := unix.Read(fd, buf)
+		if err != nil && !errors.Is(err, unix.EAGAIN) && !errors.Is(err, unix.EINTR) {
+			return err
+		}
+		for off := 0; off+unix.SizeofInotifyEvent <= n; {
+			mask := binary.NativeEndian.Uint32(buf[off+4 : off+8])
+			notified = notified || mask&(unix.IN_MODIFY|unix.IN_CLOSE_WRITE) != 0
+			off += unix.SizeofInotifyEvent + int(binary.NativeEndian.Uint32(buf[off+12:off+16]))
+		}
+		if !visibleAt.IsZero() && (notified || time.Since(visibleAt) >= 2*time.Second) {
+			if notified {
+				fmt.Println("STORAGE host-watch SUPPORTED: host write event observed")
+			} else {
+				fmt.Println("STORAGE host-watch DEGRADED: no host write event within 2s; polling required")
+			}
+			return nil
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	return errors.New("host update not visible within 10s")
+}
+
+// watchChange verifies guest-originated inotify events only: it watches
 // the read-write share for a creation, then creates a file and waits briefly.
 func watchChange() error {
 	fd, err := unix.InotifyInit1(unix.IN_CLOEXEC | unix.IN_NONBLOCK)

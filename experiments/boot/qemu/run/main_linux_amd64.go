@@ -63,6 +63,9 @@ func (o options) withDefaults() options {
 
 // runProbe performs one experiment and returns the guest serial console output.
 func runProbe(ctx context.Context, raw options) (string, error) {
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
 	opts := raw.withDefaults()
 	work, err := os.MkdirTemp(opts.WorkDir, "grillo-qemu-")
 	if err != nil {
@@ -97,7 +100,7 @@ func runProbe(ctx context.Context, raw options) (string, error) {
 	}
 	defer vfsd.stop(opts.Log)
 
-	if err := waitForPath(vfsdSock, 10*time.Second); err != nil {
+	if err := waitForPath(ctx, vfsdSock, 10*time.Second); err != nil {
 		return "", fmt.Errorf("virtiofsd socket: %w", err)
 	}
 
@@ -116,10 +119,19 @@ func runProbe(ctx context.Context, raw options) (string, error) {
 		return "", fmt.Errorf("start qemu: %w", err)
 	}
 
-	waitErr := qemu.wait(opts.BootTimeout)
+	updateCtx, cancelUpdate := context.WithTimeout(ctx, opts.BootTimeout)
+	defer cancelUpdate()
+	updated := make(chan error, 1)
+	go func() { updated <- updateHostSentinel(updateCtx, share) }()
+	waitErr := qemu.wait(ctx, opts.BootTimeout)
+	cancelUpdate()
+	updateErr := <-updated
 
 	serial, _ := os.ReadFile(serialLog)
 	var problems []string
+	if updateErr != nil {
+		problems = append(problems, "host update: "+updateErr.Error())
+	}
 	if !strings.Contains(string(serial), "STORAGE RESULT: PASS") {
 		problems = append(problems, "guest did not report STORAGE RESULT: PASS")
 	}
@@ -163,6 +175,9 @@ func baseQEMUArgs(opts options, serialLog, appendArgs string) []string {
 // verifies guest TCP egress and DNS. The kernel cmdline `ip=dhcp` configures the
 // interface from QEMU's built-in DHCP server.
 func runNet(ctx context.Context, raw options) (string, error) {
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
 	opts := raw.withDefaults()
 	work, err := os.MkdirTemp(opts.WorkDir, "grillo-qemu-net-")
 	if err != nil {
@@ -191,11 +206,11 @@ func runNet(ctx context.Context, raw options) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("start qemu: %w", err)
 	}
-	waitErr := qemu.wait(opts.BootTimeout)
+	waitErr := qemu.wait(ctx, opts.BootTimeout)
 
 	serial, _ := os.ReadFile(serialLog)
-	if !strings.Contains(string(serial), "NET RESULT: PASS") {
-		detail := "guest did not report NET RESULT: PASS"
+	if waitErr != nil || !strings.Contains(string(serial), "NET RESULT: PASS") {
+		detail := "network probe failed"
 		if waitErr != nil {
 			qlog, _ := os.ReadFile(qemuLog)
 			detail += fmt.Sprintf("; qemu: %v; log: %s", waitErr, strings.TrimSpace(string(qlog)))
@@ -230,18 +245,16 @@ func startProcess2(path string, stdout *os.File, args ...string) (*managed, erro
 	return m, nil
 }
 
-func (m *managed) wait(timeout time.Duration) error {
+func (m *managed) wait(parent context.Context, timeout time.Duration) error {
+	ctx, cancel := context.WithTimeout(parent, timeout)
+	defer cancel()
 	select {
 	case err := <-m.done:
-		var ee *exec.ExitError
-		if errors.As(err, &ee) {
-			return err
-		}
 		return err
-	case <-time.After(timeout):
+	case <-ctx.Done():
 		m.kill()
 		<-m.done
-		return fmt.Errorf("process did not exit within %s", timeout)
+		return fmt.Errorf("process wait: %w", ctx.Err())
 	}
 }
 
@@ -261,9 +274,35 @@ func (m *managed) kill() {
 	}
 }
 
-func waitForPath(path string, timeout time.Duration) error {
+// updateHostSentinel waits for post-mount readiness, then changes host data.
+func updateHostSentinel(ctx context.Context, share string) error {
+	ticker := time.NewTicker(20 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		data, err := os.ReadFile(filepath.Join(share, "guest-ready"))
+		if err == nil && string(data) == "ready\n" {
+			return os.WriteFile(filepath.Join(share, sentinelName), []byte("host-sentinel-v2\n"), 0o644)
+		}
+		if err != nil && !errors.Is(err, os.ErrNotExist) {
+			return err
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-ticker.C:
+		}
+	}
+}
+
+func waitForPath(ctx context.Context, path string, timeout time.Duration) error {
 	deadline := time.Now().Add(timeout)
 	for {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		if _, err := os.Stat(path); err == nil {
 			return nil
 		}

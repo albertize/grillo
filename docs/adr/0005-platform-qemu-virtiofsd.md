@@ -11,7 +11,9 @@ The plan fixes one microVM per Pod and requires live read/write/read-only host
 directory binds (scenario G) without privileged host mounts or copy-based
 substitutes. [ADR 0004](0004-shared-filesystem-backend-comparison.md) required a
 backend comparison after T02 showed Firecracker exposes no virtio-fs or 9p
-device. T02 then demonstrated live sharing on QEMU + virtiofsd.
+device. The corrected T02 probe demonstrates live content sharing on QEMU +
+virtiofsd, but not host-originated inotify notifications. T02/T03 remain BLOCKED
+on the outstanding plan requirements; this ADR does not reduce their scope.
 
 ## Options considered
 
@@ -30,7 +32,7 @@ device. T02 then demonstrated live sharing on QEMU + virtiofsd.
 Propose **QEMU `microvm` + `virtiofsd`** as the initial F0 backend, with Firecracker
 retained only for scenarios that need no live sharing. Keep the backend behind the
 `internal/sandbox` contract so the choice can change. Confirm this ADR only after
-maintainer review and a documented QEMU hardening pass.
+completing T02 evidence, maintainer review, and a documented QEMU hardening pass.
 
 ## Evidence
 
@@ -43,7 +45,8 @@ Intel Core Ultra 7 155H, UID 1000, no sudo). See
 | Rootless boot | yes (median 260 ms) | yes (≈400 ms to handshake) |
 | OCI run/exec/signal/delete | yes | yes (`vhost-vsock` management) |
 | Two containers on localhost | yes | yes |
-| Live rw/ro binds, rename, watch | **no device** | yes (virtiofs; inotify passes) |
+| Live rw/ro binds, rename | **no device** | yes (post-mount host update verified) |
+| Guest-local / host-originated inotify | n/a | guest-local passes; host-originated DEGRADED (no event within 2s) |
 | Rootless guest egress + DNS | not wired | yes (user-mode networking) |
 | Measured VMM RSS | ≈49 MiB | ≈142 MiB |
 
@@ -65,5 +68,7 @@ depends on virtiofsd sandbox settings, which require explicit review.
   `--sandbox`, restricted device set, no default NIC or storage).
 - Measure cold-cache boot, RSS/PSS at 1/2/4 vCPU and 128/256/512 MiB.
 - Evaluate Cloud Hypervisor + virtiofs as the lower-footprint alternative.
-- Keep T02's deferred items (two-VM DNS/egress/host publishing, managed-volume
-  overhead) as inputs to T11/T10.
+- Complete T02's two-VM DNS/egress/host publishing/management-isolation,
+  managed-volume persistence, and filesystem-overhead experiments before F0.
+- Decide how development watchers handle the observed missing host-originated
+  notifications; content coherence alone does not provide event delivery.

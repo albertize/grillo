@@ -41,6 +41,7 @@ type Options struct {
 	VCPU        uint32        // vCPU count
 	MemMiB      uint32        // guest memory
 	BootTimeout time.Duration // boot + handshake deadline
+	ExecTimeout time.Duration // total exec deadline, including writes and streaming
 	StopTimeout time.Duration // graceful-stop deadline before SIGKILL
 	Command     string        // guest binary executed by RunOnce
 	Args        []string      // arguments for Command
@@ -63,6 +64,9 @@ func (o Options) withDefaults() Options {
 	}
 	if out.BootTimeout == 0 {
 		out.BootTimeout = 30 * time.Second
+	}
+	if out.ExecTimeout == 0 {
+		out.ExecTimeout = 30 * time.Second
 	}
 	if out.StopTimeout == 0 {
 		out.StopTimeout = 10 * time.Second
@@ -90,6 +94,7 @@ type Result struct {
 
 // Session is a booted microVM with a connected vsock channel.
 type Session struct {
+	ctx      context.Context // lifetime supplied to Boot; also bounds Exec
 	opts     Options
 	dir      string
 	vm       *firecracker
@@ -110,7 +115,7 @@ func Boot(ctx context.Context, raw Options) (session *Session, err error) {
 	}
 	// s is local, not the named return, so return nil, err does not nil it out
 	// before the deferred cleanup runs.
-	s := &Session{opts: opts, dir: dir}
+	s := &Session{ctx: ctx, opts: opts, dir: dir}
 	defer func() {
 		if err != nil {
 			_ = s.Close()
@@ -145,13 +150,13 @@ func (s *Session) BootDuration() time.Duration { return s.bootTime }
 
 // Exec runs one guest binary and returns its streams and exit status.
 func (s *Session) Exec(path string, args ...string) (stdout, stderr string, code int, err error) {
-	return s.conn.exec(path, args...)
+	return s.conn.runVerb(s.ctx, s.opts.ExecTimeout, "EXEC", path, args...)
 }
 
 // ExecDetached starts a guest binary with /dev/null stdio and returns once it
 // has started, so long-lived processes do not hold the control channel open.
 func (s *Session) ExecDetached(path string, args ...string) (stdout, stderr string, code int, err error) {
-	return s.conn.execDetached(path, args...)
+	return s.conn.runVerb(s.ctx, s.opts.ExecTimeout, "EXECD", path, args...)
 }
 
 // Stop requests a guest shutdown and waits for the VM process to exit.
@@ -344,19 +349,43 @@ type deadlineConn interface {
 	io.Writer
 	io.Closer
 	SetReadDeadline(t time.Time) error
+	SetDeadline(t time.Time) error
 }
 
+const (
+	maxFrameBytes  = 64 * 1024
+	maxOutputBytes = 4 * 1024 * 1024 // combined stdout/stderr per command
+)
+
 type vsockConn struct {
-	c deadlineConn
-	r *bufio.Reader
+	c                 deadlineConn
+	r                 *bufio.Reader
+	operationDeadline time.Time
 }
 
 func (c *vsockConn) readLine(timeout time.Duration) (string, error) {
-	if err := c.c.SetReadDeadline(time.Now().Add(timeout)); err != nil {
+	deadline := time.Now().Add(timeout)
+	if !c.operationDeadline.IsZero() && c.operationDeadline.Before(deadline) {
+		deadline = c.operationDeadline
+	}
+	if err := c.c.SetReadDeadline(deadline); err != nil {
 		return "", err
 	}
-	line, err := c.r.ReadString('\n')
-	return strings.TrimRight(line, "\n"), err
+	var line []byte
+	for {
+		fragment, err := c.r.ReadSlice('\n')
+		if len(line)+len(fragment) > maxFrameBytes {
+			return "", errors.New("guest frame exceeds limit")
+		}
+		line = append(line, fragment...)
+		if errors.Is(err, bufio.ErrBufferFull) {
+			if len(line) >= maxFrameBytes {
+				return "", errors.New("guest frame exceeds limit")
+			}
+			continue
+		}
+		return strings.TrimRight(string(line), "\n"), err
+	}
 }
 
 func (c *vsockConn) Close() error { return c.c.Close() }
@@ -364,6 +393,9 @@ func (c *vsockConn) Close() error { return c.c.Close() }
 func (c *vsockConn) Write(p []byte) (int, error) { return c.c.Write(p) }
 
 func (c *vsockConn) pingPong() error {
+	if err := c.c.SetDeadline(time.Now().Add(5 * time.Second)); err != nil {
+		return err
+	}
 	if _, err := io.WriteString(c, "PING\n"); err != nil {
 		return fmt.Errorf("send PING: %w", err)
 	}
@@ -377,16 +409,38 @@ func (c *vsockConn) pingPong() error {
 	return nil
 }
 
-func (c *vsockConn) exec(path string, args ...string) (stdout, stderr string, code int, err error) {
-	return c.runVerb("EXEC", path, args...)
-}
-
-func (c *vsockConn) execDetached(path string, args ...string) (stdout, stderr string, code int, err error) {
-	return c.runVerb("EXECD", path, args...)
-}
-
-func (c *vsockConn) runVerb(verb, path string, args ...string) (stdout, stderr string, code int, err error) {
+func (c *vsockConn) runVerb(parent context.Context, timeout time.Duration, verb, path string, args ...string) (stdout, stderr string, code int, err error) {
+	ctx, cancel := context.WithTimeout(parent, timeout)
+	defer cancel()
+	if err := ctx.Err(); err != nil {
+		return "", "", 0, err
+	}
 	fields := append([]string{verb, path}, args...)
+	size := 0
+	for _, field := range fields {
+		if strings.ContainsAny(field, "\t\n\r") || len(field) > maxFrameBytes-size-1 {
+			return "", "", 0, errors.New("invalid or oversized exec request")
+		}
+		size += len(field) + 1
+	}
+	c.operationDeadline, _ = ctx.Deadline()
+	if err := c.c.SetDeadline(c.operationDeadline); err != nil {
+		return "", "", 0, err
+	}
+	// A canceled or failed exchange cannot be reused: unread replies would
+	// otherwise be mistaken for the next command's response.
+	stopCancel := context.AfterFunc(ctx, func() { _ = c.Close() })
+	defer func() {
+		stopCancel()
+		if ctx.Err() != nil {
+			err = ctx.Err()
+		}
+		if err != nil {
+			_ = c.Close()
+		}
+		c.operationDeadline = time.Time{}
+		_ = c.c.SetDeadline(time.Time{})
+	}()
 	if _, err := io.WriteString(c, strings.Join(fields, "\t")+"\n"); err != nil {
 		return "", "", 0, fmt.Errorf("send %s: %w", verb, err)
 	}
@@ -405,6 +459,9 @@ func (c *vsockConn) runVerb(verb, path string, args ...string) (stdout, stderr s
 			decoded, err := base64.StdEncoding.DecodeString(payload)
 			if err != nil {
 				return "", "", 0, fmt.Errorf("decode %s: %w", kind, err)
+			}
+			if len(decoded) > maxOutputBytes-outBuf.Len()-errBuf.Len() {
+				return "", "", 0, errors.New("guest output exceeds limit")
 			}
 			if kind == "OUT" {
 				outBuf.Write(decoded)
@@ -425,6 +482,9 @@ func (c *vsockConn) runVerb(verb, path string, args ...string) (stdout, stderr s
 }
 
 func (c *vsockConn) stop() error {
+	if err := c.c.SetDeadline(time.Now().Add(5 * time.Second)); err != nil {
+		return err
+	}
 	if _, err := io.WriteString(c, "STOP\n"); err != nil {
 		return fmt.Errorf("send STOP: %w", err)
 	}

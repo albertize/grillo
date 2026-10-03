@@ -62,7 +62,10 @@ proceed.
 
 **Performed (T03).** The comparison was executed on real hardware:
 Firecracker exposes no shared-filesystem device (`make storage-probe` exits 3),
-while QEMU `microvm` + virtiofsd passes live read/write, rename, inotify watch,
-and read-only enforcement. See [ADR 0005](0005-platform-qemu-virtiofsd.md) and the
+while QEMU `microvm` + virtiofsd passes live read/write, rename, guest-local
+inotify, and read-only enforcement. The corrected post-mount host-write probe
+observed content updates but no host-originated notification within 2s
+(DEGRADED). See [ADR 0005](0005-platform-qemu-virtiofsd.md) and the
 [T03 report](../experiments/t03-backend-comparison.md). Cloud Hypervisor remains
-untested. Accept this ADR as fulfilled and keep ADR 0005 as the platform record.
+untested. T02/T03 are still BLOCKED on the missing topology, persistence, and
+overhead evidence; this comparison is partial, not an accepted F0 gate.

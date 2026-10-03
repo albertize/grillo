@@ -140,7 +140,7 @@ Compose frontend          Helm renderer → Kubernetes frontend
 | Host | Linux/amd64 with KVM; other architectures only after validation |
 | Runtime language | Go, standard-library-first |
 | Isolation | One hardware-isolated microVM per Pod |
-| VMM | Firecracker is a candidate, not a finalized selection |
+| VMM | QEMU microvm + virtiofsd proposed; F0 evidence still incomplete |
 | Guest | Minimal Linux image, Go PID 1 agent, guest-side runc |
 | Networking | Rootless application networking, DNS, Service proxying, localhost publishing |
 | State | Per-user atomic JSON snapshots and bounded journal initially |
@@ -149,7 +149,7 @@ Compose frontend          Helm renderer → Kubernetes frontend
 | Helm | Official pinned Helm CLI initially; documented SDK trade-off |
 | Builds | Existing rootless OCI builder, initially a Podman adapter |
 
-Backend choice depends on proving **rootless networking and real live bind mounts**, not just booting a guest. Firecracker's storage/sharing constraints remain an explicit feasibility question. The [implementation plan](IMPLEMENTATION_PLAN.md) documents alternatives and decision gates.
+Backend choice depends on proving **rootless networking and real live bind mounts**, not just booting a guest. Firecracker lacks a shared-filesystem device; the QEMU candidate provides live content sharing but host-originated file-watch notifications are degraded in the tested configuration. Two-VM topology and managed-storage evidence remain outstanding. The [implementation plan](IMPLEMENTATION_PLAN.md) documents alternatives and decision gates.
 
 macOS/Windows hosts, GPU support, snapshots, and alternative VMMs are not part of the first release target. No current performance or platform-support claim is implied by this table.
 
@@ -225,8 +225,9 @@ make vulncheck      # explicit download/execution of pinned official audit tool
 ```
 
 Build outputs stay under `bin/`. The agent is a build scaffold, **not usable as
-guest PID 1**. `make test-kvm` currently fails with an explicit blocker; ordinary
-tests require no KVM. No workload support is implied by passing these checks.
+guest PID 1**. `make test-kvm` and `make test-qemu` run opt-in feasibility
+experiments using separate guest binaries; ordinary tests require no KVM.
+Partial experiment results do not complete the F0 gate or imply runtime support.
 See the [dependency ADR](docs/adr/0001-scaffold-and-dependencies.md) for pins and
 the provisional local module identifier.
 

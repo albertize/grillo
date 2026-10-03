@@ -65,6 +65,10 @@ host  -> guest  STOP                          -> BYE, then the guest resets
 ```
 
 `EXEC` runs a path directly: there is no shell and no argument interpolation.
+The host rejects tab/newline arguments, limits frames to 64 KiB and combined
+output to 4 MiB, and applies a total exec deadline (default 30s) plus the Boot
+context's cancellation. A failed exchange closes the connection; it cannot be
+reused for another command. This is not the authenticated T06 protocol.
 
 ## Shutdown
 
@@ -96,7 +100,11 @@ verifying DNS/egress/host publishing from inside the VM is T02/T11.
 
 The OCI guest adds a static `runc` and a busybox rootfs obtained from a
 content-addressed image (`docker.io/library/busybox:1.37@sha256:bdf5...`,
-exported with podman; Grillo implements no registry client). `guestinit` also
+exported with podman; Grillo implements no registry client). The export uses
+an operation-owned container ID and a locked, validated temporary rootfs before
+atomic publication. Existing unmarked/partial rootfs caches are rejected: review
+and move them aside manually before rebuilding. No preexisting container is
+removed by name. `guestinit` also
 mounts cgroup v2, devpts, and shm, and brings up loopback, so runc can start
 containers and two containers can share localhost.
 
@@ -112,9 +120,12 @@ and `make storage-probe`.
 `experiments/boot/qemu/` evaluates the backend that replaces Firecracker for
 product use. It builds a guest bzImage with `CONFIG_VIRTIO_FS` (the Firecracker
 config omits it), a storage probe that mounts a virtiofs tag, and a network probe
-that uses QEMU user-mode networking with `ip=dhcp`. `make qemu-share` proves live
-read/write, rename, inotify watch, and read-only enforcement; `-scenario net`
-proves rootless TCP egress and DNS; `make test-qemu` also runs the OCI scenarios
+that uses QEMU user-mode networking with `ip=dhcp`. `make qemu-share` tests
+post-mount host updates, guest writes, rename, guest-local inotify, and read-only
+enforcement. Host-originated notifications are measured separately: the review
+run observed none within 2s and reports DEGRADED (polling required). A storage
+PASS does not assert remote event support or completion of F0. `-scenario net`
+tests rootless TCP egress and DNS; `make test-qemu` also runs the OCI scenarios
 on QEMU via `vhost-vsock`. Results are in the
 [T03 report](../../docs/experiments/t03-backend-comparison.md) and ADR 0005.
 QEMU/virtiofsd are system packages, not bootstrapped here.

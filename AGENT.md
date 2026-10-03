@@ -91,6 +91,15 @@ The formatting check must produce no changed-file list. Use the exact build/inte
 
 Never report a command as executed unless it was executed, and never omit a failure just because another check passed.
 
+### Review lessons (T01–T03)
+
+- Cleanup only resources created by the current operation, identified by unique IDs; never delete a preexisting resource merely because its name matches a fixture.
+- Build caches in temporary locations, validate before atomic publication, and reject incomplete caches. Test interruption, retry, and concurrent builders.
+- Test the claimed direction and timing: pre-boot reads do not prove live host updates; guest-local inotify does not prove host-originated notifications. Report these separately.
+- A success marker never overrides process failure, timeout, or failed cleanup. Test success-followed-by-failure without requiring KVM.
+- Bound the whole operation (including writes), frame size, and aggregate output; per-read timeouts alone do not bound a stream. Propagate cancellation.
+- Do not defer required gates while keeping a task DONE. Keep progress, reports, and ADR evidence consistent; record missing hardware checks as blockers.
+
 ## 8. Progress entry
 
 Record updates in [docs/progress.md](docs/progress.md):

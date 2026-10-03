@@ -17,6 +17,7 @@ test:
 
 test-scripts:
 	bash scripts/bootstrap_test.sh
+	bash scripts/fetch_oci_test.sh
 
 race:
 	CGO_ENABLED=1 $(GO) test -race ./...
