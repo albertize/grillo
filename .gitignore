@@ -1,0 +1,24 @@
+# Local build outputs and reports
+/bin/
+/dist/
+/coverage/
+/coverage.out
+*.test
+*.prof
+
+# Runtime data and generated artifacts: never commit images or secrets
+/.grillo/
+/.cache/
+/guest/build/
+/experiments/artifacts/
+
+# Sensitive local configuration
+.env
+.env.local
+.env.*.local
+
+# Editors and operating systems
+.idea/
+.vscode/
+.DS_Store
+*~
