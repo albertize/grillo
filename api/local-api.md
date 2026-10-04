@@ -41,6 +41,12 @@ Image pruning never removes an image that is pinned or referenced by a known
 application, and only then collects unreferenced CAS blobs, so active data is
 preserved.
 
+The `container` field of `POST /v1/exec` accepts either a bare container name or
+`sandbox-ID/container`. A bare name is executed only when exactly one running
+sandbox has that container; otherwise the request fails with an ambiguity error
+listing the candidate sandbox IDs, and no arbitrary replica is chosen. An
+unknown target fails with `exec_failed`.
+
 `POST /v1/build` uses Grillo's **native builder by default**: it parses a
 supported Dockerfile subset, executes `RUN` steps inside a sandboxed guest that
 shares the build root, and publishes a verified OCI image. When the

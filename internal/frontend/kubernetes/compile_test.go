@@ -69,8 +69,8 @@ func TestCompileDeployment(t *testing.T) {
 	if container.Probes.Readiness == nil || container.Probes.Readiness.HTTP == nil || container.Probes.Readiness.HTTP.Port.Name != "http" {
 		t.Fatalf("readiness = %+v", container.Probes.Readiness)
 	}
-	if !workload.Template.SecurityProfile.ReadOnlyRootFilesystem {
-		t.Fatalf("security = %+v", workload.Template.SecurityProfile)
+	if container.SecurityProfile == nil || !container.SecurityProfile.ReadOnlyRootFilesystem {
+		t.Fatalf("security = %+v", container.SecurityProfile)
 	}
 	if container.User != "1000" {
 		t.Fatalf("user = %q", container.User)
@@ -84,7 +84,7 @@ func TestCompileDeployment(t *testing.T) {
 	if len(result.Secrets) != 1 || string(result.Secrets[0].Data["PASSWORD"]) != "s3cr3t-value" {
 		t.Fatalf("secret data = %+v", result.Secrets)
 	}
-	if len(app.Volumes) != 2 {
+	if len(app.Volumes) != 1 {
 		t.Fatalf("volumes = %+v", app.Volumes)
 	}
 	if len(app.Services) != 1 || app.Services[0].Name != "web" || len(app.Services[0].Ports) != 1 {

@@ -135,6 +135,9 @@ type Container struct {
 	Probes     Probes          `json:"probes,omitempty"`
 	WorkingDir string          `json:"workingDir,omitempty"`
 	User       string          `json:"user,omitempty"`
+	// SecurityProfile, when present, is the resolved per-container policy.
+	// Otherwise the sandbox template policy applies.
+	SecurityProfile *SecurityProfile `json:"securityProfile,omitempty"`
 }
 
 // ImageRef is an image reference and, when known, its resolved digest.

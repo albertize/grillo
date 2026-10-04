@@ -58,6 +58,12 @@ func (c *Client) Ping() error {
 	return err
 }
 
+// Shutdown stops an idle supervisor; it refuses to orphan live VMMs.
+func (c *Client) Shutdown() error {
+	_, err := c.request(Request{Op: "shutdown"})
+	return err
+}
+
 // Launch creates a TAP and starts the VMM inside the namespace. It returns a
 // handle that stops the VMM through the supervisor, because the VMM runs in the
 // namespace's PID namespace and has no host-visible PID.

@@ -12,7 +12,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -82,13 +84,14 @@ type Executor struct {
 }
 
 type sandboxRuntime struct {
-	id     string
-	app    string
-	cid    uint32
-	ip     string
-	guest  *guestproto.Client
-	runner *observe.Runner
-	cancel context.CancelFunc
+	id         string
+	app        string
+	cid        uint32
+	ip         string
+	guest      *guestproto.Client
+	runner     *observe.Runner
+	cancel     context.CancelFunc
+	containers map[string]bool
 }
 
 // New returns an executor.
@@ -164,6 +167,9 @@ func (e *Executor) Ensure(ctx context.Context, application string, descriptor pl
 	if !ok {
 		return fmt.Errorf("executor: no desired application %q", application)
 	}
+	if err := ValidateDesired(app); err != nil {
+		return err
+	}
 	workload := findWorkload(app, descriptor.Workload)
 	if workload == nil {
 		return fmt.Errorf("executor: workload %q not found", descriptor.Workload)
@@ -196,7 +202,11 @@ func (e *Executor) Ensure(ctx context.Context, application string, descriptor pl
 		return fmt.Errorf("executor: start containers: %w", err)
 	}
 	e.mu.Lock()
-	e.runtimes[spec.ID] = &sandboxRuntime{id: spec.ID, app: application, cid: spec.VsockCID, ip: ip, guest: client}
+	names := make(map[string]bool)
+	for _, c := range workload.Template.Containers {
+		names[c.Name] = true
+	}
+	e.runtimes[spec.ID] = &sandboxRuntime{id: spec.ID, app: application, cid: spec.VsockCID, ip: ip, guest: client, containers: names}
 	rt := e.runtimes[spec.ID]
 	e.mu.Unlock()
 	if runner, cancel, ok := e.startProbes(client, *workload); ok {
@@ -263,7 +273,40 @@ func (e *Executor) Stop(ctx context.Context, application string, descriptor plan
 		return err
 	}
 	e.releaseIP(application, descriptor.ID)
-	return e.detachVolumes(ctx, application, sandboxID)
+	if err := e.detachVolumes(ctx, application, sandboxID); err != nil {
+		return err
+	}
+	if e.cfg.EnableNetwork && len(e.Sandboxes(application)) == 0 {
+		client := &netns.Client{SocketPath: e.socketPath(application)}
+		// An already absent supervisor is harmless; a reachable supervisor
+		// must confirm it has no remaining VMMs before it exits.
+		if err := client.Ping(); err == nil {
+			if err := client.Shutdown(); err != nil {
+				return err
+			}
+			e.launchMu.Lock()
+			helper := e.supervisors[application]
+			delete(e.supervisors, application)
+			e.launchMu.Unlock()
+			if helper != nil {
+				if err := helper.Stop(2 * time.Second); err != nil {
+					return err
+				}
+			}
+			deadline := time.Now().Add(5 * time.Second)
+			for client.Ping() == nil {
+				if time.Now().After(deadline) {
+					return fmt.Errorf("executor: network supervisor did not stop")
+				}
+				select {
+				case <-ctx.Done():
+					return ctx.Err()
+				case <-time.After(20 * time.Millisecond):
+				}
+			}
+		}
+	}
+	return nil
 }
 
 // DeleteSandbox stops and deletes a sandbox.
@@ -333,22 +376,31 @@ func (e *Executor) Restart(ctx context.Context, application string) error {
 
 // Exec runs a command in a container of an application.
 func (e *Executor) Exec(ctx context.Context, application, container string, args []string, stdout, stderr io.Writer) (int, error) {
+	// A bare name is allowed only when unique. sandbox-ID/container selects a
+	// specific replica without changing the API payload shape.
+	key, name, qualified := strings.Cut(container, "/")
+	if !qualified {
+		name = container
+	}
 	e.mu.Lock()
-	var clients []*guestproto.Client
-	for _, rt := range e.runtimes {
-		if rt.app == application && rt.guest != nil {
-			clients = append(clients, rt.guest)
+	var matches []string
+	var client *guestproto.Client
+	for id, rt := range e.runtimes {
+		if rt.app == application && rt.guest != nil && rt.containers[name] && (!qualified || id == key) {
+			matches = append(matches, id)
+			client = rt.guest
 		}
 	}
 	e.mu.Unlock()
-	for _, client := range clients {
-		result, err := client.Exec(ctx, guestproto.ExecRequest{Container: container, Args: args}, stdout, stderr)
-		if err != nil {
-			return 0, err
-		}
-		return result.ExitCode, nil
+	sort.Strings(matches)
+	if len(matches) == 0 {
+		return 0, fmt.Errorf("executor: no running target %q in application %q", container, application)
 	}
-	return 0, fmt.Errorf("executor: no running sandbox for application %q", application)
+	if len(matches) != 1 {
+		return 0, fmt.Errorf("executor: ambiguous container %q; use sandbox-ID/container (sandboxes: %s)", container, strings.Join(matches, ", "))
+	}
+	result, err := client.Exec(ctx, guestproto.ExecRequest{Container: name, Args: args}, stdout, stderr)
+	return result.ExitCode, err
 }
 
 func (e *Executor) buildSpecs(ctx context.Context, application string, app model.Application, workload model.Workload, descriptor plan.Descriptor) (sandbox.Spec, guestproto.SandboxSpec, error) {
@@ -410,12 +462,16 @@ func (e *Executor) buildSpecs(ctx context.Context, application string, app model
 		}
 		tag := "rootfs-" + container.Name
 		target := "/run/grillo/rootfs/" + container.Name
-		spec.Shares = append(spec.Shares, sandbox.Share{Tag: tag, HostPath: image.HostPath})
-		guestSpec.Shares = append(guestSpec.Shares, guestproto.ShareSpec{Tag: tag, Target: target})
+		spec.Shares = append(spec.Shares, sandbox.Share{Tag: tag, HostPath: image.HostPath, ReadOnly: true})
+		guestSpec.Shares = append(guestSpec.Shares, guestproto.ShareSpec{Tag: tag, Target: target, ReadOnly: true})
+		if container.SecurityProfile == nil {
+			container.SecurityProfile = &workload.Template.SecurityProfile
+		}
 		containerSpec, err := e.containerSpec(app, *container, target, volumeTargets)
 		if err != nil {
 			return sandbox.Spec{}, guestproto.SandboxSpec{}, err
 		}
+		containerSpec.PrivateRoot = true
 		containersCopy := containerSpec
 		containersCopy.Init = i < len(workload.Template.InitContainers)
 		guestSpec.Containers = append(guestSpec.Containers, containersCopy)
@@ -474,7 +530,11 @@ func (e *Executor) containerSpec(app model.Application, container model.Containe
 	if err != nil {
 		return guestproto.ContainerSpec{}, err
 	}
-	user, err := parseUser(container.User)
+	user, readOnly, err := containerSecurity(container)
+	if err != nil {
+		return guestproto.ContainerSpec{}, err
+	}
+	limits, err := resources(container.Resources)
 	if err != nil {
 		return guestproto.ContainerSpec{}, err
 	}
@@ -487,14 +547,15 @@ func (e *Executor) containerSpec(app model.Application, container model.Containe
 		mounts = append(mounts, guestproto.MountSpec{Source: source, Target: mount.MountPath, ReadOnly: mount.ReadOnly})
 	}
 	return guestproto.ContainerSpec{
-		Name:       container.Name,
-		Rootfs:     rootfs,
-		Args:       args,
-		Env:        env,
-		WorkingDir: container.WorkingDir,
-		User:       user,
-		Mounts:     mounts,
-		Resources:  resources(container.Resources),
+		Name:                   container.Name,
+		Rootfs:                 rootfs,
+		Args:                   args,
+		Env:                    env,
+		WorkingDir:             container.WorkingDir,
+		User:                   user,
+		Mounts:                 mounts,
+		Resources:              limits,
+		ReadOnlyRootFilesystem: readOnly,
 	}, nil
 }
 
@@ -717,13 +778,13 @@ func parseUser(user string) (guestproto.UserSpec, error) {
 		return guestproto.UserSpec{}, nil
 	}
 	uidPart, gidPart, _ := strings.Cut(user, ":")
-	uid, err := strconv.Atoi(uidPart)
+	uid, err := strconv.ParseUint(uidPart, 10, 32)
 	if err != nil {
 		return guestproto.UserSpec{}, fmt.Errorf("executor: invalid user %q", user)
 	}
 	gid := uid
 	if gidPart != "" {
-		gid, err = strconv.Atoi(gidPart)
+		gid, err = strconv.ParseUint(gidPart, 10, 32)
 		if err != nil {
 			return guestproto.UserSpec{}, fmt.Errorf("executor: invalid user %q", user)
 		}
@@ -731,16 +792,21 @@ func parseUser(user string) (guestproto.UserSpec, error) {
 	return guestproto.UserSpec{UID: uint32(uid), GID: uint32(gid)}, nil
 }
 
-func resources(r model.Resources) guestproto.ResourceSpec {
+func resources(r model.Resources) (guestproto.ResourceSpec, error) {
 	spec := guestproto.ResourceSpec{}
+	if r.Limits.CPU < 0 || r.Limits.Memory < 0 || int64(r.Limits.CPU) > math.MaxInt64/1000 {
+		return spec, fmt.Errorf("executor: invalid or overflowing resource limit")
+	}
 	if r.Limits.CPU > 0 {
-		spec.CPUQuotaMicros = int64(r.Limits.CPU) * 1000
-		spec.CPUPeriodMicros = 100000
+		// A one-second period preserves single-millicore precision while
+		// meeting Linux CFS's minimum quota of 1000 microseconds.
+		spec.CPUPeriodMicros = 1000000
+		spec.CPUQuotaMicros = int64(r.Limits.CPU) * (int64(spec.CPUPeriodMicros) / 1000)
 	}
 	if r.Limits.Memory > 0 {
 		spec.MemoryBytes = int64(r.Limits.Memory)
 	}
-	return spec
+	return spec, nil
 }
 
 func volumeID(application, name string) string {

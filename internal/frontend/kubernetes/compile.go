@@ -347,7 +347,7 @@ func (c *compiler) compilePod(doc *yaml.Node) {
 		ID:       name,
 		Kind:     model.WorkloadDeployment,
 		Replicas: 1,
-		Labels:   labelMap(doc),
+		Labels:   labelMap(mapValue(doc, "metadata")),
 	}
 	template, ok := c.compilePodSpec(resourceID("Pod", doc), spec)
 	if !ok {
@@ -460,8 +460,19 @@ func (c *compiler) compilePodSpec(resource string, spec *yaml.Node) (model.Sandb
 		}
 		template.DNS = config
 	}
+	aliases := map[string]string{}
+	readOnly := map[string]bool{}
 	if volumes, ok := mapGet(spec, "volumes"); ok {
 		for _, volume := range sequence(volumes) {
+			name := scalar(volume, "name")
+			if _, exists := aliases[name]; exists {
+				c.add(source.SeverityError, source.Unsupported, "kubernetes.volume_duplicate", volume, resource, "spec.volumes", "duplicate Pod volume name", "")
+			}
+			aliases[name] = name
+			if claim, ok := mapGet(volume, "persistentVolumeClaim"); ok {
+				aliases[name] = scalar(claim, "claimName")
+				readOnly[name] = scalar(claim, "readOnly") == "true"
+			}
 			c.compileVolume(volume, resource, &template)
 		}
 	}
@@ -485,6 +496,19 @@ func (c *compiler) compilePodSpec(resource string, spec *yaml.Node) (model.Sandb
 				return template, false
 			}
 			template.InitContainers = append(template.InitContainers, compiled)
+		}
+	}
+	for _, containers := range [][]model.Container{template.Containers, template.InitContainers} {
+		for i := range containers {
+			for j := range containers[i].Mounts {
+				m := &containers[i].Mounts[j]
+				if target, ok := aliases[m.Volume]; ok {
+					m.ReadOnly = m.ReadOnly || readOnly[m.Volume]
+					m.Volume = target
+				} else {
+					c.add(source.SeverityError, source.Unsupported, "kubernetes.volume_missing", spec, resource, "spec.volumeMounts", "mount references an undeclared Pod volume", "")
+				}
+			}
 		}
 	}
 	return template, true
@@ -511,7 +535,9 @@ func (c *compiler) compileVolume(node *yaml.Node, resource string, template *mod
 			c.add(source.SeverityError, source.Unsupported, "kubernetes.pvc_missing", node, resource, "spec.volumes.persistentVolumeClaim.claimName", "claim "+claimName+" is not defined", "declare the PersistentVolumeClaim in the same input")
 			return
 		}
-		c.application.Volumes = append(c.application.Volumes, model.Volume{Name: name, Kind: model.VolumePVC, Source: claimName})
+		// A Pod volume name is an alias, not a second persistent volume.
+		template.Volumes = append(template.Volumes, claimName)
+		return
 	case has(node, "hostPath"):
 		c.add(source.SeverityError, source.Unsupported, "kubernetes.host_path", node, resource, "spec.volumes.hostPath", "hostPath is not supported", "host paths are not exposed to workloads")
 	default:
@@ -567,6 +593,9 @@ func (c *compiler) compileContainer(node *yaml.Node, resource, field string, pro
 				c.add(source.SeverityError, source.Unsupported, "kubernetes.volume_mount", mount, resource, field+".volumeMounts", "volume mount needs a name and mountPath", "")
 				continue
 			}
+			if compiled.SubPath != "" {
+				c.add(source.SeverityError, source.Unsupported, "kubernetes.sub_path", mount, resource, field+".volumeMounts.subPath", "subPath is not implemented", "")
+			}
 			container.Mounts = append(container.Mounts, compiled)
 		}
 	}
@@ -591,14 +620,17 @@ func (c *compiler) compileContainer(node *yaml.Node, resource, field string, pro
 	if resources, ok := mapGet(node, "resources"); ok {
 		container.Resources = parseResources(resources)
 	}
+	// A container override must not mutate the Pod defaults or its siblings.
+	effective := *profile
 	if security, ok := mapGet(node, "securityContext"); ok {
-		c.applySecurity(profile, security, resource, field+".securityContext")
-		if profile.Privileged {
+		c.applySecurity(&effective, security, resource, field+".securityContext")
+		if effective.Privileged {
 			c.add(source.SeverityError, source.Unsupported, "kubernetes.privileged", security, resource, field+".securityContext.privileged", "privileged containers are not supported", "privileged execution is outside the MVP")
 			return container, false
 		}
-		container.User = userString(*profile)
 	}
+	container.User = userString(effective)
+	container.SecurityProfile = &effective
 	container.Probes = c.compileProbes(node, resource, field)
 	return container, true
 }
@@ -854,18 +886,30 @@ func ingressPort(serviceNode *yaml.Node) *model.PortRef {
 
 // applySecurity copies the supported security-context fields.
 func (c *compiler) applySecurity(profile *model.SecurityProfile, node *yaml.Node, resource, field string) {
+	c.checkFields(map[string]supportEntry{
+		"runAsUser":              {source.Supported, ""},
+		"runAsGroup":             {source.Supported, ""},
+		"readOnlyRootFilesystem": {source.Supported, ""},
+		"privileged":             {source.Supported, ""},
+		"seccompProfile":         {source.Unsupported, "custom seccomp policy is not implemented"},
+		"capabilities":           {source.Unsupported, "capability overrides are not implemented"},
+	}, node, resource, field, "")
 	if value, ok := scalarValue(node, "runAsUser"); ok {
-		if parsed, err := strconv.ParseInt(value, 10, 64); err == nil {
+		if parsed, err := strconv.ParseInt(value, 10, 64); err == nil && parsed >= 0 && parsed <= 1<<32-1 {
 			profile.RunAsUser = &parsed
+		} else {
+			c.add(source.SeverityError, source.Unsupported, "kubernetes.security_id", node, resource, field+".runAsUser", "runAsUser must be a uint32", "")
 		}
 	}
 	if value, ok := scalarValue(node, "runAsGroup"); ok {
-		if parsed, err := strconv.ParseInt(value, 10, 64); err == nil {
+		if parsed, err := strconv.ParseInt(value, 10, 64); err == nil && parsed >= 0 && parsed <= 1<<32-1 {
 			profile.RunAsGroup = &parsed
+		} else {
+			c.add(source.SeverityError, source.Unsupported, "kubernetes.security_id", node, resource, field+".runAsGroup", "runAsGroup must be a uint32", "")
 		}
 	}
-	if value, ok := scalarValue(node, "readOnlyRootFilesystem"); ok && value == "true" {
-		profile.ReadOnlyRootFilesystem = true
+	if value, ok := scalarValue(node, "readOnlyRootFilesystem"); ok {
+		profile.ReadOnlyRootFilesystem = value == "true"
 	}
 	if value, ok := scalarValue(node, "privileged"); ok && value == "true" {
 		profile.Privileged = true

@@ -55,7 +55,7 @@ func BuildOCIConfig(spec guestproto.ContainerSpec, sandbox guestproto.SandboxSpe
 				{Type: "RLIMIT_NOFILE", Hard: 1024, Soft: 1024},
 			},
 		},
-		Root:     &ociRoot{Path: spec.Rootfs},
+		Root:     &ociRoot{Path: spec.Rootfs, Readonly: spec.ReadOnlyRootFilesystem},
 		Hostname: sandbox.Hostname,
 		Mounts:   ociMounts(spec.Mounts),
 		Linux: &ociLinux{

@@ -60,19 +60,23 @@ type ShareSpec struct {
 
 // ContainerSpec describes one container to run inside the guest.
 type ContainerSpec struct {
-	Name            string       `json:"name"`
-	Rootfs          string       `json:"rootfs"`
-	Init            bool         `json:"init,omitempty"`
-	Args            []string     `json:"args"`
-	Env             []string     `json:"env,omitempty"`
-	WorkingDir      string       `json:"workingDir,omitempty"`
-	User            UserSpec     `json:"user,omitempty"`
-	TTY             bool         `json:"tty,omitempty"`
-	Stdin           bool         `json:"stdin,omitempty"`
-	Mounts          []MountSpec  `json:"mounts,omitempty"`
-	Resources       ResourceSpec `json:"resources,omitempty"`
-	Capabilities    []string     `json:"capabilities,omitempty"`
-	NoNewPrivileges bool         `json:"noNewPrivileges,omitempty"`
+	Name   string `json:"name"`
+	Rootfs string `json:"rootfs"`
+	// PrivateRoot treats Rootfs as an immutable lower layer and creates a
+	// guest-local writable overlay. Build shares intentionally do not use it.
+	PrivateRoot            bool         `json:"privateRoot,omitempty"`
+	ReadOnlyRootFilesystem bool         `json:"readOnlyRootFilesystem,omitempty"`
+	Init                   bool         `json:"init,omitempty"`
+	Args                   []string     `json:"args"`
+	Env                    []string     `json:"env,omitempty"`
+	WorkingDir             string       `json:"workingDir,omitempty"`
+	User                   UserSpec     `json:"user,omitempty"`
+	TTY                    bool         `json:"tty,omitempty"`
+	Stdin                  bool         `json:"stdin,omitempty"`
+	Mounts                 []MountSpec  `json:"mounts,omitempty"`
+	Resources              ResourceSpec `json:"resources,omitempty"`
+	Capabilities           []string     `json:"capabilities,omitempty"`
+	NoNewPrivileges        bool         `json:"noNewPrivileges,omitempty"`
 }
 
 // UserSpec is the container process identity.
@@ -150,6 +154,9 @@ func (s SandboxSpec) Validate() error {
 
 // Validate checks one container spec.
 func (c ContainerSpec) Validate() error {
+	if c.Name != "" && (c.Name == "." || c.Name == ".." || strings.ContainsAny(c.Name, "/\\,:")) {
+		return errors.New("invalid container name")
+	}
 	if c.Rootfs == "" {
 		return errors.New("rootfs is required")
 	}

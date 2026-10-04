@@ -101,6 +101,7 @@ func qemuArgs(spec sandbox.Spec, cfg Config, dir, serialLog string, shareSockets
 		"-initrd", spec.Initramfs,
 		"-append", spec.KernelArgs,
 		"-display", "none",
+		"-qmp", "unix:" + filepath.Join(dir, "qmp.sock") + ",server=on,wait=off",
 		"-serial", "file:" + serialLog,
 		"-no-reboot",
 		"-device", fmt.Sprintf("vhost-vsock-device,guest-cid=%d", spec.VsockCID),

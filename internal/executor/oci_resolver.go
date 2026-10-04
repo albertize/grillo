@@ -100,7 +100,8 @@ func (r *OCIResolver) local(image model.ImageRef) (oci.PulledImage, bool, error)
 // materialize unpacks a resolved image into the content-addressed rootfs cache.
 func (r *OCIResolver) materialize(pulled oci.PulledImage) (Image, error) {
 	key := strings.NewReplacer(":", "-", "/", "-").Replace(pulled.ManifestDigest)
-	rootfs := filepath.Join(r.CacheDir, key)
+	// Never trust roots produced by the old writable-cache runtime.
+	rootfs := filepath.Join(r.CacheDir, "immutable-v1-"+key)
 
 	lock := r.lockFor(key)
 	lock.Lock()
@@ -116,6 +117,11 @@ func (r *OCIResolver) materialize(pulled oci.PulledImage) (Image, error) {
 	defer os.RemoveAll(tmp)
 	if err := r.Puller.Unpack(pulled, tmp, oci.UnpackOptions{}); err != nil {
 		return Image{}, fmt.Errorf("executor: unpack %s: %w", pulled.ManifestDigest, err)
+	}
+	// The staging directory is private while unpacking; the container root
+	// itself must be searchable by non-root guest users after publication.
+	if err := os.Chmod(tmp, 0o755); err != nil {
+		return Image{}, err
 	}
 	if err := os.WriteFile(filepath.Join(tmp, ".grillo-complete"), []byte(pulled.ManifestDigest), 0o600); err != nil {
 		return Image{}, err

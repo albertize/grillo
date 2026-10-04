@@ -29,7 +29,8 @@
               "requests": {},
               "limits": {}
             },
-            "probes": {}
+            "probes": {},
+            "securityProfile": {}
           }
         ],
         "containers": [
@@ -99,7 +100,11 @@
                 "periodSeconds": 5
               }
             },
-            "user": "1000"
+            "user": "1000",
+            "securityProfile": {
+              "readOnlyRootFilesystem": true,
+              "runAsUser": 1000
+            }
           }
         ],
         "guestResources": {
@@ -109,10 +114,7 @@
         "volumes": [
           "data"
         ],
-        "securityProfile": {
-          "readOnlyRootFilesystem": true,
-          "runAsUser": 1000
-        }
+        "securityProfile": {}
       },
       "restartPolicy": "Always",
       "updatePolicy": {
@@ -155,11 +157,6 @@
       "kind": "pvc",
       "accessMode": "ReadWriteOnce",
       "capacity": 67108864
-    },
-    {
-      "name": "data",
-      "kind": "pvc",
-      "source": "data"
     }
   ],
   "configs": [

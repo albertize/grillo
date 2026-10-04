@@ -49,9 +49,16 @@ func (e *Executor) ensureSupervisor(ctx context.Context, application string) (*n
 		return helper, nil
 	}
 	socket := e.socketPath(application)
+	// Reuse a surviving supervisor rather than orphaning its namespace.
+	if err := (&netns.Client{SocketPath: socket}).Ping(); err == nil {
+		return nil, nil
+	}
 	var logFile *os.File
 	if e.cfg.RuntimeDir != "" {
 		logFile, _ = os.OpenFile(filepath.Join(e.cfg.RuntimeDir, "netns-"+sanitizeName(application)+".log"), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
+		if logFile != nil {
+			defer logFile.Close()
+		}
 	}
 	helper, err := netns.StartSupervisor(ctx,
 		netns.Config{SocketPath: socket, Bridge: bridgeName, Gateway: bridgeGateway, Prefix: bridgePrefix, Uplink: "uplink"},

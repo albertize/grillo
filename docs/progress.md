@@ -1120,6 +1120,19 @@ historical evidence only.
   `env_file` supports the `KEY=VALUE` subset.
 - **Next task:** T18 (builder and image/volume/network tooling).
 
+## Runtime review remediation - 2026-10-04
+
+- **Task:** corrective workstream R1–R8 from the runtime code review (T07–T10, T14–T16, T19, T20). Tracker: [remediation.md](remediation.md).
+- **Status:** DONE for implementation and real-KVM verification of all eight findings.
+- **Dependencies verified:** T07/T08/T09/T10, T13/T14/T15/T16, T17/T19/T20 complete; `/dev/kvm`, `/dev/vhost-vsock`, `qemu-system-x86_64`, `pasta`, `ip`, `nft` present on this host.
+- **Files and contracts changed:** `internal/model` (per-container `SecurityProfile`); `internal/frontend/kubernetes` (effective security policy per container, Pod label fix, PVC alias resolution, `subPath` rejection); `internal/executor` (`security.go`, millicore→CFS quota with 1 s period, read-only image shares, private roots, deterministic exec selection); `internal/guest` (`rootfs_linux.go` per-container overlay, OCI root `readonly`); `internal/guestproto` (container-name validation); `internal/backend/qemu` (QMP `SO_PEERCRED` identity, `recovery_linux.go`); `internal/netns` (supervisor shutdown); `internal/reconcile` (`persistent.go` durable intent/progress); `cmd/grillod` (network wiring, mutation lock, startup recovery, native-build scratch dir).
+- **Decisions/ADRs:** No new ADR. Writable container roots use guest-local overlayfs with a private upper layer; unsupported security semantics fail closed; recovery restarts sandboxes (implementation plan §4.1) and never kills an unverified process.
+- **Tests run:** `make check` PASS; `make test-executor`, `make test-f2`, `make test-k8s` PASS on real KVM/QEMU; `go test -tags kvm -run TestKVMDaemonRemediation ./cmd/grillod` PASS against the real `grillod` + `grillo-netns` process and API; `go test -race` PASS on the changed packages.
+- **Tests NOT run and why:** Hosted CI has not run. KVM targets SKIP without `/dev/kvm`, `pasta`, or the guest artifacts.
+- **Integration evidence:** The daemon gate proves cross-VM Service DNS/fetch, private per-container writes not visible in a sibling or the shared image cache, `runAsUser` enforced as UID 1000, read-only root write rejection, in-guest `cpu.max` of `100000 1000000` for 100m, and recreation of durable desired state after daemon `SIGKILL` while a stopped application stays stopped.
+- **Known limitations:** Overlay upper layers live in guest tmpfs (bounded by guest RAM, no per-container disk quota); capability overrides and custom seccomp are rejected, not emulated; recovery restarts rather than adopts VMs; the mutation lock is global per daemon; `subPath` and ReadWriteMany remain unsupported.
+- **Next task:** continue T21 (Helm rendering and OCI charts).
+
 ## Updating this file
 
 Use `TODO`, `IN_PROGRESS`, `BLOCKED`, or `DONE`. Explain blocked prerequisites and separate skipped tests from successful ones. Do not mark tasks complete based only on mocks when their acceptance criteria require real execution.

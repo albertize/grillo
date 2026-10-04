@@ -187,6 +187,11 @@ func (b *Backend) Start(ctx context.Context, handle sandbox.Handle) error {
 			return fmt.Errorf("qemu: start virtiofsd for %q: %w", share.Tag, err)
 		}
 		vfs = append(vfs, p)
+		entry.persisted.VirtioFSD = processIDs(vfs)
+		if err := saveSandbox(dir, entry.persisted); err != nil {
+			stopHelpers()
+			return err
+		}
 		shareSockets[share.Tag] = socket
 	}
 	for tag, socket := range shareSockets {
@@ -196,6 +201,11 @@ func (b *Backend) Start(ctx context.Context, handle sandbox.Handle) error {
 		}
 	}
 
+	entry.persisted.State = "booting"
+	if err := saveSandbox(dir, entry.persisted); err != nil {
+		stopHelpers()
+		return err
+	}
 	var qemu sandbox.VMM
 	if b.cfg.Launch != nil {
 		launched, launchErr := b.cfg.Launch(ctx, spec, qemuArgs(spec, b.cfg, dir, serialLogPath(dir), shareSockets), vmmLogPath(dir))
@@ -211,19 +221,32 @@ func (b *Backend) Start(ctx context.Context, handle sandbox.Handle) error {
 			return fmt.Errorf("qemu: start vmm: %w", err)
 		}
 	}
+	identity := vmmProcessID(qemu)
+	if identity == nil {
+		identity, err = identifyVMM(ctx, dir)
+		if err != nil {
+			_ = qemu.Stop(0)
+			stopHelpers()
+			return err
+		}
+	}
+	entry.persisted.QEMU = identity
+	if err := saveSandbox(dir, entry.persisted); err != nil {
+		_ = qemu.Stop(0)
+		stopHelpers()
+		return err
+	}
 	guest, err := b.waitGuest(ctx, spec)
 	if err != nil {
 		_ = qemu.Stop(2 * time.Second)
 		stopHelpers()
 		entry.persisted.State = string(sandbox.StateFailed)
-		entry.persisted.QEMU = vmmProcessID(qemu)
 		_ = saveSandbox(dir, entry.persisted)
 		return fmt.Errorf("qemu: guest handshake: %w", err)
 	}
 	entry.qemu = qemu
 	entry.virtiofsd = vfs
 	entry.guest = guest
-	entry.persisted.QEMU = vmmProcessID(qemu)
 	entry.persisted.VirtioFSD = processIDs(vfs)
 	entry.persisted.State = string(sandbox.StateRunning)
 	if err := saveSandbox(dir, entry.persisted); err != nil {

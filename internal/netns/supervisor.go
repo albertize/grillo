@@ -57,7 +57,13 @@ type Supervisor struct {
 
 	listener net.Listener
 	mu       sync.Mutex
-	children map[string]*exec.Cmd
+	children map[string]*child
+	cancel   context.CancelFunc
+}
+
+type child struct {
+	cmd  *exec.Cmd
+	done chan struct{}
 }
 
 // NewSupervisor returns a supervisor.
@@ -71,11 +77,14 @@ func NewSupervisor(cfg Config) *Supervisor {
 	if cfg.Uplink == "" {
 		cfg.Uplink = "uplink"
 	}
-	return &Supervisor{cfg: cfg, children: map[string]*exec.Cmd{}}
+	return &Supervisor{cfg: cfg, children: map[string]*child{}}
 }
 
 // Run sets up the network and serves until ctx is canceled.
 func (s *Supervisor) Run(ctx context.Context) error {
+	ctx, cancel := context.WithCancel(ctx)
+	s.cancel = cancel
+	defer cancel()
 	if err := s.setup(ctx); err != nil {
 		return err
 	}
@@ -175,6 +184,16 @@ func (s *Supervisor) handle(request Request) Response {
 	switch request.Op {
 	case "ping":
 		return Response{OK: true}
+	case "shutdown":
+		s.mu.Lock()
+		busy := len(s.children) != 0
+		s.mu.Unlock()
+		if busy {
+			return Response{Error: "supervisor still owns VMMs"}
+		}
+		// Let serveConn flush the response before Run exits.
+		time.AfterFunc(50*time.Millisecond, s.cancel)
+		return Response{OK: true}
 	case "launch":
 		pid, err := s.launch(request)
 		if err != nil {
@@ -192,7 +211,7 @@ func (s *Supervisor) handle(request Request) Response {
 		s.mu.Lock()
 		cmd := s.children[request.Tap]
 		s.mu.Unlock()
-		return Response{OK: true, Alive: cmd != nil && cmd.ProcessState == nil}
+		return Response{OK: true, Alive: cmd != nil}
 	default:
 		return Response{Error: "unknown op"}
 	}
@@ -204,15 +223,7 @@ func (s *Supervisor) launch(request Request) (int, error) {
 	}
 	// Replace any previous child for this TAP (a retried launch after a partial
 	// failure) before creating a fresh one.
-	s.mu.Lock()
-	if old, exists := s.children[request.Tap]; exists {
-		if old.Process != nil {
-			_ = syscall.Kill(-old.Process.Pid, syscall.SIGKILL)
-		}
-		delete(s.children, request.Tap)
-	}
-	s.mu.Unlock()
-	_ = run(context.Background(), "ip", "link", "del", request.Tap)
+	s.stopTap(request.Tap)
 
 	if err := run(context.Background(), "ip", "tuntap", "add", "dev", request.Tap, "mode", "tap", "user", "0"); err != nil {
 		return 0, err
@@ -252,10 +263,11 @@ func (s *Supervisor) launch(request Request) (int, error) {
 		_ = run(context.Background(), "ip", "link", "del", request.Tap)
 		return 0, err
 	}
-	s.mu.Lock()
-	s.children[request.Tap] = cmd
-	s.mu.Unlock()
 	done := make(chan struct{})
+	owned := &child{cmd: cmd, done: done}
+	s.mu.Lock()
+	s.children[request.Tap] = owned
+	s.mu.Unlock()
 	go func() {
 		defer close(done)
 		_ = cmd.Wait()
@@ -264,11 +276,11 @@ func (s *Supervisor) launch(request Request) (int, error) {
 		}
 		s.mu.Lock()
 		current := s.children[request.Tap]
-		if current == cmd {
+		if current == owned {
 			delete(s.children, request.Tap)
 		}
 		s.mu.Unlock()
-		if current == cmd {
+		if current == owned {
 			_ = run(context.Background(), "ip", "link", "del", request.Tap)
 		}
 	}()
@@ -291,9 +303,9 @@ func (s *Supervisor) stopTap(tap string) Response {
 	cmd := s.children[tap]
 	delete(s.children, tap)
 	s.mu.Unlock()
-	if cmd != nil && cmd.Process != nil {
-		_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
-		_ = cmd.Wait()
+	if cmd != nil && cmd.cmd.Process != nil {
+		_ = syscall.Kill(-cmd.cmd.Process.Pid, syscall.SIGKILL)
+		<-cmd.done // exactly one goroutine owns Wait
 	}
 	_ = run(context.Background(), "ip", "link", "del", tap)
 	return Response{OK: true}

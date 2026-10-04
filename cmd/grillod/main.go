@@ -21,6 +21,7 @@ import (
 	"strings"
 	"sync"
 	"syscall"
+	"time"
 
 	"grillo.local/grillo/internal/api"
 	"grillo.local/grillo/internal/backend/qemu"
@@ -31,6 +32,7 @@ import (
 	"grillo.local/grillo/internal/observe"
 	"grillo.local/grillo/internal/oci"
 	"grillo.local/grillo/internal/reconcile"
+	"grillo.local/grillo/internal/sandbox"
 	"grillo.local/grillo/internal/secrets"
 	"grillo.local/grillo/internal/state"
 	"grillo.local/grillo/internal/storage"
@@ -85,7 +87,13 @@ func run() error {
 	}
 	defer logs.Close()
 
+	// The callback is installed before the backend is opened; runtime is set
+	// before any launch or recovery effects are permitted.
+	var workloadRuntime *executor.Executor
 	backend, err := qemu.Open(qemu.Config{
+		Launch: func(ctx context.Context, spec sandbox.Spec, args []string, logPath string) (sandbox.VMM, error) {
+			return workloadRuntime.LaunchSandbox(ctx, spec, args, logPath)
+		},
 		QEMU:      *qemuPath,
 		VirtioFSD: *virtiofsd,
 		Kernel:    *kernel,
@@ -172,22 +180,32 @@ func run() error {
 		CAS:      cas,
 	}
 	exec, err := executor.New(executor.Config{
-		Backend:      backend,
-		Volumes:      volumes,
-		Kernel:       *kernel,
-		Initramfs:    *initramfs,
-		KernelArgs:   "console=ttyS0 reboot=k panic=1 rdinit=/init",
-		GuestKey:     guestKey,
-		VsockPort:    uint32(*vsockPort),
-		VsockCIDBase: 20,
-		Images:       images,
-		Secrets:      secretStore,
+		Backend:       backend,
+		Volumes:       volumes,
+		Kernel:        *kernel,
+		Initramfs:     *initramfs,
+		KernelArgs:    "console=ttyS0 reboot=k panic=1 rdinit=/init",
+		GuestKey:      guestKey,
+		VsockPort:     uint32(*vsockPort),
+		VsockCIDBase:  20,
+		Images:        images,
+		Secrets:       secretStore,
+		EnableNetwork: true,
+		QEMU:          qemuBinary,
+		NetnsBinary:   *netnsBinary,
+		Pasta:         *pasta,
+		RuntimeDir:    layout.Runtime,
 	})
 	if err != nil {
 		return err
 	}
+	workloadRuntime = exec
+	persistent, err := reconcile.OpenPersistentStore(layout.State)
+	if err != nil {
+		return err
+	}
 	reconciler := &reconcile.Reconciler{
-		Store:    reconcile.NewMemoryStore(),
+		Store:    persistent,
 		Executor: &reconcile.NativeExecutor{Sandboxes: executor.SandboxController{E: exec}, Volumes: executor.VolumeController{E: exec}},
 	}
 
@@ -196,6 +214,7 @@ func run() error {
 
 	runtimeCore := &core{
 		reconciler:   reconciler,
+		persistent:   persistent,
 		exec:         exec,
 		images:       imagesStore,
 		cas:          cas,
@@ -205,6 +224,19 @@ func run() error {
 		buildScratch: filepath.Join(layout.Cache, "native-build"),
 		apps:         map[string]bool{},
 		desired:      map[string]model.Application{},
+	}
+	// Recovery is intentionally disruptive: verified old VMMs are stopped,
+	// volume leases are released, then durable non-stopped intent is replayed.
+	recoverCtx, recoverCancel := context.WithTimeout(ctx, 5*time.Minute)
+	defer recoverCancel()
+	if err := backend.Recover(recoverCtx); err != nil {
+		return fmt.Errorf("recover backend: %w", err)
+	}
+	if err := volumes.Reconcile(func(string) bool { return false }); err != nil {
+		return err
+	}
+	if err := runtimeCore.recover(recoverCtx); err != nil {
+		return fmt.Errorf("recover applications: %w", err)
 	}
 	server := api.NewServer(api.Options{
 		Core:     runtimeCore,
@@ -264,12 +296,32 @@ type core struct {
 	podman       *build.PodmanBuilder
 	buildScratch string
 
-	mu      sync.Mutex
-	apps    map[string]bool
-	desired map[string]model.Application
+	// mutationMu covers publication, persistence and effects as one operation.
+	// Serialize globally for now; correctness takes precedence over parallelism.
+	mutationMu sync.Mutex
+	persistent *reconcile.PersistentStore
+	mu         sync.Mutex
+	apps       map[string]bool
+	desired    map[string]model.Application
 }
 
 func (c *core) Apply(ctx context.Context, app model.Application) (reconcile.Result, error) {
+	c.mutationMu.Lock()
+	defer c.mutationMu.Unlock()
+	if err := ctx.Err(); err != nil {
+		return reconcile.Result{}, err
+	}
+	if err := executor.ValidateDesired(app); err != nil {
+		return reconcile.Result{}, err
+	}
+	if diagnostics := model.Validate(app, model.FullCapabilities()); diagnostics.HasErrors() {
+		return reconcile.Result{}, fmt.Errorf("invalid application: %s", diagnostics.Errors()[0].Message)
+	}
+	if c.persistent != nil {
+		if err := c.persistent.SetDesired(app); err != nil {
+			return reconcile.Result{}, err
+		}
+	}
 	c.exec.SetDesired(app)
 	result, err := c.reconciler.Apply(ctx, app)
 	if err == nil {
@@ -299,10 +351,19 @@ func (c *core) Applications(context.Context) ([]string, error) {
 }
 
 func (c *core) Restart(ctx context.Context, application string) error {
+	c.mutationMu.Lock()
+	defer c.mutationMu.Unlock()
 	return c.exec.Restart(ctx, application)
 }
 
 func (c *core) Down(ctx context.Context, application string, removeVolumes bool) (reconcile.Result, error) {
+	c.mutationMu.Lock()
+	defer c.mutationMu.Unlock()
+	if c.persistent != nil {
+		if err := c.persistent.SetStopped(application, removeVolumes); err != nil {
+			return reconcile.Result{}, err
+		}
+	}
 	return c.reconciler.Down(ctx, application, removeVolumes)
 }
 
@@ -387,6 +448,9 @@ func (c *core) Build(ctx context.Context, request build.Request, progress func(s
 	case "", "native":
 		if c.images == nil || c.cas == nil || c.puller == nil {
 			return build.Result{}, errors.New("build: the native builder is not configured")
+		}
+		if err := os.MkdirAll(c.buildScratch, 0o700); err != nil {
+			return build.Result{}, err
 		}
 		runner := &build.SandboxRunner{Share: "build"}
 		if c.boot != nil {

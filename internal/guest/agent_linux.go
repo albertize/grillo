@@ -113,6 +113,10 @@ func (a *Agent) start(ctx context.Context, req guestproto.Message) (any, *guestp
 	}
 	a.containers = make(map[string]*containerState, len(a.sandbox.Containers))
 	for _, c := range a.sandbox.Containers {
+		c, err := prepareContainerRoot(a.WorkDir, c)
+		if err != nil {
+			return nil, guestproto.Errorf(guestproto.CodeInternal, "%v", err)
+		}
 		bundle := filepath.Join(a.WorkDir, "bundles", c.Name)
 		if err := WriteBundle(bundle, c, a.sandbox); err != nil {
 			return nil, guestproto.Errorf(guestproto.CodeInternal, "%v", err)

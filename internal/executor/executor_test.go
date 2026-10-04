@@ -23,8 +23,11 @@ func TestParseUser(t *testing.T) {
 }
 
 func TestResourcesMapping(t *testing.T) {
-	resources := resources(model.Resources{Limits: model.ResourceList{CPU: 500, Memory: 64 << 20}})
-	if resources.CPUQuotaMicros != 500_000 || resources.CPUPeriodMicros != 100_000 {
+	resources, err := resources(model.Resources{Limits: model.ResourceList{CPU: 500, Memory: 64 << 20}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resources.CPUQuotaMicros != 500_000 || resources.CPUPeriodMicros != 1_000_000 {
 		t.Fatalf("cpu = %+v", resources)
 	}
 	if resources.MemoryBytes != 64<<20 {
