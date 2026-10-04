@@ -4,11 +4,11 @@
 
 ![A cricket whispering to an expressive wooden ship’s wheel, illustrated in sepia.](media/Whispering%20Cricket%20and%20Ship%E2%80%99s%20Wheel.png)
 
-Grillo is a planned rootless-first application runtime that runs local workloads in hardware-isolated microVMs. It accepts Compose projects and Helm/Kubernetes application definitions, translates them into a shared model, and maps each Kubernetes Pod to one microVM.
+Grillo is a rootless-first application runtime that runs local workloads in hardware-isolated microVMs. It accepts Compose projects and Kubernetes manifests (Helm rendering is not implemented yet), translates them into a shared model, and maps each Kubernetes Pod to one microVM.
 
 The goal is a development experience closer to `docker compose up` than to operating a cluster, while preserving the application-facing contracts that matter in production.
 
-> **Project status: initial scaffold.** The repository includes tested command scaffolding and build/CI tooling. There is no executable workload runtime or installable release. Only help, development version output, and an explicitly incomplete doctor command exist; capabilities described below remain intended behavior.
+> **Project status: pre-release, with a working runtime.** On Linux/KVM the native runtime pulls OCI images, boots QEMU microVMs, runs real containers and init containers, shares a Pod's containers over localhost, serves Service DNS, attaches managed and bind volumes, provides exec/logs/events/probes, reconciles desired state with crash recovery, and exposes a local Unix-socket API and CLI. Compose projects and a Kubernetes MVP subset compile into the shared IR; the F0 and F2 gates and a multi-container Kubernetes scenario pass on real hardware. Helm rendering (T21) and the full web console (T23) are not implemented, there is no packaged release or supported version, and behavior not covered by [docs/progress.md](docs/progress.md) and [docs/compatibility.md](docs/compatibility.md) remains intended, not delivered.
 
 ## Why Grillo?
 
@@ -63,40 +63,48 @@ Rootless also has a precise meaning: ordinary operation should not require root,
 
 ### Small components, explicit dependencies
 
-The implementation is planned in Go, prioritizing its standard library and official `golang.org/x/*` modules. A maintained YAML parser is the only initially planned third-party Go module. CLI, HTTP server, state management, and UI should not acquire frameworks without a concrete need.
+The implementation is in Go, prioritizing its standard library and official `golang.org/x/*` modules. The only third-party Go module outside that set is the maintained YAML parser. CLI, HTTP server, state management, and UI should not acquire frameworks without a concrete need.
 
 This does not mean inventing a hypervisor, image builder, or secure OCI runtime. Specialized external components are preferable where they reduce risk. Their versions, licenses, checksums, prerequisites, and failure modes must be documented.
 
 ### Measure before optimizing
 
-Fast startup and low idle overhead are engineering objectives, not current guarantees. Backend, rootless networking, and live filesystem sharing must be validated together before higher-level features depend on them. No fake backend result may substitute for a real KVM integration test.
+Fast startup and low idle overhead are engineering objectives, not current guarantees. Backend, rootless networking, and live filesystem sharing were validated together on real hardware before higher-level features were built on them (F0). No fake backend result may substitute for a real KVM integration test.
 
-## Intended developer experience
+## Developer experience
 
-**Illustrative future commands—not available in this repository yet:**
+These commands work today for Compose projects and Kubernetes manifests (Helm input is not implemented yet):
 
 ```sh
 # Review compatibility and planned changes without starting workloads.
-grillo plan ./charts/store -f values.local.yaml
+grillo plan compose.yaml
+grillo plan deployment.yaml
 
-# Run a Helm chart or Compose application.
-grillo up ./charts/store -f values.local.yaml
+# Run a Compose project or a Kubernetes manifest.
 grillo up compose.yaml
+grillo up deployment.yaml
 
 # Inspect and debug the application.
 grillo ps
+grillo status <application>
 grillo logs deployment/api -f
+grillo exec pod/api-0 api -- <command>
 grillo shell pod/api-0 api
 grillo inspect service/postgres
+grillo events -f
+
+# Build and inspect images without an external container engine.
+grillo build -t example:local .
+grillo image ls
 
 # Open the optional local console.
 grillo ui
 
 # Stop the application while preserving managed volumes.
-grillo down
+grillo down <application>
 ```
 
-The intended workflow is iterative: rerun `up` after a change, compute a deterministic plan, and replace only affected sandboxes where practical. Closing the CLI or browser should not stop workloads.
+The workflow is iterative: rerun `up` after a change, compute a deterministic plan, and replace only affected sandboxes where practical. Closing the CLI or browser does not stop workloads.
 
 ## Architecture
 
@@ -133,37 +141,36 @@ Compose frontend          Helm renderer → Kubernetes frontend
 - **The guest agent** controls containers, probes, signals, and streams without becoming a miniature kubelet.
 - **The API** provides shared runtime operations to CLI and UI; neither implements a separate orchestration engine.
 
-## Initial platform and technical direction
+## Platform and technical direction
 
-| Area | Planned direction |
+| Area | Direction |
 |---|---|
 | Host | Linux/amd64 with KVM; other architectures only after validation |
 | Runtime language | Go, standard-library-first |
 | Isolation | One hardware-isolated microVM per Pod |
-| VMM | QEMU microvm + virtiofsd selected for F0 (ADR 0005, proposed) |
+| VMM | QEMU `microvm` + virtiofsd (ADR 0005; the working backend) |
 | Guest | Minimal Linux image, Go PID 1 agent, guest-side runc |
-| Networking | Rootless application networking, DNS, Service proxying, localhost publishing |
+| Networking | Rootless application networking, Service DNS; Service proxy and Ingress datapaths planned |
 | State | Per-user atomic JSON snapshots and bounded journal initially |
 | Local API | Versioned HTTP over a private Unix socket |
 | UI | Optional loopback bridge, embedded framework-free web assets |
 | Helm | Official pinned Helm CLI initially; documented SDK trade-off |
-| Builds | Existing rootless OCI builder, initially a Podman adapter |
+| Builds | Native builder by default (Dockerfile subset executed in a guest); rootless Podman is opt-in |
 
 Backend choice depended on proving **rootless networking and real live bind mounts**, not just booting a guest. The F0 gate now passes on QEMU `microvm` + virtiofsd: rootless two-VM networking, DNS, egress, loopback publishing, enforced isolation, live virtiofs binds, and a persistent ext4 volume were all measured on real hardware (`make test-f0`). Firecracker was rejected for the product because it exposes no shared-filesystem device. Two limitations are recorded honestly: host-originated virtiofs notifications are degraded (polling required), and SELinux Enforcing silently breaks the `pasta` helper on the tested Fedora policy. See [ADR 0005](docs/adr/0005-platform-qemu-virtiofsd.md) and the [T03 report](docs/experiments/t03-backend-comparison.md). The [implementation plan](IMPLEMENTATION_PLAN.md) documents alternatives and decision gates.
 
-macOS/Windows hosts, GPU support, snapshots, and alternative VMMs are not part of the first release target. No current performance or platform-support claim is implied by this table.
+macOS/Windows hosts, GPU support, snapshots, and alternative VMMs are not part of the first release target. No current performance or platform-support claim is implied by this table. The runtime built on this backend runs the F2 Compose application and the multi-container Kubernetes scenario described in [docs/progress.md](docs/progress.md).
 
 ## Compatibility and scope
 
-The MVP target includes:
+Implemented and exercised on the real runtime:
 
-- Common Compose image/environment/port/volume/health-check workflows.
-- Helm rendering and a tested subset of Pod, Deployment, Service, ConfigMap, Secret, PVC, and basic Ingress behavior.
-- Multiple containers per Pod, init containers, logs, exec, signals, probes, and local reconciliation.
-- Persistent managed storage, explicit bind mounts, Service discovery, and local routes.
-- CLI inspection and an optional web console.
+- Compose image/environment/port/volume/health-check workflows (F2 gate).
+- A Kubernetes MVP subset: Pod, Deployment, Service, ConfigMap, Secret, PVC, and basic Ingress compilation.
+- Multiple containers per Pod, init containers, logs, exec, probes, and local reconciliation.
+- Persistent managed storage, explicit bind mounts, and Service discovery through in-guest DNS that resolves Service names to sandbox addresses.
 
-Later milestones extend StatefulSet, Job, update strategies, and explicitly documented Tier 2 behavior. Compatibility is field-level, not just resource-kind-level. See the [current compatibility status](docs/compatibility.md) and [specification](grillo-project-specification.md).
+Not implemented yet: Helm rendering; the full web console; StatefulSet and Job; rolling updates; the Service VIP/load-balancing and Ingress reverse-proxy datapaths (only their compilation and DNS exist); and the remaining Tier 2 behavior. Compatibility is field-level, not just resource-kind-level. See the [current compatibility status](docs/compatibility.md) and [specification](grillo-project-specification.md).
 
 ### Non-goals
 
@@ -180,14 +187,14 @@ Grillo is not intended to be:
 
 | Milestone | Focus |
 |---|---|
-| F0 | Prove a real rootless microVM path, OCI execution, networking, storage, and measurable overhead (feasibility gate passed — see [progress](docs/progress.md)) |
-| F1 | Build the native runtime, guest agent, images, lifecycle, API, recovery, and probes |
-| F2 | Run a representative multi-service Compose application |
-| F3 | Deliver the Helm subset, local console, and tested product MVP |
+| F0 | Rootless microVM path, OCI execution, networking, storage, and measurable overhead — **gate passed** on QEMU `microvm` + virtiofsd (T01–T03) |
+| F1 | Native runtime: guest agent, images, lifecycle, API, recovery, probes — **components implemented and exercised on real KVM** (T04–T16), with a review-remediation pass tracked in [remediation.md](docs/remediation.md) |
+| F2 | Representative multi-service Compose application — **gate passed** (T19) |
+| F3 | Helm subset, local console, and tested product MVP — **in progress**: Kubernetes MVP compiler done (T20); Helm (T21–T22) and the full console (T23) are not |
 | F4 | Expand Kubernetes-oriented semantics and compatibility |
 | F5 | Optimize and package based on evidence; explore advanced isolation only when justified |
 
-The plan contains **29 tasks, T00–T28**, with dependencies, contracts, tests, and acceptance criteria. No release dates or completed runtime milestones are claimed. Track evidence in [docs/progress.md](docs/progress.md).
+The plan contains **29 tasks, T00–T28**, with dependencies, contracts, tests, and acceptance criteria. There is no packaged release or supported version, and F3–F5 remain open. Track evidence in [docs/progress.md](docs/progress.md).
 
 ## Documentation
 
@@ -199,6 +206,7 @@ The plan contains **29 tasks, T00–T28**, with dependencies, contracts, tests, 
 | [Contributing](CONTRIBUTING.md) | Human and automated contribution guidelines |
 | [Architecture decisions](docs/adr/README.md) | Decision process and ADR template |
 | [Progress](docs/progress.md) | Current task status and evidence |
+| [Remediation](docs/remediation.md) | Runtime review findings R1–R8, status and evidence |
 | [Compatibility](docs/compatibility.md) | Honest distinction between planned and tested support |
 | [Security policy](SECURITY.md) | Security expectations and reporting guidance |
 | [Code of conduct](CODE_OF_CONDUCT.md) | Community behavior and moderation principles |
@@ -206,7 +214,7 @@ The plan contains **29 tasks, T00–T28**, with dependencies, contracts, tests, 
 
 ## Contributing
 
-Design reviews, rootless feasibility experiments, adversarial test cases, documentation improvements, and eventually focused Go contributions are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md) before starting work. Coding agents should also follow [AGENT.md](AGENT.md).
+Design reviews, rootless feasibility experiments, adversarial test cases, documentation improvements, and focused Go contributions are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md) before starting work. Coding agents should also follow [AGENT.md](AGENT.md).
 
 ### Development
 
@@ -218,18 +226,22 @@ downloads. Preview it safely with `bash scripts/bootstrap.sh`.
 Routine checks:
 
 ```sh
-make check          # formatting, vet, unit/race tests, host/agent builds, module audit
+make check           # formatting, vet, unit/race tests, host/agent builds, module audit
+make test-executor   # real KVM: boot, apply, exec, teardown
+make test-f2         # real KVM: multi-service Compose application
+make test-k8s        # real KVM: multi-container Kubernetes Pod
 ./bin/grillo version
-./bin/grillo doctor # exits 1: readiness checks are not implemented
-make vulncheck      # explicit download/execution of pinned official audit tool
+./bin/grillo doctor  # read-only host readiness check
+make vulncheck       # explicit download/execution of pinned official audit tool
 ```
 
-Build outputs stay under `bin/`. The agent is a build scaffold, **not usable as
-guest PID 1**. `make test-kvm` and `make test-qemu` run opt-in feasibility
-experiments using separate guest binaries; ordinary tests require no KVM.
-Partial experiment results do not complete the F0 gate or imply runtime support.
-See the [dependency ADR](docs/adr/0001-scaffold-and-dependencies.md) for pins and
-the provisional local module identifier.
+Build outputs stay under `bin/`. The guest agent (`cmd/grillo-agent`) is the
+real guest PID 1; build the guest image with `make t07-guest`. `make test-executor`,
+`make test-f2`, and `make test-k8s` are real KVM/QEMU integration gates and SKIP
+(never pass) when `/dev/kvm`, `pasta`, or the guest artifacts are missing;
+ordinary tests require no KVM. See the
+[dependency ADR](docs/adr/0001-scaffold-and-dependencies.md) for pins and the
+module identifier `github.com/albertize/grillo`.
 
 ## Name
 
