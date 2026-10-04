@@ -23,9 +23,9 @@ runtime components. No repository remote is configured. See the
 ## Decision
 
 Propose Go 1.26.8 in go.mod and CI, with local builds using that toolchain.
-Use the local module identifier `grillo.local/grillo`; replace it and imports
-when maintainers establish the canonical repository URL. It is not a public
-project domain claim.
+The module identifier is `github.com/albertize/grillo`, matching the canonical
+repository URL established by the maintainer. It was initially `grillo.local/grillo`
+while no remote existed; the earlier history records that scaffold identifier.
 
 The runtime module starts with **no external dependencies**. The planned YAML
 parser is `go.yaml.in/yaml/v3` at `v3.0.5`; add and checksum it when frontend

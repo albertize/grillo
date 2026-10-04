@@ -14,8 +14,8 @@ import (
 	"testing"
 	"time"
 
-	"grillo.local/grillo/internal/image"
-	"grillo.local/grillo/internal/oci"
+	"github.com/albertize/grillo/internal/image"
+	"github.com/albertize/grillo/internal/oci"
 )
 
 // testRunner is a host-side test double for a sandbox Runner. It runs the

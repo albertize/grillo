@@ -7,7 +7,7 @@ package guest
 import (
 	"encoding/json"
 	"errors"
-	"grillo.local/grillo/internal/guestproto"
+	"github.com/albertize/grillo/internal/guestproto"
 	"strings"
 	"testing"
 )

@@ -18,8 +18,8 @@ import (
 	"testing"
 	"time"
 
-	"grillo.local/grillo/internal/backend/qemu"
-	"grillo.local/grillo/internal/oci"
+	"github.com/albertize/grillo/internal/backend/qemu"
+	"github.com/albertize/grillo/internal/oci"
 )
 
 func buildRepoRoot(t *testing.T) string {

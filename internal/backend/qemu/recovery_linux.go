@@ -15,9 +15,9 @@ import (
 	"syscall"
 	"time"
 
+	linux "github.com/albertize/grillo/internal/platform/linux"
+	"github.com/albertize/grillo/internal/sandbox"
 	"golang.org/x/sys/unix"
-	linux "grillo.local/grillo/internal/platform/linux"
-	"grillo.local/grillo/internal/sandbox"
 )
 
 // identifyVMM obtains a host-namespace PID from the kernel, even if QEMU was

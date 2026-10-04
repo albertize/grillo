@@ -11,8 +11,8 @@ import (
 	"strings"
 	"time"
 
-	"grillo.local/grillo/internal/model"
-	"grillo.local/grillo/internal/observe"
+	"github.com/albertize/grillo/internal/model"
+	"github.com/albertize/grillo/internal/observe"
 )
 
 func allContainers(workload model.Workload) []model.Container {

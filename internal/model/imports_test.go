@@ -34,7 +34,7 @@ func TestModelImportBoundary(t *testing.T) {
 }
 
 func allowedModelImport(path string) bool {
-	if path == "grillo.local/grillo/internal/source" {
+	if path == "github.com/albertize/grillo/internal/source" {
 		return true
 	}
 	first := path

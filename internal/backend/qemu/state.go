@@ -10,7 +10,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"grillo.local/grillo/internal/sandbox"
+	"github.com/albertize/grillo/internal/sandbox"
 )
 
 const stateFileName = "sandbox.json"

@@ -9,7 +9,7 @@ import (
 	"fmt"
 	"io"
 
-	"grillo.local/grillo/internal/source"
+	"github.com/albertize/grillo/internal/source"
 )
 
 // CodeManifestDecode reports a malformed native manifest.

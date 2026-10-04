@@ -12,7 +12,7 @@ import (
 	"syscall"
 	"time"
 
-	linux "grillo.local/grillo/internal/platform/linux"
+	linux "github.com/albertize/grillo/internal/platform/linux"
 )
 
 // ErrHelperUnavailable means the rootless helper could not be started, usually

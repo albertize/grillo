@@ -10,8 +10,8 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/albertize/grillo/internal/guestproto"
 	"golang.org/x/sys/unix"
-	"grillo.local/grillo/internal/guestproto"
 )
 
 // prepareRoot creates an overlay in guest runtime tmpfs. Its upper layer is

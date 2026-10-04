@@ -6,7 +6,7 @@ package observe
 
 import (
 	"context"
-	"grillo.local/grillo/internal/guestproto"
+	"github.com/albertize/grillo/internal/guestproto"
 )
 
 // GuestProbeClient is the subset of the guest protocol client used for probes.

@@ -11,8 +11,8 @@ import (
 	"strings"
 	"testing"
 
-	"grillo.local/grillo/internal/model"
-	"grillo.local/grillo/internal/source"
+	"github.com/albertize/grillo/internal/model"
+	"github.com/albertize/grillo/internal/source"
 )
 
 var update = flag.Bool("update", false, "update golden files")

@@ -4,8 +4,8 @@ package reconcile
 
 import (
 	"errors"
-	"grillo.local/grillo/internal/model"
-	"grillo.local/grillo/internal/plan"
+	"github.com/albertize/grillo/internal/model"
+	"github.com/albertize/grillo/internal/plan"
 	"os"
 	"path/filepath"
 	"testing"

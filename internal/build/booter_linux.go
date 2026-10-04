@@ -12,8 +12,8 @@ import (
 	"sync"
 	"time"
 
-	"grillo.local/grillo/internal/guestproto"
-	"grillo.local/grillo/internal/sandbox"
+	"github.com/albertize/grillo/internal/guestproto"
+	"github.com/albertize/grillo/internal/sandbox"
 )
 
 // GuestBoot boots a build guest that shares a host directory and speaks the

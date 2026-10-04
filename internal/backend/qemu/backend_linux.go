@@ -14,9 +14,9 @@ import (
 	"syscall"
 	"time"
 
-	"grillo.local/grillo/internal/guestproto"
-	linux "grillo.local/grillo/internal/platform/linux"
-	"grillo.local/grillo/internal/sandbox"
+	"github.com/albertize/grillo/internal/guestproto"
+	linux "github.com/albertize/grillo/internal/platform/linux"
+	"github.com/albertize/grillo/internal/sandbox"
 )
 
 // Backend is the QEMU microvm implementation of sandbox.Backend.

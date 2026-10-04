@@ -13,7 +13,7 @@ import (
 
 	"go.yaml.in/yaml/v3"
 
-	"grillo.local/grillo/internal/source"
+	"github.com/albertize/grillo/internal/source"
 )
 
 // Format returns the detected kind. An empty input is treated as a native empty

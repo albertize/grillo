@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"grillo.local/grillo/internal/model"
+	"github.com/albertize/grillo/internal/model"
 )
 
 func testApp(replicas int, tag string) model.Application {

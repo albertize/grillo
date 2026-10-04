@@ -15,9 +15,9 @@ import (
 	"sync"
 	"time"
 
-	"grillo.local/grillo/internal/model"
-	"grillo.local/grillo/internal/observe"
-	"grillo.local/grillo/internal/plan"
+	"github.com/albertize/grillo/internal/model"
+	"github.com/albertize/grillo/internal/observe"
+	"github.com/albertize/grillo/internal/plan"
 )
 
 // Executor performs one plan action idempotently for an operation key.

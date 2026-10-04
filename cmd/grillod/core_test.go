@@ -11,11 +11,11 @@ import (
 	"testing"
 	"time"
 
-	"grillo.local/grillo/internal/executor"
-	"grillo.local/grillo/internal/model"
-	"grillo.local/grillo/internal/plan"
-	"grillo.local/grillo/internal/reconcile"
-	"grillo.local/grillo/internal/sandbox"
+	"github.com/albertize/grillo/internal/executor"
+	"github.com/albertize/grillo/internal/model"
+	"github.com/albertize/grillo/internal/plan"
+	"github.com/albertize/grillo/internal/reconcile"
+	"github.com/albertize/grillo/internal/sandbox"
 )
 
 type noopBackend struct{ sandbox.Backend }

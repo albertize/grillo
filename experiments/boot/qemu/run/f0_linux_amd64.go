@@ -22,9 +22,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/albertize/grillo/experiments/boot/qemu/fsbench"
+	"github.com/albertize/grillo/experiments/boot/spike"
 	"golang.org/x/sys/unix"
-	"grillo.local/grillo/experiments/boot/qemu/fsbench"
-	"grillo.local/grillo/experiments/boot/spike"
 )
 
 // All addresses/rules are fixed experiment fixtures, NOT input from manifests.

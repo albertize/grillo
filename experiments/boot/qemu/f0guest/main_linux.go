@@ -16,8 +16,8 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/albertize/grillo/experiments/boot/qemu/fsbench"
 	"golang.org/x/sys/unix"
-	"grillo.local/grillo/experiments/boot/qemu/fsbench"
 )
 
 func main() {

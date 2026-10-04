@@ -19,7 +19,7 @@ import (
 	"testing"
 	"time"
 
-	"grillo.local/grillo/internal/guestproto"
+	"github.com/albertize/grillo/internal/guestproto"
 )
 
 // TestKVMAgentScenarioA boots the real grillo-agent guest with QEMU microvm and

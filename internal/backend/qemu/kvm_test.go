@@ -16,8 +16,8 @@ import (
 	"testing"
 	"time"
 
-	linux "grillo.local/grillo/internal/platform/linux"
-	"grillo.local/grillo/internal/sandbox"
+	linux "github.com/albertize/grillo/internal/platform/linux"
+	"github.com/albertize/grillo/internal/sandbox"
 )
 
 // TestKVMCreateStartStopDelete boots the real T07 guest through the backend and

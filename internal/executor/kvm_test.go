@@ -15,10 +15,10 @@ import (
 	"testing"
 	"time"
 
-	"grillo.local/grillo/internal/backend/qemu"
-	"grillo.local/grillo/internal/model"
-	"grillo.local/grillo/internal/reconcile"
-	"grillo.local/grillo/internal/storage"
+	"github.com/albertize/grillo/internal/backend/qemu"
+	"github.com/albertize/grillo/internal/model"
+	"github.com/albertize/grillo/internal/reconcile"
+	"github.com/albertize/grillo/internal/storage"
 )
 
 // directoryResolver serves a fixed host rootfs directory for every image.

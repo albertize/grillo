@@ -15,12 +15,12 @@ import (
 	"strings"
 	"time"
 
-	"grillo.local/grillo/internal/guestproto"
-	"grillo.local/grillo/internal/model"
-	"grillo.local/grillo/internal/netns"
-	"grillo.local/grillo/internal/network"
-	"grillo.local/grillo/internal/plan"
-	"grillo.local/grillo/internal/sandbox"
+	"github.com/albertize/grillo/internal/guestproto"
+	"github.com/albertize/grillo/internal/model"
+	"github.com/albertize/grillo/internal/netns"
+	"github.com/albertize/grillo/internal/network"
+	"github.com/albertize/grillo/internal/plan"
+	"github.com/albertize/grillo/internal/sandbox"
 )
 
 // Application network defaults. Applications are isolated in separate pasta

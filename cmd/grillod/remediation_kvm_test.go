@@ -14,9 +14,9 @@ import (
 	"testing"
 	"time"
 
-	"grillo.local/grillo/internal/api"
-	"grillo.local/grillo/internal/build"
-	"grillo.local/grillo/internal/frontend/kubernetes"
+	"github.com/albertize/grillo/internal/api"
+	"github.com/albertize/grillo/internal/build"
+	"github.com/albertize/grillo/internal/frontend/kubernetes"
 )
 
 // This gate deliberately starts the actual daemon, not a differently wired

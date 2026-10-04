@@ -5,7 +5,7 @@ package compose
 import (
 	"go.yaml.in/yaml/v3"
 
-	"grillo.local/grillo/internal/source"
+	"github.com/albertize/grillo/internal/source"
 )
 
 func mapGet(node *yaml.Node, key string) (*yaml.Node, bool) {

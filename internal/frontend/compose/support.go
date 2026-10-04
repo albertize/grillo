@@ -2,7 +2,7 @@
 
 package compose
 
-import "grillo.local/grillo/internal/source"
+import "github.com/albertize/grillo/internal/source"
 
 // supportEntry records the honest support state and consequence of a Compose
 // field. Unknown fields are unsupported and produce a diagnostic rather than

@@ -11,7 +11,7 @@ import (
 	"strings"
 	"testing"
 
-	"grillo.local/grillo/internal/model"
+	"github.com/albertize/grillo/internal/model"
 )
 
 func app(name string) *model.Application {

@@ -12,8 +12,8 @@ import (
 	"strings"
 	"testing"
 
-	"grillo.local/grillo/internal/api"
-	"grillo.local/grillo/internal/observe"
+	"github.com/albertize/grillo/internal/api"
+	"github.com/albertize/grillo/internal/observe"
 )
 
 type fakeCore struct{}

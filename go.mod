@@ -1,4 +1,4 @@
-module grillo.local/grillo
+module github.com/albertize/grillo
 
 go 1.26.8
 

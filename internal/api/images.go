@@ -7,9 +7,9 @@ import (
 	"errors"
 	"net/http"
 
-	"grillo.local/grillo/internal/build"
-	"grillo.local/grillo/internal/image"
-	"grillo.local/grillo/internal/state"
+	"github.com/albertize/grillo/internal/build"
+	"github.com/albertize/grillo/internal/image"
+	"github.com/albertize/grillo/internal/state"
 )
 
 // ImageManager is the optional image inventory and build surface. When nil the

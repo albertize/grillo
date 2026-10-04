@@ -10,9 +10,9 @@ import (
 	"sort"
 	"sync"
 
-	"grillo.local/grillo/internal/model"
-	"grillo.local/grillo/internal/plan"
-	"grillo.local/grillo/internal/state"
+	"github.com/albertize/grillo/internal/model"
+	"github.com/albertize/grillo/internal/plan"
+	"github.com/albertize/grillo/internal/state"
 )
 
 // ApplicationRecord atomically associates intent with progress. Down intent is

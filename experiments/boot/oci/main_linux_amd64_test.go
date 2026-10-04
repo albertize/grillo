@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"grillo.local/grillo/experiments/boot/spike"
+	"github.com/albertize/grillo/experiments/boot/spike"
 )
 
 func TestKVMOCIScenarios(t *testing.T) {

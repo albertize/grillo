@@ -5,7 +5,7 @@ package kubernetes
 import (
 	"go.yaml.in/yaml/v3"
 
-	"grillo.local/grillo/internal/source"
+	"github.com/albertize/grillo/internal/source"
 )
 
 // mapGet returns the value node for a key in a mapping node.

@@ -5,7 +5,7 @@ package model
 import (
 	"testing"
 
-	"grillo.local/grillo/internal/source"
+	"github.com/albertize/grillo/internal/source"
 )
 
 func cloneForTest(t *testing.T, app Application) Application {

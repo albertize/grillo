@@ -11,8 +11,8 @@ import (
 	"sync"
 	"testing"
 
-	"grillo.local/grillo/internal/model"
-	"grillo.local/grillo/internal/oci"
+	"github.com/albertize/grillo/internal/model"
+	"github.com/albertize/grillo/internal/oci"
 )
 
 type fakePuller struct {

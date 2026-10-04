@@ -11,8 +11,8 @@ import (
 	"os/exec"
 	"strings"
 
-	"grillo.local/grillo/internal/guestproto"
-	"grillo.local/grillo/internal/network"
+	"github.com/albertize/grillo/internal/guestproto"
+	"github.com/albertize/grillo/internal/network"
 )
 
 // resolvConfPath is the guest resolver configuration consumed by containers.

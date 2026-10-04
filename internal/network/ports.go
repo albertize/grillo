@@ -15,7 +15,7 @@ import (
 	"sync"
 	"time"
 
-	"grillo.local/grillo/internal/state"
+	"github.com/albertize/grillo/internal/state"
 )
 
 // PortReservation is a host loopback port bound to a sandbox target.

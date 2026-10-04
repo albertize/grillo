@@ -10,8 +10,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"grillo.local/grillo/internal/model"
-	"grillo.local/grillo/internal/state"
+	"github.com/albertize/grillo/internal/model"
+	"github.com/albertize/grillo/internal/state"
 )
 
 func TestPutGetVersionBehavior(t *testing.T) {

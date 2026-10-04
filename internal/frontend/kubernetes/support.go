@@ -2,7 +2,7 @@
 
 package kubernetes
 
-import "grillo.local/grillo/internal/source"
+import "github.com/albertize/grillo/internal/source"
 
 // supportEntry records how Grillo treats a kind or field.
 type supportEntry struct {

@@ -7,7 +7,7 @@ import (
 	"sort"
 	"strings"
 
-	"grillo.local/grillo/internal/source"
+	"github.com/albertize/grillo/internal/source"
 )
 
 // Stable diagnostic codes. Codes are part of the compatibility contract and

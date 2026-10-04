@@ -20,8 +20,8 @@ import (
 	"syscall"
 	"time"
 
-	"grillo.local/grillo/internal/image"
-	"grillo.local/grillo/internal/oci"
+	"github.com/albertize/grillo/internal/image"
+	"github.com/albertize/grillo/internal/oci"
 )
 
 // PodmanBuilder builds images with rootless Podman. Grillo passes the context,

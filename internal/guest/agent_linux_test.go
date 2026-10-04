@@ -15,7 +15,7 @@ import (
 	"syscall"
 	"testing"
 
-	"grillo.local/grillo/internal/guestproto"
+	"github.com/albertize/grillo/internal/guestproto"
 )
 
 // fakeRuntime records lifecycle calls and returns scripted results. It exercises

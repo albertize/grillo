@@ -5,7 +5,7 @@ package build
 import (
 	"context"
 
-	"grillo.local/grillo/internal/oci"
+	"github.com/albertize/grillo/internal/oci"
 )
 
 // RunStep is one RUN instruction executed against a shared build root.

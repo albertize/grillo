@@ -22,8 +22,8 @@ import (
 	"syscall"
 	"time"
 
-	"grillo.local/grillo/internal/guest"
-	"grillo.local/grillo/internal/guestproto"
+	"github.com/albertize/grillo/internal/guest"
+	"github.com/albertize/grillo/internal/guestproto"
 
 	"golang.org/x/sys/unix"
 )

@@ -6,7 +6,7 @@
 // frontend code (only the dependency-free source-location package).
 package model
 
-import "grillo.local/grillo/internal/source"
+import "github.com/albertize/grillo/internal/source"
 
 // APIVersion is the current IR schema version.
 const APIVersion = "grillo.dev/v1alpha1"

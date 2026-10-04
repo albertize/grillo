@@ -15,12 +15,12 @@ import (
 	"testing"
 	"time"
 
-	"grillo.local/grillo/internal/backend/qemu"
-	"grillo.local/grillo/internal/guestproto"
-	"grillo.local/grillo/internal/model"
-	"grillo.local/grillo/internal/reconcile"
-	"grillo.local/grillo/internal/sandbox"
-	"grillo.local/grillo/internal/storage"
+	"github.com/albertize/grillo/internal/backend/qemu"
+	"github.com/albertize/grillo/internal/guestproto"
+	"github.com/albertize/grillo/internal/model"
+	"github.com/albertize/grillo/internal/reconcile"
+	"github.com/albertize/grillo/internal/sandbox"
+	"github.com/albertize/grillo/internal/storage"
 )
 
 // TestKVMBridgedApplicationNetwork applies an application with the production

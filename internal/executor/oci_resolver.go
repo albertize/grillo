@@ -12,9 +12,9 @@ import (
 	"strings"
 	"sync"
 
-	"grillo.local/grillo/internal/image"
-	"grillo.local/grillo/internal/model"
-	"grillo.local/grillo/internal/oci"
+	"github.com/albertize/grillo/internal/image"
+	"github.com/albertize/grillo/internal/model"
+	"github.com/albertize/grillo/internal/oci"
 )
 
 // ImagePuller resolves and unpacks images. *oci.Puller implements it.

@@ -8,7 +8,7 @@ import (
 	"context"
 	"time"
 
-	"grillo.local/grillo/internal/state"
+	"github.com/albertize/grillo/internal/state"
 )
 
 // MaxLogLineBytes bounds a single log record so a runaway line cannot exhaust the

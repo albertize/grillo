@@ -10,7 +10,7 @@ import (
 	"strings"
 	"sync"
 
-	"grillo.local/grillo/internal/guestproto"
+	"github.com/albertize/grillo/internal/guestproto"
 )
 
 // SandboxClient is the guest surface a sandbox runner needs. *guestproto.Client

@@ -20,8 +20,8 @@ import (
 	"sort"
 	"time"
 
-	"grillo.local/grillo/internal/model"
-	"grillo.local/grillo/internal/state"
+	"github.com/albertize/grillo/internal/model"
+	"github.com/albertize/grillo/internal/state"
 )
 
 const indexVersion uint32 = 1

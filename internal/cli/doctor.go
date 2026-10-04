@@ -12,7 +12,7 @@ import (
 	"strconv"
 	"strings"
 
-	"grillo.local/grillo/internal/state"
+	"github.com/albertize/grillo/internal/state"
 
 	"golang.org/x/sys/unix"
 )

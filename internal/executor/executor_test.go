@@ -7,7 +7,7 @@ package executor
 import (
 	"testing"
 
-	"grillo.local/grillo/internal/model"
+	"github.com/albertize/grillo/internal/model"
 )
 
 func TestParseUser(t *testing.T) {

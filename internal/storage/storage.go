@@ -19,7 +19,7 @@ import (
 	"sync"
 	"time"
 
-	"grillo.local/grillo/internal/state"
+	"github.com/albertize/grillo/internal/state"
 
 	"golang.org/x/sys/unix"
 )

@@ -11,7 +11,7 @@ import (
 
 	"golang.org/x/sys/unix"
 
-	"grillo.local/grillo/internal/guestproto"
+	"github.com/albertize/grillo/internal/guestproto"
 )
 
 // SetupFilesystems mounts the pseudo-filesystems PID 1 needs. It is idempotent:

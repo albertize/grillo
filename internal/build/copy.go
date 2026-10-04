@@ -8,7 +8,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"grillo.local/grillo/internal/dockerfile"
+	"github.com/albertize/grillo/internal/dockerfile"
 )
 
 // copyOptions controls a context copy.

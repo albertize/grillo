@@ -14,8 +14,8 @@ import (
 
 	"go.yaml.in/yaml/v3"
 
-	"grillo.local/grillo/internal/model"
-	"grillo.local/grillo/internal/source"
+	"github.com/albertize/grillo/internal/model"
+	"github.com/albertize/grillo/internal/source"
 )
 
 func yamlScalarNode(t *testing.T, document string) *yaml.Node {

@@ -6,7 +6,7 @@ import (
 	"context"
 	"os"
 
-	"grillo.local/grillo/internal/cli"
+	"github.com/albertize/grillo/internal/cli"
 )
 
 const version = "0.1.0"

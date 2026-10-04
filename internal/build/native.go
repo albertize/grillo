@@ -17,9 +17,9 @@ import (
 	"strings"
 	"time"
 
-	"grillo.local/grillo/internal/dockerfile"
-	"grillo.local/grillo/internal/image"
-	"grillo.local/grillo/internal/oci"
+	"github.com/albertize/grillo/internal/dockerfile"
+	"github.com/albertize/grillo/internal/image"
+	"github.com/albertize/grillo/internal/oci"
 )
 
 // NativeBuilder builds images from a supported Dockerfile subset without any

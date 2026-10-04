@@ -15,7 +15,7 @@ import (
 	"syscall"
 	"time"
 
-	linux "grillo.local/grillo/internal/platform/linux"
+	linux "github.com/albertize/grillo/internal/platform/linux"
 )
 
 // Client talks to a supervisor over its Unix socket.

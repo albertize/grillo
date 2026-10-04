@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"grillo.local/grillo/internal/guestproto"
+	"github.com/albertize/grillo/internal/guestproto"
 )
 
 func sampleSandbox() guestproto.SandboxSpec {

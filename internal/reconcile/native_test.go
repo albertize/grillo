@@ -8,8 +8,8 @@ import (
 	"sync"
 	"testing"
 
-	"grillo.local/grillo/internal/model"
-	"grillo.local/grillo/internal/plan"
+	"github.com/albertize/grillo/internal/model"
+	"github.com/albertize/grillo/internal/plan"
 )
 
 type fakeSandboxes struct {

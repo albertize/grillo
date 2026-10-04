@@ -2,7 +2,7 @@
 
 package model
 
-import "grillo.local/grillo/internal/source"
+import "github.com/albertize/grillo/internal/source"
 
 // knownVersions lists the IR versions this build can read. Only the current
 // version is understood; unknown versions must be rejected rather than guessed.

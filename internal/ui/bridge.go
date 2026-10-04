@@ -25,8 +25,8 @@ import (
 	"strings"
 	"time"
 
-	"grillo.local/grillo/internal/api"
-	"grillo.local/grillo/internal/observe"
+	"github.com/albertize/grillo/internal/api"
+	"github.com/albertize/grillo/internal/observe"
 )
 
 //go:embed assets/index.html assets/app.js

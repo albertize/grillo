@@ -16,7 +16,7 @@ import (
 	"syscall"
 	"time"
 
-	"grillo.local/grillo/internal/guestproto"
+	"github.com/albertize/grillo/internal/guestproto"
 )
 
 // Agent implements the guest side of the control protocol: it owns the sandbox

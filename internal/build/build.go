@@ -13,8 +13,8 @@ import (
 	"os"
 	"time"
 
-	"grillo.local/grillo/internal/image"
-	"grillo.local/grillo/internal/oci"
+	"github.com/albertize/grillo/internal/image"
+	"github.com/albertize/grillo/internal/oci"
 )
 
 // Build errors.

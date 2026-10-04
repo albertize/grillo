@@ -19,7 +19,7 @@ import (
 	"sync"
 	"time"
 
-	"grillo.local/grillo/internal/oci"
+	"github.com/albertize/grillo/internal/oci"
 )
 
 // ErrNotFound is returned when a reference is not in the store.

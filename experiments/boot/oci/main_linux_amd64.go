@@ -27,7 +27,7 @@ import (
 	"syscall"
 	"time"
 
-	"grillo.local/grillo/experiments/boot/spike"
+	"github.com/albertize/grillo/experiments/boot/spike"
 )
 
 const runcRoot = "/run/runc"

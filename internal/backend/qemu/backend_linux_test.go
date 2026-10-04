@@ -16,8 +16,8 @@ import (
 	"testing"
 	"time"
 
-	linux "grillo.local/grillo/internal/platform/linux"
-	"grillo.local/grillo/internal/sandbox"
+	linux "github.com/albertize/grillo/internal/platform/linux"
+	"github.com/albertize/grillo/internal/sandbox"
 )
 
 func startRaw(t *testing.T, path string) *exec.Cmd {

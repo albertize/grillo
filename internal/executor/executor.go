@@ -20,14 +20,14 @@ import (
 	"sync"
 	"time"
 
-	"grillo.local/grillo/internal/guestproto"
-	"grillo.local/grillo/internal/model"
-	"grillo.local/grillo/internal/netns"
-	"grillo.local/grillo/internal/network"
-	"grillo.local/grillo/internal/observe"
-	"grillo.local/grillo/internal/plan"
-	"grillo.local/grillo/internal/sandbox"
-	"grillo.local/grillo/internal/storage"
+	"github.com/albertize/grillo/internal/guestproto"
+	"github.com/albertize/grillo/internal/model"
+	"github.com/albertize/grillo/internal/netns"
+	"github.com/albertize/grillo/internal/network"
+	"github.com/albertize/grillo/internal/observe"
+	"github.com/albertize/grillo/internal/plan"
+	"github.com/albertize/grillo/internal/sandbox"
+	"github.com/albertize/grillo/internal/storage"
 )
 
 // Image is a resolved container root filesystem on the host.

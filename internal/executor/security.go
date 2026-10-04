@@ -6,8 +6,8 @@ package executor
 
 import (
 	"fmt"
-	"grillo.local/grillo/internal/guestproto"
-	"grillo.local/grillo/internal/model"
+	"github.com/albertize/grillo/internal/guestproto"
+	"github.com/albertize/grillo/internal/model"
 )
 
 func containerSecurity(c model.Container) (guestproto.UserSpec, bool, error) {

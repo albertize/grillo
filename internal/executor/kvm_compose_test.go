@@ -19,11 +19,11 @@ import (
 	"testing"
 	"time"
 
-	"grillo.local/grillo/internal/backend/qemu"
-	"grillo.local/grillo/internal/frontend/compose"
-	"grillo.local/grillo/internal/reconcile"
-	"grillo.local/grillo/internal/sandbox"
-	"grillo.local/grillo/internal/storage"
+	"github.com/albertize/grillo/internal/backend/qemu"
+	"github.com/albertize/grillo/internal/frontend/compose"
+	"github.com/albertize/grillo/internal/reconcile"
+	"github.com/albertize/grillo/internal/sandbox"
+	"github.com/albertize/grillo/internal/storage"
 )
 
 const f2Compose = `name: f2

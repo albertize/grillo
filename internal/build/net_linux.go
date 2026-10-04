@@ -16,9 +16,9 @@ import (
 	"sync"
 	"time"
 
-	"grillo.local/grillo/internal/netns"
-	"grillo.local/grillo/internal/network"
-	"grillo.local/grillo/internal/sandbox"
+	"github.com/albertize/grillo/internal/netns"
+	"github.com/albertize/grillo/internal/network"
+	"github.com/albertize/grillo/internal/sandbox"
 )
 
 // Build network defaults, matching the application topology so builds reuse the

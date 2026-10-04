@@ -10,7 +10,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"grillo.local/grillo/internal/oci"
+	"github.com/albertize/grillo/internal/oci"
 )
 
 func putBlob(t *testing.T, cas *oci.CAS, data []byte) oci.Descriptor {

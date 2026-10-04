@@ -13,7 +13,7 @@ import (
 
 	"golang.org/x/sys/unix"
 
-	"grillo.local/grillo/internal/model"
+	"github.com/albertize/grillo/internal/model"
 )
 
 // Version is the on-disk state schema version, independent of the IR and API

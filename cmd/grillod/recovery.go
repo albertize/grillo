@@ -6,7 +6,7 @@ package main
 
 import (
 	"context"
-	"grillo.local/grillo/internal/plan"
+	"github.com/albertize/grillo/internal/plan"
 )
 
 // recover is called before the API accepts requests, after verified backend

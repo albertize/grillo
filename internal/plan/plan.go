@@ -12,7 +12,7 @@ import (
 	"fmt"
 	"sort"
 
-	"grillo.local/grillo/internal/model"
+	"github.com/albertize/grillo/internal/model"
 )
 
 // ActionKind is a typed plan action.

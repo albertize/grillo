@@ -10,7 +10,7 @@ import (
 	"os"
 	"strings"
 
-	"grillo.local/grillo/internal/guest"
+	"github.com/albertize/grillo/internal/guest"
 )
 
 func main() {

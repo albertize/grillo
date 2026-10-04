@@ -21,10 +21,10 @@ import (
 	"strings"
 	"time"
 
-	"grillo.local/grillo/internal/build"
-	"grillo.local/grillo/internal/image"
-	"grillo.local/grillo/internal/model"
-	"grillo.local/grillo/internal/observe"
+	"github.com/albertize/grillo/internal/build"
+	"github.com/albertize/grillo/internal/image"
+	"github.com/albertize/grillo/internal/model"
+	"github.com/albertize/grillo/internal/observe"
 )
 
 // Client talks to the local API over the Unix socket.

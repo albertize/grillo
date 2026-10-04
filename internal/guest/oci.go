@@ -11,7 +11,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"grillo.local/grillo/internal/guestproto"
+	"github.com/albertize/grillo/internal/guestproto"
 )
 
 // ociVersion is the OCI runtime-spec version the generated bundles target.

@@ -16,7 +16,7 @@ import (
 	"os/signal"
 	"syscall"
 
-	"grillo.local/grillo/internal/netns"
+	"github.com/albertize/grillo/internal/netns"
 )
 
 func main() {

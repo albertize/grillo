@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"grillo.local/grillo/internal/state"
+	"github.com/albertize/grillo/internal/state"
 )
 
 // Event is a structured, sequenced record. It aliases the state journal event

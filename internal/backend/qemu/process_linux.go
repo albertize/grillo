@@ -11,7 +11,7 @@ import (
 	"syscall"
 	"time"
 
-	linux "grillo.local/grillo/internal/platform/linux"
+	linux "github.com/albertize/grillo/internal/platform/linux"
 )
 
 // process supervises one child with a stable identity and a process group.

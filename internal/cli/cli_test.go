@@ -14,11 +14,11 @@ import (
 	"testing"
 	"time"
 
-	"grillo.local/grillo/internal/api"
-	"grillo.local/grillo/internal/build"
-	"grillo.local/grillo/internal/image"
-	"grillo.local/grillo/internal/model"
-	"grillo.local/grillo/internal/observe"
+	"github.com/albertize/grillo/internal/api"
+	"github.com/albertize/grillo/internal/build"
+	"github.com/albertize/grillo/internal/image"
+	"github.com/albertize/grillo/internal/model"
+	"github.com/albertize/grillo/internal/observe"
 )
 
 type fakeClient struct {

@@ -11,7 +11,7 @@ import (
 	"strings"
 	"testing"
 
-	"grillo.local/grillo/internal/guestproto"
+	"github.com/albertize/grillo/internal/guestproto"
 )
 
 type fakeSandboxClient struct {

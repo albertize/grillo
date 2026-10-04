@@ -17,9 +17,9 @@ import (
 	"testing"
 	"time"
 
-	"grillo.local/grillo/internal/backend/qemu"
-	"grillo.local/grillo/internal/guestproto"
-	"grillo.local/grillo/internal/sandbox"
+	"github.com/albertize/grillo/internal/backend/qemu"
+	"github.com/albertize/grillo/internal/guestproto"
+	"github.com/albertize/grillo/internal/sandbox"
 )
 
 // TestKVMBindPersistence is acceptance scenario G through the production stack:

@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"grillo.local/grillo/internal/source"
+	"github.com/albertize/grillo/internal/source"
 )
 
 func TestFormat(t *testing.T) {

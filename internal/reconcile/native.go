@@ -6,7 +6,7 @@ import (
 	"context"
 	"fmt"
 
-	"grillo.local/grillo/internal/plan"
+	"github.com/albertize/grillo/internal/plan"
 )
 
 // SandboxController executes sandbox lifecycle actions for one application. The
