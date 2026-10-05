@@ -21,6 +21,7 @@ import (
 	"github.com/albertize/grillo/internal/build"
 	"github.com/albertize/grillo/internal/frontend/compose"
 	"github.com/albertize/grillo/internal/frontend/detect"
+	"github.com/albertize/grillo/internal/frontend/helm"
 	"github.com/albertize/grillo/internal/frontend/kubernetes"
 	"github.com/albertize/grillo/internal/image"
 	"github.com/albertize/grillo/internal/model"
@@ -66,14 +67,15 @@ type App struct {
 	ClientFactory func(socketPath string) Client
 	Ensure        func(ctx context.Context, socketPath, daemonPath string, timeout time.Duration) error
 	Doctor        func() []Check
+	HelmRegistry  helm.ChartRegistry // nil uses the verified HTTPS client
 }
 
 const usage = `usage: grillo <command> [options]
 
 Commands:
-  up <manifest>            apply a native manifest (starts the daemon if needed)
+  up <manifest|chart>      apply an application (starts the daemon if needed)
   down [--volumes] <app>   stop an application
-  plan <manifest>          print the actions for a manifest without applying
+  plan <manifest|chart>    print actions without applying (OCI fetch is opt-in)
   logs <resource> [-f]     show or follow logs
   events [-f]              show or follow the event stream
   exec <pod> [container] -- <command>
@@ -174,9 +176,14 @@ func (a *App) cmdPlan(ctx context.Context, args []string) int {
 	fs := flag.NewFlagSet("plan", flag.ContinueOnError)
 	fs.SetOutput(a.Stderr)
 	var files stringSlice
-	fs.Var(&files, "f", "manifest file (repeatable)")
+	fs.Var(&files, "f", "manifest file, or ordered Helm values file (repeatable)")
 	output := fs.String("output", "text", "text or json")
-	format := fs.String("format", "", "input format (compose|native|kubernetes)")
+	format := fs.String("format", "", "input format (compose|native|kubernetes|helm)")
+	release := fs.String("release", "", "Helm release name (default: chart basename)")
+	namespace := fs.String("namespace", model.DefaultNamespace, "namespace (only default is supported)")
+	chartVersion := fs.String("version", "", "exact OCI chart SemVer")
+	chartDigest := fs.String("chart-digest", "", "trusted OCI chart manifest sha256 pin")
+	fetchChart := fs.Bool("fetch-chart", false, "explicitly fetch a missing OCI chart into the verified cache")
 	var allowDegraded stringSlice
 	fs.Var(&allowDegraded, "allow-degraded", "accept a degraded diagnostic code (repeatable)")
 	flags, positionals, _, err := SplitForFlagSet(args, fs)
@@ -186,7 +193,7 @@ func (a *App) cmdPlan(ctx context.Context, args []string) int {
 	if err := fs.Parse(flags); err != nil {
 		return 2
 	}
-	app, code := a.loadApplication(ctx, *format, files, positionals, allowDegraded)
+	app, code := a.loadApplication(ctx, inputOptions{Format: *format, Release: *release, Namespace: *namespace, ChartVersion: *chartVersion, ChartDigest: *chartDigest, Fetch: *fetchChart}, files, positionals, allowDegraded)
 	if code != 0 {
 		return code
 	}
@@ -217,8 +224,13 @@ func (a *App) cmdUp(ctx context.Context, args []string) int {
 	fs := flag.NewFlagSet("up", flag.ContinueOnError)
 	fs.SetOutput(a.Stderr)
 	var files stringSlice
-	fs.Var(&files, "f", "manifest file (repeatable)")
-	format := fs.String("format", "", "input format (compose|native|kubernetes)")
+	fs.Var(&files, "f", "manifest file, or ordered Helm values file (repeatable)")
+	format := fs.String("format", "", "input format (compose|native|kubernetes|helm)")
+	release := fs.String("release", "", "Helm release name (default: chart basename)")
+	namespace := fs.String("namespace", model.DefaultNamespace, "namespace (only default is supported)")
+	chartVersion := fs.String("version", "", "exact OCI chart SemVer")
+	chartDigest := fs.String("chart-digest", "", "trusted OCI chart manifest sha256 pin")
+	fetchChart := fs.Bool("fetch-chart", false, "explicitly fetch a missing OCI chart into the verified cache")
 	var allowDegraded stringSlice
 	fs.Var(&allowDegraded, "allow-degraded", "accept a degraded diagnostic code (repeatable)")
 	flags, positionals, _, err := SplitForFlagSet(args, fs)
@@ -228,7 +240,7 @@ func (a *App) cmdUp(ctx context.Context, args []string) int {
 	if err := fs.Parse(flags); err != nil {
 		return 2
 	}
-	app, code := a.loadApplication(ctx, *format, files, positionals, allowDegraded)
+	app, code := a.loadApplication(ctx, inputOptions{Format: *format, Release: *release, Namespace: *namespace, Apply: true, ChartVersion: *chartVersion, ChartDigest: *chartDigest, Fetch: *fetchChart}, files, positionals, allowDegraded)
 	if code != 0 {
 		return code
 	}
@@ -608,40 +620,81 @@ func DefaultSocketPath() string {
 	return filepath.Join(layout.Runtime, "grillod.sock")
 }
 
-func (a *App) loadApplication(ctx context.Context, format string, files stringSlice, positionals []string, allowDegraded []string) (model.Application, int) {
-	sources := append([]string(nil), positionals...)
-	sources = append(sources, files...)
-	if len(sources) == 0 {
-		fmt.Fprintln(a.Stderr, "grillo: no manifest given")
+type inputOptions struct {
+	Format, Release, Namespace string
+	Apply                      bool
+	ChartVersion, ChartDigest  string
+	Fetch                      bool
+}
+
+func (a *App) loadApplication(ctx context.Context, opts inputOptions, files stringSlice, positionals []string, allowDegraded []string) (model.Application, int) {
+	if opts.Namespace != model.DefaultNamespace {
+		fmt.Fprintln(a.Stderr, "grillo: only namespace default is supported")
 		return model.Application{}, 2
 	}
-	if len(sources) > 1 {
-		fmt.Fprintln(a.Stderr, "grillo: multiple manifest sources are not supported yet")
+	if len(positionals) > 1 || (len(positionals) == 0 && len(files) != 1) {
+		fmt.Fprintln(a.Stderr, "grillo: provide one manifest or chart; repeated -f requires a positional Helm chart")
 		return model.Application{}, 2
 	}
-	path := sources[0]
+	path := ""
+	var values []string
+	if len(positionals) == 1 {
+		path = positionals[0]
+		values = files
+	} else {
+		path = files[0]
+	}
+	kind := source.Kind(opts.Format)
+	isChart := strings.HasPrefix(path, "oci://") || filepath.Base(path) == "Chart.yaml"
+	if st, err := os.Stat(path); err == nil && st.IsDir() {
+		isChart = true
+	}
+	if kind == "" && isChart {
+		kind = source.KindHelm
+	}
+	if isChart && kind != source.KindHelm {
+		fmt.Fprintln(a.Stderr, "grillo: chart sources require Helm format")
+		return model.Application{}, 2
+	}
+	if kind != source.KindHelm && (len(values) > 0 || opts.Release != "") {
+		fmt.Fprintln(a.Stderr, "grillo: values files and --release require Helm input")
+		return model.Application{}, 2
+	}
+	if !strings.HasPrefix(path, "oci://") && (opts.ChartVersion != "" || opts.ChartDigest != "" || opts.Fetch) {
+		fmt.Fprintln(a.Stderr, "grillo: --version, --chart-digest and --fetch-chart require an OCI chart")
+		return model.Application{}, 2
+	}
 	var data []byte
 	var err error
-	if path == "-" {
-		data, err = io.ReadAll(io.LimitReader(a.Stdin, 8<<20))
-	} else {
-		data, err = os.ReadFile(path)
-	}
-	if err != nil {
-		return model.Application{}, fail(a.Stderr, err)
-	}
-
-	kind := source.Kind(format)
-	if kind == "" {
-		detected, err := detect.Format(data, path)
+	if kind != source.KindHelm {
+		if path == "-" {
+			data, err = io.ReadAll(io.LimitReader(a.Stdin, (8<<20)+1))
+		} else {
+			var file *os.File
+			file, err = os.Open(path)
+			if err == nil {
+				data, err = io.ReadAll(io.LimitReader(file, (8<<20)+1))
+				file.Close()
+			}
+		}
 		if err != nil {
 			return model.Application{}, fail(a.Stderr, err)
 		}
-		kind = detected
+		if len(data) > 8<<20 {
+			fmt.Fprintln(a.Stderr, "grillo: manifest input exceeds size limit")
+			return model.Application{}, 1
+		}
+		if kind == "" {
+			kind, err = detect.Format(data, path)
+			if err != nil {
+				return model.Application{}, fail(a.Stderr, err)
+			}
+		}
 	}
 
 	var app model.Application
 	var diagnostics source.List
+	var secretData []kubernetes.SecretData
 	switch kind {
 	case source.KindCompose:
 		result, err := compose.Compile(ctx, data, compose.Options{Path: path, Environment: composeEnvironment(path)})
@@ -656,27 +709,46 @@ func (a *App) loadApplication(ctx context.Context, format string, files stringSl
 		}
 		app, diagnostics = loaded, diags
 	case source.KindHelm:
-		fmt.Fprintln(a.Stderr, "grillo: Helm charts are not supported by this build")
-		return model.Application{}, 2
+		chart := path
+		if filepath.Base(chart) == "Chart.yaml" {
+			chart = filepath.Dir(chart)
+		}
+		release := opts.Release
+		if release == "" {
+			absolute, err := filepath.Abs(chart)
+			if err != nil {
+				return model.Application{}, fail(a.Stderr, err)
+			}
+			release = filepath.Base(absolute)
+		}
+		var cacheDir string
+		if strings.HasPrefix(chart, "oci://") {
+			layout, err := state.NewLayout(state.DefaultConfig())
+			if err != nil {
+				return model.Application{}, fail(a.Stderr, err)
+			}
+			cacheDir = filepath.Join(layout.Cache, "helm", "charts")
+		}
+		result, err := helm.Compile(ctx, helm.Options{Chart: chart, Release: release, Values: values, AllowDegraded: allowDegraded, ChartVersion: opts.ChartVersion, ChartDigest: opts.ChartDigest, Fetch: opts.Fetch, CacheDir: cacheDir, Registry: a.HelmRegistry})
+		if err != nil {
+			return model.Application{}, fail(a.Stderr, err)
+		}
+		app, diagnostics, secretData = result.Application, result.Diagnostics, result.Secrets
 	case source.KindKubernetes:
 		result, err := kubernetes.Compile(ctx, data, kubernetes.Options{Path: path, AllowDegraded: allowDegraded})
 		if err != nil {
 			return model.Application{}, fail(a.Stderr, err)
 		}
-		if len(result.Secrets) > 0 {
-			refs, err := a.persistSecrets(result.Secrets)
-			if err != nil {
-				return model.Application{}, fail(a.Stderr, err)
-			}
-			result.Application.Secrets = refs
-		}
-		app, diagnostics = result.Application, result.Diagnostics
+		app, diagnostics, secretData = result.Application, result.Diagnostics, result.Secrets
 	default:
 		fmt.Fprintf(a.Stderr, "grillo: unknown input format %q\n", kind)
 		return model.Application{}, 2
 	}
 
-	validation := model.Validate(app, model.Capabilities{})
+	var validation source.List
+	if !diagnostics.HasErrors() {
+		validation = model.Validate(app, model.Capabilities{})
+	}
 	all := append(diagnostics, validation...)
 	all.Sort()
 	for _, diagnostic := range all {
@@ -684,6 +756,22 @@ func (a *App) loadApplication(ctx context.Context, format string, files stringSl
 	}
 	if all.HasErrors() {
 		return model.Application{}, 1
+	}
+	if len(secretData) > 0 {
+		if opts.Apply {
+			refs, err := a.persistSecrets(secretData)
+			if err != nil {
+				return model.Application{}, fail(a.Stderr, err)
+			}
+			app.Secrets = refs
+		} else {
+			// Offline plan targets an empty observation, not a live secret diff.
+			// Never publish the compiler's content-derived secret versions and
+			// never write the private secret store just to preview creation.
+			for i := range app.Secrets {
+				app.Secrets[i].Version = "unresolved-offline"
+			}
+		}
 	}
 	return app, 0
 }

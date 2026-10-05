@@ -39,6 +39,16 @@ real KVM/QEMU and passes OCI scenario A plus an init-failure case.
 
 **T15 is complete.** `internal/api` serves the local Unix-socket API with `SO_PEERCRED` UID checks, bounded bodies, the `{code,message,resource,retryable,details}` error DTO, asynchronous operations on the daemon lifetime context, SSE events with `Last-Event-ID` and gap records, log streaming, and distinct daemon-shutdown/application-down endpoints. `cmd/grillod` holds the single-instance state lock, builds the QEMU backend, storage manager, and `internal/executor`, and serves status and exec endpoints.
 
+**T21 (Helm rendering and OCI charts) is complete.** `internal/frontend/helm`
+uses official Helm v4.2.2 with a private environment, bounded local inputs,
+ordered values, fixed offline capabilities and stable release identity. The CLI
+accepts local and exact-version OCI charts; remote fetch is explicit, and private
+atomic cache records verify digests/metadata/archives on every reuse. Dependencies,
+hooks/CRDs/lookup/dynamic tpl and known nondeterministic templates are rejected.
+Actual Helm packaging/rendering plus HTTPS Distribution fixture and CLI tests
+pass; this is not the T22 real-workload gate. See
+[the T21 report](experiments/t21-helm-renderer.md).
+
 **T20 (Kubernetes MVP compiler) is complete.** `internal/frontend/kubernetes` compiles multi-document YAML/`List` for Pod, Deployment, Service, Ingress, ConfigMap, Secret, and PVC into the IR, rejects privileged/hostNetwork/Tier3/NodePort and unknown fields, keeps Secret values out of the public IR, and discloses the default RollingUpdate as a Recreate downgrade requiring consent. `make test-k8s` runs a compiled multi-container Pod on KVM. See `docs/experiments/t20-kubernetes-compiler.md` and `docs/compatibility.md`.
 
 **T19 (F2 gate) is complete.** A complete Compose application (web + worker, one named network, service DNS, a managed volume) runs on the real runtime: `make test-f2` proves cross-VM fetch by service name, volume persistence across `down`/`up`, idempotent re-apply, and clean `down --volumes`. The gate also fixed three runtime defects (per-workload DNS filtering, volume metadata exposure, and PID-namespace VMM tracking). See `docs/experiments/t19-f2-compose.md`.
@@ -77,7 +87,7 @@ Hosted CI has not yet been executed.
 | T18b | Build execution in the guest (protocol) | DONE | `run` guest message + `SandboxRunner`; real KVM evidence |
 | T19 | F2 gate: Compose application | DONE | `make test-f2` real KVM: DNS, volume persistence, idempotent re-apply, down/recovery/cleanup; report `docs/experiments/t19-f2-compose.md` |
 | T20 | Kubernetes MVP compiler | DONE | `internal/frontend/kubernetes`; goldens, rejections, secret separation, RollingUpdate consent, multi-container KVM; `docs/experiments/t20-kubernetes-compiler.md` |
-| T21 | Helm rendering and OCI charts | TODO | T20 |
+| T21 | Helm rendering and OCI charts | DONE | Real Helm package/template, local/OCI equivalence, explicit HTTPS fetch, verified atomic cache, stable offline plans, archive/corruption/concurrency/dependency restrictions; `docs/experiments/t21-helm-renderer.md` |
 | T22 | Helm gate and compatibility reporting | TODO | T19, T21 |
 | T23 | Web console and secure bridge | IN_PROGRESS | Bridge + minimal console in `internal/ui` and `grillo ui`; full views pending |
 | T24 | F3 MVP gate and hardening | TODO | T23 |
@@ -1132,6 +1142,147 @@ historical evidence only.
 - **Integration evidence:** The daemon gate proves cross-VM Service DNS/fetch, private per-container writes not visible in a sibling or the shared image cache, `runAsUser` enforced as UID 1000, read-only root write rejection, in-guest `cpu.max` of `100000 1000000` for 100m, and recreation of durable desired state after daemon `SIGKILL` while a stopped application stays stopped.
 - **Known limitations:** Overlay upper layers live in guest tmpfs (bounded by guest RAM, no per-container disk quota); capability overrides and custom seccomp are rejected, not emulated; recovery restarts rather than adopts VMs; the mutation lock is global per daemon; `subPath` and ReadWriteMany remain unsupported.
 - **Next task:** continue T21 (Helm rendering and OCI charts).
+
+## T21 local Helm renderer — 2026-10-05
+
+- **Task:** T21 — Helm rendering and OCI charts (bounded local-renderer increment).
+- **Status:** IN_PROGRESS; not a completed T21 or T22 gate.
+- **Dependencies verified:** T20 completed, existing Kubernetes compiler and
+  private secret result contract inspected; clean initial working tree. User
+  installed Helm during the session; `/usr/bin/helm` reports v4.2.2+gb05881c.
+- **Files and contracts changed:** `internal/frontend/helm` exposes `Compile`
+  for local chart directories and ordered values, explicit release identity,
+  default namespace, fixed offline capabilities, private snapshots/environment,
+  rooted file reads, input/output/deadline limits, and redacted tool diagnostics.
+  It delegates to T20 and returns secrets separately. Compatibility and ADR
+  index updated; no Go dependency or CLI behavior changed.
+- **Decisions/ADRs:** [0007](adr/0007-controlled-helm-renderer.md), Proposed;
+  official executable instead of the specification's library preference.
+  Exact version is v4.2.2, matching the user-provisioned renderer. Upstream
+  checksum metadata inspected; no binary installation or verification claimed.
+- **Tests run:** `go test -count=1 -v ./internal/frontend/helm` PASS with real
+  Helm (no skips); `go test -race -count=1 ./internal/frontend/helm` PASS;
+  `make check` PASS (format, vet, unit/race, script fixtures, builds, module audit).
+  Positive coverage includes equivalent chart/manifest IR, repeated stable
+  rendering, values order, and secret separation. Negative coverage includes
+  hooks, lookup/random/tpl, dependencies, schemas, CRDs, symlinks, oversized
+  files, version mismatch, output overflow, environment isolation, cancellation,
+  and redacted failures. Initial tests failed on a pointer-to-slice test access,
+  Helm rejecting invalid YAML before T20, and an embedded `bytes.Buffer`
+  promoting `ReadFrom` and bypassing the output cap; all were corrected and
+  regressions pass. `git diff --check` PASS.
+- **Tests NOT run and why:** T22/KVM Helm workload gate is not available yet;
+  CLI Helm input, remote OCI fetching/cache/digests and lockfile dependencies
+  are not implemented. Hosted CI not run.
+- **Integration evidence:** Actual Helm template processes without inherited
+  kubeconfig or credentials, then the production Kubernetes compiler; no VM
+  or application execution is claimed by these tests.
+- **Known limitations:** Local chart adapter only; CLI still rejects Helm.
+  Token preflight is conservative (including comments/strings), not a host
+  sandbox; dependencies, schemas and dynamic `tpl` are blocked to avoid implicit
+  fetches or opaque/nondeterministic rendering. No T21 completion claim.
+- **Next task:** continue T21 with CLI integration and secret persistence, then
+  explicit verified OCI fetching/cache and lockfile-aware dependencies.
+
+## T21 local Helm CLI integration — 2026-10-05
+
+- **Task:** T21 — Helm rendering and OCI charts (local CLI increment).
+- **Status:** IN_PROGRESS; OCI/cache/dependencies and T22 remain open.
+- **Dependencies verified:** T20 and previous T21 local renderer; Helm v4.2.2
+  available. Existing uncommitted renderer/documentation changes were preserved.
+- **Files and contracts changed:** `internal/cli/cli.go`, CLI Helm tests,
+  `internal/frontend/helm/helm.go`, `examples/helm`, README, compatibility and
+  ADR 0007. `plan`/`up` detect chart directories or `Chart.yaml`, accept ordered
+  values with a positional chart, `--release` and `--namespace default`, and
+  propagate code-specific degradation consent to T20. Non-Helm input rejects
+  Helm-only options rather than silently ignoring them. File-backed manifests
+  are now read with the same 8 MiB bound as stdin.
+- **Decisions/ADRs:** ADR 0007 remains Proposed. Helm and Kubernetes secrets are
+  persisted only on apply, after validation; preview plans use the deterministic
+  `unresolved-offline` marker instead of publishing compiler content hashes.
+  This corrects the existing Kubernetes preview's secret-store mutation too.
+  Unsafe special files are rejected before opening chart/values inputs.
+- **Tests run:** `go test -count=1 ./internal/cli ./internal/frontend/helm` PASS;
+  `go test -race -count=1 ./internal/cli ./internal/frontend/helm` PASS;
+  `make check` PASS. New CLI cases use actual Helm for values ordering, stable
+  plans, identity, Chart.yaml/directories, degradation consent, private secret
+  persistence with unchanged version on reapply, and redacted failures. Additional
+  cases prove no state creation on preview/rejection, no daemon/Apply on rejected
+  input, missing Helm, FIFO refusal, invalid namespace/release, no implicit OCI
+  fetch and the manifest size bound. Kubernetes secret-preview and rejected-apply
+  regressions pass. No failures occurred in these verification runs.
+- **Integration evidence:** freshly built `bin/grillo plan examples/helm/demo
+  --release demo` PASS; isolated XDG workspace remained empty. CLI apply tests
+  invoke real Helm and the real secret store but use the API test double, not
+  KVM or the daemon runtime.
+- **Tests NOT run and why:** real Helm workload/KVM gate T22 awaits completed
+  T21; OCI fetching/digest-cache/lockfile tests await implementation. Hosted CI
+  not run.
+- **Known limitations:** local charts only, no dependencies or values schemas;
+  offline plans target empty observations and do not compare live secret changes.
+  Existing renderer restrictions remain. No Helm runtime completion claim.
+- **Next task:** finish T21's explicit exact-version OCI fetch, verified cache
+  and lockfile-aware dependency policy; then execute T22 on real KVM.
+
+## T21 completion — exact-version OCI charts — 2026-10-05
+
+- **Task:** T21 — Helm rendering and OCI charts.
+- **Status:** DONE. All T21 acceptance criteria are evidenced in the
+  [T21 report](experiments/t21-helm-renderer.md); T22 remains TODO.
+- **Dependencies verified:** T20 complete; existing OCI Distribution client,
+  T05 atomic file primitive and official Helm v4.2.2 inspected/reused. Existing
+  uncommitted local renderer/CLI changes preserved and completed, not replaced.
+- **Files and contracts changed:** `internal/frontend/helm/oci.go`, Linux cache
+  lock/nonblocking input helpers, Helm/OCI/adversarial/CLI tests,
+  `internal/cli/cli.go` (`--version`, `--chart-digest`, `--fetch-chart`),
+  `examples/helm`, README, compatibility, ADR 0007 and T21 acceptance report.
+  Exact SemVer OCI charts fetch only with consent when missing; cached versions
+  never refresh. Manifest/config/content hashes, sizes, metadata, archive safety
+  and private owner-checked cache records are verified before atomic publication
+  and on every reuse. Corrupt caches/conflicting pins block without overwrite.
+  Default transport refuses HTTPS downgrades (including token realms) and does
+  not inherit proxy credentials. Source provenance identifies Helm input.
+- **Decisions/ADRs:** ADR 0007 remains Proposed. T21 implements a restricted
+  self-contained chart subset: dependencies/subcharts are rejected whether
+  locked or unlocked; no dependency downloader/update is exposed and lockfiles
+  are never changed. This satisfies the planned restricted dependency policy,
+  not dependency-resolution parity. Optional trusted manifest digest; otherwise
+  first HTTPS resolution is TOFU, not publisher/signature authentication.
+- **Tests run:** `go test -count=1 -v ./internal/frontend/helm ./internal/cli`
+  PASS with actual Helm (no real-renderer skips); `go test -race -count=3
+  ./internal/frontend/helm ./internal/cli` PASS; `make check` PASS. Coverage adds
+  official Helm package → HTTPS Distribution client → real renderer → CLI,
+  local/OCI hash equivalence, consent/no-cache effects, offline reuse after
+  server shutdown, private cached apply references, wrong/truncated blobs and
+  retry, cache corruption, cancellation mid-fetch, six concurrent compilers,
+  conflicting pins/lock cancellation, hostile tar/gzip/limits, metadata/media
+  type rejection, HTTPS redirects/token-realm refusal, exact/prerelease/build
+  SemVer mapping, locked dependency refusal, and no-follow/nonblocking FIFO
+  opens. The offline-capabilities fixture initially failed because its test
+  template escaped a quote incorrectly; corrected and reverified green. A later
+  no-follow regression exposed that Go Root.OpenFile resolves contained links
+  despite O_NOFOLLOW; the helper now explicitly rejects non-regular inputs and
+  checks inode identity before/after a nonblocking rooted open. Tests were rerun
+  after that correction rather than counting the failed run as a pass.
+  Freshly built local CLI example plan PASS with empty isolated XDG workspace.
+  `git diff --check` and local Markdown links PASS.
+- **Tests NOT run and why:** Public Internet/private registry credential flows
+  and hosted CI were not run; HTTPS integration uses a protocol fixture with
+  actual packaged chart bytes and Helm, not a public-registry compatibility
+  claim. T22 application/KVM gate is a separate next task, not a T21 requirement.
+- **Integration evidence:** Linux 7.2.8-200.fc44.x86_64 / amd64,
+  Go go1.26.8-X:nodwarf5, `/usr/bin/helm` v4.2.2+gb05881c. Actual official
+  package/template commands, HTTP client, cache and CLI exercised without a
+  cluster; Apply uses the API test double and makes no VM-execution claim.
+- **Known limitations:** Self-contained v2 charts only; one Helm content layer,
+  no additional/provenance layers/indexes, dependency resolution, schemas,
+  dynamic tpl, non-default namespaces or private-registry credential CLI.
+  Template token scanning is conservative, not an OS sandbox. Offline plans
+  preview creation against empty observations, not live secret updates.
+  Explicit `plan --fetch-chart` may write private cache records (which may
+  embed source values), but never desired runtime state or the secret store.
+  Cache publication is Linux-only; non-Linux behavior is not a platform claim.
+- **Next task:** T22 — Helm gate and compatibility reporting on the real runtime.
 
 ## Updating this file
 

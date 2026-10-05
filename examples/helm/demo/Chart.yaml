@@ -1,0 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+apiVersion: v2
+name: demo
+version: 0.1.0
+description: Minimal local Grillo Helm example

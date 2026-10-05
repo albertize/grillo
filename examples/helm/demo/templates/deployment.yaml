@@ -1,0 +1,25 @@
+# SPDX-License-Identifier: Apache-2.0
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        app: {{ .Release.Name }}
+    spec:
+      containers:
+        - name: app
+          image: {{ .Values.image | quote }}
+          command: ["sh", "-c"]
+          args: ["echo \"$MESSAGE\"; sleep infinity"]
+          env:
+            - name: MESSAGE
+              value: {{ .Values.message | quote }}

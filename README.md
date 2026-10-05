@@ -4,11 +4,11 @@
 
 ![A cricket whispering to an expressive wooden ship’s wheel, illustrated in sepia.](media/Whispering%20Cricket%20and%20Ship%E2%80%99s%20Wheel.png)
 
-Grillo is a rootless-first application runtime that runs local workloads in hardware-isolated microVMs. It accepts Compose projects and Kubernetes manifests (Helm rendering is not implemented yet), translates them into a shared model, and maps each Kubernetes Pod to one microVM.
+Grillo is a rootless-first application runtime that runs local workloads in hardware-isolated microVMs. It accepts Compose projects, Kubernetes manifests and local/OCI Helm charts, translates them into a shared model, and maps each Kubernetes Pod to one microVM.
 
 The goal is a development experience closer to `docker compose up` than to operating a cluster, while preserving the application-facing contracts that matter in production.
 
-> **Project status: pre-release, with a working runtime.** On Linux/KVM the native runtime pulls OCI images, boots QEMU microVMs, runs real containers and init containers, shares a Pod's containers over localhost, serves Service DNS, attaches managed and bind volumes, provides exec/logs/events/probes, reconciles desired state with crash recovery, and exposes a local Unix-socket API and CLI. Compose projects and a Kubernetes MVP subset compile into the shared IR; the F0 and F2 gates and a multi-container Kubernetes scenario pass on real hardware. Helm rendering (T21) and the full web console (T23) are not implemented, there is no packaged release or supported version, and behavior not covered by [docs/progress.md](docs/progress.md) and [docs/compatibility.md](docs/compatibility.md) remains intended, not delivered.
+> **Project status: pre-release, with a working runtime.** On Linux/KVM the native runtime pulls OCI images, boots QEMU microVMs, runs real containers and init containers, shares a Pod's containers over localhost, serves Service DNS, attaches managed and bind volumes, provides exec/logs/events/probes, reconciles desired state with crash recovery, and exposes a local Unix-socket API and CLI. Compose projects and a Kubernetes MVP subset compile into the shared IR; the F0 and F2 gates and a multi-container Kubernetes scenario pass on real hardware. Local and exact-version OCI Helm charts render with Helm v4.2.2 and are accepted by `plan`/`up` (T21 complete); the Helm runtime acceptance gate (T22) and the full web console (T23) remain pending, there is no packaged release or supported version, and behavior not covered by [docs/progress.md](docs/progress.md) and [docs/compatibility.md](docs/compatibility.md) remains intended, not delivered.
 
 ## Why Grillo?
 
@@ -73,12 +73,13 @@ Fast startup and low idle overhead are engineering objectives, not current guara
 
 ## Developer experience
 
-These commands work today for Compose projects and Kubernetes manifests (Helm input is not implemented yet):
+These commands work today for Compose projects, Kubernetes manifests, and the supported Helm chart subset:
 
 ```sh
 # Review compatibility and planned changes without starting workloads.
 grillo plan compose.yaml
 grillo plan deployment.yaml
+grillo plan examples/helm/demo --release demo
 
 # Run a Compose project or a Kubernetes manifest.
 grillo up compose.yaml
@@ -170,7 +171,9 @@ Implemented and exercised on the real runtime:
 - Multiple containers per Pod, init containers, logs, exec, probes, and local reconciliation.
 - Persistent managed storage, explicit bind mounts, and Service discovery through in-guest DNS that resolves Service names to sandbox addresses.
 
-Not implemented yet: Helm rendering; the full web console; StatefulSet and Job; rolling updates; the Service VIP/load-balancing and Ingress reverse-proxy datapaths (only their compilation and DNS exist); and the remaining Tier 2 behavior. Compatibility is field-level, not just resource-kind-level. See the [current compatibility status](docs/compatibility.md) and [specification](grillo-project-specification.md).
+Local and exact-version OCI Helm chart rendering/CLI input are implemented with Helm v4.2.2 (T21). OCI fetch requires explicit `--fetch-chart`, and cached charts render offline with verified digests. Dependencies remain rejected; the Helm runtime acceptance gate (T22) is pending. See the [chart example and OCI usage](examples/helm/README.md).
+
+Not implemented yet: Helm dependency resolution; the full web console; StatefulSet and Job; rolling updates; the Service VIP/load-balancing and Ingress reverse-proxy datapaths (only their compilation and DNS exist); and the remaining Tier 2 behavior. Compatibility is field-level, not just resource-kind-level. See the [current compatibility status](docs/compatibility.md) and [specification](grillo-project-specification.md).
 
 ### Non-goals
 
@@ -190,7 +193,7 @@ Grillo is not intended to be:
 | F0 | Rootless microVM path, OCI execution, networking, storage, and measurable overhead — **gate passed** on QEMU `microvm` + virtiofsd (T01–T03) |
 | F1 | Native runtime: guest agent, images, lifecycle, API, recovery, probes — **components implemented and exercised on real KVM** (T04–T16), with a review-remediation pass tracked in [remediation.md](docs/remediation.md) |
 | F2 | Representative multi-service Compose application — **gate passed** (T19) |
-| F3 | Helm subset, local console, and tested product MVP — **in progress**: Kubernetes MVP compiler done (T20); Helm (T21–T22) and the full console (T23) are not |
+| F3 | Helm subset, local console, and tested product MVP — **in progress**: Kubernetes MVP compiler done (T20); local/OCI Helm renderer and CLI done (T21), Helm runtime gate pending (T22); full console pending (T23) |
 | F4 | Expand Kubernetes-oriented semantics and compatibility |
 | F5 | Optimize and package based on evidence; explore advanced isolation only when justified |
 

@@ -42,6 +42,42 @@ Until real runtime integration proves a behavior, treat it as experimental.
 | `configMap`/`secret`/`projected`/`downwardAPI` volumes | Rejected | use env references; projected volumes are not implemented |
 | `nodeSelector`, affinity, tolerations | Rejected | single-node scheduling only |
 
+## Helm (T21 rendering/CLI subset complete)
+
+`internal/frontend/helm` renders local charts with the explicitly provisioned
+Helm v4.2.2 executable and delegates manifests to the Kubernetes compiler.
+CLI `plan`/`up` accept chart directories, `Chart.yaml`, or exact-version OCI
+charts, an optional `--release` (default: chart basename), `--namespace default`,
+ordered repeated `-f` values files, and code-specific `--allow-degraded` consent. Values paths are
+relative to the invoking working directory; repeated `-f` requires a positional
+chart. See the [example](../examples/helm/README.md).
+
+Real-renderer/CLI tests verify ordered values, stable creation plans, secret
+separation, redacted failures and rejection before daemon startup. `plan` never
+stores secrets; offline plans use an `unresolved-offline` version marker rather
+than content-derived fingerprints and do not describe live secret-update diffs.
+`up` persists random-versioned private references only after validation. Apply
+wiring is tested against the API test double; **T22's real Helm workload gate
+has not been run**, so this is not an end-to-end Helm runtime support claim.
+
+OCI charts require exact SemVer via `--version`. Missing cache entries require
+explicit `--fetch-chart`; cached inputs never fetch or refresh automatically.
+An optional `--chart-digest sha256:...` supplies a trusted manifest pin; without
+it, first HTTPS resolution is trust-on-first-use. Private bounded records verify
+manifest/config/chart hashes, sizes, metadata and safe archives before publication
+and on every reuse. Corruption and concurrent pin conflicts block, not repair.
+Fetch consent permits cache writes even for `plan`, but not runtime state or
+secret-store writes. Default transport refuses HTTP, including redirect and
+bearer-token downgrades, and does not inherit proxy credentials.
+
+The subset rejects dependencies/subcharts (including locked dependencies),
+additional OCI layers/indexes, provenance signatures, CRDs, values schemas,
+hooks, lookup, DNS templates, dynamic `tpl`, and known nondeterministic template
+functions. Lockfiles are never rewritten; no tool or dependency installation is
+performed. Private-registry credentials are not exposed through the CLI.
+See [ADR 0007](adr/0007-controlled-helm-renderer.md) for limits and the
+[T21 acceptance report](experiments/t21-helm-renderer.md) for evidence.
+
 ## How to read a diagnostic
 
 Every diagnostic carries a `code`, `severity`, `compatibility` state, a source

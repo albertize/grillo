@@ -12,6 +12,7 @@ ADRs explain consequential decisions and preserve the reasoning behind them. Use
 | [0004](0004-shared-filesystem-backend-comparison.md) | Shared-filesystem backend comparison | Accepted |
 | [0005](0005-platform-qemu-virtiofsd.md) | Platform: QEMU `microvm` + virtiofsd | Proposed |
 | [0006](0006-native-build-system.md) | Native build system with an optional Podman accelerator | Proposed |
+| [0007](0007-controlled-helm-renderer.md) | Controlled official Helm renderer | Proposed |
 
 The implementation plan still contains **provisional choices**, not evidence that a
 backend has passed its feasibility gate. An ADR without required hardware
