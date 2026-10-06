@@ -457,11 +457,11 @@ func (e *Executor) Exec(ctx context.Context, application, container string, args
 	}
 	e.mu.Lock()
 	var matches []string
-	var client *guestproto.Client
+	var cid uint32
 	for id, rt := range e.runtimes {
 		if rt.app == application && rt.guest != nil && rt.containers[name] && (!qualified || id == key) {
 			matches = append(matches, id)
-			client = rt.guest
+			cid = rt.cid
 		}
 	}
 	e.mu.Unlock()
@@ -472,6 +472,14 @@ func (e *Executor) Exec(ctx context.Context, application, container string, args
 	if len(matches) != 1 {
 		return 0, fmt.Errorf("executor: ambiguous container %q; use sandbox-ID/container (sandboxes: %s)", container, strings.Join(matches, ", "))
 	}
+	// Exec owns a dedicated authenticated connection. Cancellation closes it,
+	// canceling the guest request without leaving unread replies on the shared
+	// health/status channel or blocking probes behind a long-running command.
+	client, err := e.cfg.Dial(ctx, cid, e.cfg.VsockPort)
+	if err != nil {
+		return 0, fmt.Errorf("executor: exec channel unavailable: %w", err)
+	}
+	defer client.Close()
 	result, err := client.Exec(ctx, guestproto.ExecRequest{Container: name, Args: args}, stdout, stderr)
 	return result.ExitCode, err
 }

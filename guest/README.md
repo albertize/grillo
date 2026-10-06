@@ -9,7 +9,7 @@ runtime code lives in `internal/guest`; the PID 1 entry point is
 ```
 /init                grillo-agent (PID 1, static, CGO_ENABLED=0)
 /runc                static runc used for OCI containers
-/rootfs/<container>  per-container root filesystems (busybox or OCI layers)
+/rootfs-{setup,app,sidecar}  development fixture container roots
 /etc/grillo/key      base64 per-boot handshake key (delivered by the host)
 /run/grillo/...      bundles, logs, and runc state (created at runtime)
 ```
@@ -19,6 +19,11 @@ The kernel is the QEMU `microvm` guest kernel with `CONFIG_VIRTIO_FS`,
 rootfs versions are pinned and recorded in the artifact manifest.
 
 ## Building
+
+Follow [getting started](../docs/getting-started.md) for host tools, frontend build
+dependencies, kernel sources and the QEMU kernel. These are development artifacts,
+not a packaged release. The initial OCI fixture export can require Podman even
+though the native workload/build runtime does not.
 
 The agent is built by the repository build target:
 

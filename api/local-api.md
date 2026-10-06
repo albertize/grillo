@@ -23,6 +23,7 @@ stderr.
 | `GET /v1/version` | daemon version and API version |
 | `GET /v1/health` | liveness and uptime |
 | `GET /v1/applications/{id}` | container status and public route fallback endpoints |
+| `GET /v1/applications/{id}/view` | allowlisted application/resource/probe/VMM snapshot (T23) |
 | `POST /v1/exec` | run a command in a container and return captured output |
 | `POST /v1/applications` | submit a desired application; `202` + `operationId` |
 | `POST /v1/applications/{id}/down` | stop an application; `?volumes=true` deletes owned managed volumes |
@@ -62,6 +63,23 @@ route contains only `hostname`, `path`, `pathType` and the actual loopback HTTP
 `endpoint`; no guest specs or secret material are returned. `grillo inspect`
 includes this inventory. Fallback ports are allocated atomically by listening
 on `127.0.0.1:0`; `/etc/hosts` is never modified.
+
+## Public console snapshot
+
+`GET /v1/applications/{id}/view` returns `observe.ApplicationView`: source
+provenance, declared workloads/containers/mounts/ports, Services and inferred
+selector relationships, routes, volume classes, config/Secret metadata and
+actual sandbox/container/probe observations. VMM samples carry `/proc` RSS,
+cumulative CPU time and timestamp separately from guest allocation. Missing
+samples are omitted, not zeroed. Sampling has a ten-second operation deadline;
+errors return a generic `view_unavailable` without private backend details.
+
+This is an allowlist, not a redacted serialization of private IR/guest specs:
+no config/env values, probe commands/headers, Secret contents/versions or private
+host bind/guest paths are present. Original compiler diagnostics are not retained;
+that limitation is explicit. The [UI bridge](../docs/ui.md) consumes this same
+API and exposes bounded authenticated non-TTY exec and cursor-preserving events.
+Workload output deliberately printed by an application is not secret-redacted.
 
 ## Asynchronous operations
 

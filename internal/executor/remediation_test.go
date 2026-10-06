@@ -118,15 +118,17 @@ func reviewClient(t *testing.T, output string) *guestproto.Client {
 }
 
 func TestExecSelectsUniqueTargetAndRejectsAmbiguity(t *testing.T) {
-	e := &Executor{runtimes: map[string]*sandboxRuntime{
-		"app-web-0": {app: "app", guest: reviewClient(t, "web"), containers: map[string]bool{"web": true}},
-		"app-db-0":  {app: "app", guest: reviewClient(t, "db"), containers: map[string]bool{"db": true}},
+	e := &Executor{cfg: Config{Dial: func(_ context.Context, cid, _ uint32) (*guestproto.Client, error) {
+		return reviewClient(t, map[uint32]string{1: "web", 2: "db", 3: "replica"}[cid]), nil
+	}}, runtimes: map[string]*sandboxRuntime{
+		"app-web-0": {app: "app", cid: 1, guest: reviewClient(t, "web"), containers: map[string]bool{"web": true}},
+		"app-db-0":  {app: "app", cid: 2, guest: reviewClient(t, "db"), containers: map[string]bool{"db": true}},
 	}}
 	var out bytes.Buffer
 	if _, err := e.Exec(context.Background(), "app", "db", []string{"x"}, &out, io.Discard); err != nil || out.String() != "db:db" {
 		t.Fatalf("%q %v", out.String(), err)
 	}
-	e.runtimes["app-db-1"] = &sandboxRuntime{app: "app", guest: reviewClient(t, "replica"), containers: map[string]bool{"db": true}}
+	e.runtimes["app-db-1"] = &sandboxRuntime{app: "app", cid: 3, guest: reviewClient(t, "replica"), containers: map[string]bool{"db": true}}
 	if _, err := e.Exec(context.Background(), "app", "db", []string{"x"}, io.Discard, io.Discard); err == nil || !strings.Contains(err.Error(), "ambiguous") {
 		t.Fatalf("%v", err)
 	}

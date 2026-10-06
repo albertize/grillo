@@ -1,0 +1,4 @@
+# Preserve verbatim upstream OFL notices, including their trailing spaces.
+web/licenses/redhatdisplay-OFL.txt whitespace=-blank-at-eol
+web/licenses/redhatmono-OFL.txt whitespace=-blank-at-eol
+web/licenses/redhattext-OFL.txt whitespace=-blank-at-eol

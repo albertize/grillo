@@ -54,6 +54,12 @@ func TestBridgeRequiresSessionAndSetsSecurityHeaders(t *testing.T) {
 	if resp.StatusCode != http.StatusOK || !strings.Contains(string(body), "Grillo") {
 		t.Fatalf("index status=%d", resp.StatusCode)
 	}
+	if resp.Header.Get("Cache-Control") != "no-store" {
+		t.Fatal("console responses must not be cached")
+	}
+	if csp := resp.Header.Get("Content-Security-Policy"); !strings.Contains(csp, "frame-ancestors 'none'") {
+		t.Fatalf("missing anti-framing CSP = %q", csp)
+	}
 	if csp := resp.Header.Get("Content-Security-Policy"); !strings.Contains(csp, "default-src 'self'") {
 		t.Fatalf("CSP = %q", csp)
 	}

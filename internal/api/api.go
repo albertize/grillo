@@ -71,6 +71,11 @@ type RouteStatus struct {
 	Endpoint string `json:"endpoint,omitempty"`
 }
 
+// ApplicationViewer provides allowlisted resource and metric inspection.
+type ApplicationViewer interface {
+	View(context.Context, string) (observe.ApplicationView, error)
+}
+
 type RouteViewer interface {
 	Routes(context.Context, string) ([]RouteStatus, error)
 }
@@ -124,6 +129,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /v1/health", s.handleHealth)
 	mux.HandleFunc("GET /v1/applications", s.handleApplications)
 	mux.HandleFunc("GET /v1/applications/{id}", s.handleStatus)
+	mux.HandleFunc("GET /v1/applications/{id}/view", s.handleView)
 	mux.HandleFunc("POST /v1/applications/{id}/restart", s.handleRestart)
 	mux.HandleFunc("POST /v1/applications", s.handleApply)
 	mux.HandleFunc("POST /v1/applications/{id}/down", s.handleDown)

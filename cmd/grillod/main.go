@@ -54,9 +54,14 @@ func run() error {
 	qemuPath := flag.String("qemu", "", "qemu binary (default: PATH)")
 	virtiofsd := flag.String("virtiofsd", "", "virtiofsd binary (default: /usr/libexec/virtiofsd)")
 	vsockPort := flag.Uint("vsock-port", 1024, "guest vsock port")
+	vsockCIDBase := flag.Uint("vsock-cid-base", 20, "first workload guest CID (choose a nonconflicting host-wide range)")
+	buildCIDBase := flag.Uint("build-vsock-cid-base", 200, "first build guest CID (choose a separate host-wide range)")
 	netnsBinary := flag.String("netns-binary", "bin/grillo-netns", "network supervisor for build egress (empty disables build networking)")
 	pasta := flag.String("pasta", "pasta", "pasta binary for build egress")
 	flag.Parse()
+	if err := validateCIDBases(*vsockCIDBase, *buildCIDBase); err != nil {
+		return err
+	}
 
 	layout, err := state.NewLayout(state.DefaultConfig())
 	if err != nil {
@@ -137,7 +142,7 @@ func run() error {
 		Initramfs:    *initramfs,
 		KernelArgs:   "console=ttyS0 reboot=k panic=1 rdinit=/init",
 		GuestKey:     guestKey,
-		VsockCIDBase: 200,
+		VsockCIDBase: uint32(*buildCIDBase),
 		VsockPort:    uint32(*vsockPort),
 		MemoryMiB:    512,
 		ShareTag:     "build",
@@ -187,7 +192,7 @@ func run() error {
 		KernelArgs:    "console=ttyS0 reboot=k panic=1 rdinit=/init",
 		GuestKey:      guestKey,
 		VsockPort:     uint32(*vsockPort),
-		VsockCIDBase:  20,
+		VsockCIDBase:  uint32(*vsockCIDBase),
 		Images:        images,
 		Secrets:       secretStore,
 		EnableNetwork: true,
@@ -377,6 +382,10 @@ func (c *core) Status(ctx context.Context, application string) ([]api.ContainerS
 		out = append(out, api.ContainerStatus{Container: state.Container, State: state.State, ExitCode: state.ExitCode})
 	}
 	return out, nil
+}
+
+func (c *core) View(ctx context.Context, application string) (observe.ApplicationView, error) {
+	return c.exec.View(ctx, application)
 }
 
 func (c *core) Routes(ctx context.Context, application string) ([]api.RouteStatus, error) {

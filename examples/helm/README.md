@@ -1,7 +1,8 @@
 # Local Helm example
 
 Requires an explicitly installed **Helm v4.2.2** in `PATH`. Run from the
-repository root after `make build`:
+repository root after [host/guest preparation](../../docs/getting-started.md)
+and `make build`:
 
 ```sh
 bin/grillo plan examples/helm/demo --release demo
@@ -57,7 +58,7 @@ No private-registry credential CLI or automatic tool installation is provided.
 
 ## Full scenario C acceptance chart
 
-`scenario-c/` is a hardware acceptance fixture, **not a working full chart**.
+`scenario-c/` is the verified hardware acceptance chart for a **bounded supported subset**, not evidence that arbitrary production charts work.
 It contains two API replicas with init/sidecar, ConfigMap/Secret, readiness,
 Service/Ingress and a separate storage Pod with one RWO PVC. Values are synthetic;
 never place live credentials in these examples.

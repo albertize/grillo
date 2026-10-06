@@ -528,8 +528,12 @@ func (a *App) cmdUI(ctx context.Context, args []string) int {
 	}
 	bridge := ui.New(a.ClientFactory(a.SocketPath))
 	addr := fmt.Sprintf("127.0.0.1:%d", *port)
-	fmt.Fprintf(a.Stdout, "Grillo UI: %s\n", bridge.URL(addr))
-	if err := bridge.ListenAndServe(ctx, addr); err != nil {
+	listener, err := ui.Listen(addr)
+	if err != nil {
+		return fail(a.Stderr, err)
+	}
+	fmt.Fprintf(a.Stdout, "Grillo UI: %s\n", bridge.URL(listener.Addr().String()))
+	if err := bridge.Serve(ctx, listener); err != nil {
 		return fail(a.Stderr, err)
 	}
 	return 0

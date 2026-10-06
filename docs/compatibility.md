@@ -9,9 +9,10 @@ inventory. Fixture links identify regression suites, not per-field hardware proo
 This narrative records runtime evidence and restrictions separately. Until real
 runtime integration proves a behavior, treat it as experimental.
 
-**T22 is complete.** Its full direct-runtime scenario C and actual CLI/daemon
-chart lifecycle pass after T12 repair and the explicit T16 capability policy. See the
-[T22 gate report](experiments/t22-helm-gate.md).
+This is current subset behavior, not a supported release promise. See
+[getting started](getting-started.md) for prerequisites and
+[progress](progress.md) for dated runtime evidence. Compiler acceptance alone
+does not imply host feasibility.
 
 ## Compose (F2 subset)
 
@@ -50,9 +51,9 @@ chart lifecycle pass after T12 repair and the explicit T16 capability policy. Se
 | `configMap`/`secret`/`projected`/`downwardAPI` volumes | Rejected | use env references; projected volumes are not implemented |
 | `nodeSelector`, affinity, tolerations | Rejected | single-node scheduling only |
 
-## Helm (T21 rendering/CLI subset complete)
+## Helm
 
-`internal/frontend/helm` renders local charts with the explicitly provisioned
+Local charts render with the explicitly provisioned
 Helm v4.2.2 executable and delegates manifests to the Kubernetes compiler.
 CLI `plan`/`up` accept chart directories, `Chart.yaml`, or exact-version OCI
 charts, an optional `--release` (default: chart basename), `--namespace default`,
@@ -60,19 +61,13 @@ ordered repeated `-f` values files, and code-specific `--allow-degraded` consent
 relative to the invoking working directory; repeated `-f` requires a positional
 chart. See the [example](../examples/helm/README.md).
 
-Real-renderer/CLI tests verify ordered values, stable creation plans, secret
-separation, redacted failures and rejection before daemon startup. `plan` never
-stores secrets; offline plans use an `unresolved-offline` version marker rather
-than content-derived fingerprints and do not describe live secret-update diffs.
-`up` persists random-versioned private references only after validation. Apply
-wiring is tested against the API test double. **T22 is complete**:
-`make test-helm` now runs both the real single-Deployment demo and full scenario C.
-The latter proves three VMs, init/sidecar localhost, ConfigMap/Secret env,
-identical apply, consumer-only config/secret replacement and retained PVC data.
-Its extended VIP, targetPort, Ingress, readiness, four-name DNS, replica balance,
-headless SRV and host TCP publication checks now pass; see the
-[report](experiments/t22-helm-gate.md). The full CLI/daemon chart gate also passes using a locally built native image.
-Images use a preexisting OCI rootfs fixture, not live registry pulls.
+`plan` never stores secrets; offline plans use an `unresolved-offline` version
+marker rather than content-derived fingerprints and do not describe live
+secret-update diffs. `up` validates before persisting random-versioned private
+references. Dated [renderer](experiments/t21-helm-renderer.md) and
+[runtime/CLI chart](experiments/t22-helm-gate.md) reports distinguish compiler/API
+fixtures from real workload evidence. The chart gate uses a preexisting/local
+OCI fixture, not a live registry pull.
 
 CLI, executor and daemon share an explicit implementation whitelist. Routes and
 host ports require bridged configuration; privileged, StatefulSet/Job and unknown
@@ -82,8 +77,10 @@ counts while keeping a nonzero exit, text `BLOCKED` and JSON `applicable: false`
 JSON preserves structured support diagnostics and consequences; frontend or
 structural/security errors do not become actionable plans. Unsupported `up` remains blocked before daemon startup and secret persistence.
 Offline applicability is implementation compatibility, not host feasibility.
-This proves the bounded Helm subset, not arbitrary chart compatibility or F3's
-still-pending complete web-console/product gates.
+The bounded subset is not arbitrary chart compatibility or completion of the
+product hardening gate. The [console report](experiments/t23-console.md) separates
+browser fixtures from native CLI/daemon/KVM evidence; UI delivery does not expand
+workload semantics or add missing guest stdout ingestion.
 
 OCI charts require exact SemVer via `--version`. Missing cache entries require
 explicit `--fetch-chart`; cached inputs never fetch or refresh automatically.

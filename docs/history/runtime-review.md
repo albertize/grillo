@@ -1,4 +1,6 @@
-# Runtime review remediation
+# Completed runtime review
+
+Historical report (2026-10-04); current status is in [progress](../progress.md).
 
 Scope: eight findings from the runtime code review. This is a corrective workstream for T07–T10, T14–T16, T19 and T20, not a new feature milestone.
 

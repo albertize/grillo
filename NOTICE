@@ -6,3 +6,9 @@ See the LICENSE file for the full license text.
 
 Third-party software, when included or distributed with Grillo, remains
 subject to its own licenses and attribution requirements.
+
+The embedded browser console includes React and PatternFly (MIT), with
+upstream package notices, Red Hat font notices (SIL OFL 1.1), and Font Awesome
+Free icon attribution retained in /assets/generated/licenses.txt served by
+the console. See web/README.md and web/licenses/ for build/provenance details.
+These components are not relicensed under Apache-2.0.

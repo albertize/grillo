@@ -2,7 +2,7 @@
 
 ## Current status
 
-Grillo is in the design stage. There are **no supported runtime releases** and no claim that the planned isolation or security controls have been implemented or audited. Do not use this repository as a security boundary for untrusted production workloads.
+Grillo has an experimental Linux/KVM runtime and recorded isolation/security regression tests. There are **no supported runtime releases**, independent security audit or completed product-hardening gate. Implemented controls and test coverage are not a production security guarantee. Do not use this repository as a security boundary for untrusted production workloads.
 
 Security-sensitive design feedback is welcome. A formal release support window and vulnerability-response process must be established before production-grade claims or releases.
 
@@ -26,7 +26,7 @@ Report enough information to reproduce and assess the issue safely:
 
 Remove live secrets and unrelated personal information. Coordinate disclosure with maintainers rather than assuming an immediate response or an established response-time SLA.
 
-## Intended threat model
+## Threat model and boundaries
 
 The primary threat is an application workload that is buggy, compromised, or malicious on a developer workstation. The intended microVM boundary reduces direct host-kernel syscall exposure, but does not eliminate vulnerabilities in:
 
@@ -51,7 +51,7 @@ Host bind mounts intentionally expose selected host data. A process already runn
 - Validate guest-originated data even after channel authentication.
 - Fuzz security-sensitive parsers and protocols and test failure/recovery paths.
 
-These are implementation requirements, not a statement that controls currently exist. Detailed security acceptance gates are in [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md), especially sections 6, 7, 11–14, and T24.
+These principles remain requirements; they do not assert that every control has been implemented or audited. See [architecture](docs/architecture.md), [current status and evidence](docs/progress.md), and [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md), especially sections 6, 7, 11–14 and the unfinished T24 gate. Private reporting and release-readiness requirements below remain unchanged.
 
 ## Release readiness
 

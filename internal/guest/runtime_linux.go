@@ -11,6 +11,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"syscall"
 )
@@ -92,7 +93,14 @@ func (r *Runc) StartDetached(ctx context.Context, name, bundle string) error {
 
 // Exec implements Runtime.
 func (r *Runc) Exec(ctx context.Context, name string, args []string) (ExitStatus, []byte, []byte, error) {
-	return r.capture(ctx, r.command(append([]string{"exec", name}, args...)...))
+	dir, err := os.MkdirTemp("", "grillo-exec-")
+	if err != nil {
+		return ExitStatus{}, nil, nil, err
+	}
+	defer os.RemoveAll(dir)
+	pidFile := filepath.Join(dir, "pid")
+	cmd := r.command(append([]string{"exec", "--pid-file", pidFile, name}, args...)...)
+	return r.captureWithCancel(ctx, cmd, func() error { return stopExec(pidFile, cmd.Process.Pid) })
 }
 
 // Kill implements Runtime.
@@ -140,6 +148,10 @@ func (r *Runc) State(ctx context.Context, name string) (ContainerState, error) {
 // capture runs cmd, writing stdout/stderr to temporary files (bounded on read)
 // and reaping the process through the Reaper.
 func (r *Runc) capture(ctx context.Context, cmd *exec.Cmd) (ExitStatus, []byte, []byte, error) {
+	return r.captureWithCancel(ctx, cmd, nil)
+}
+
+func (r *Runc) captureWithCancel(ctx context.Context, cmd *exec.Cmd, onCancel func() error) (ExitStatus, []byte, []byte, error) {
 	outF, err := os.CreateTemp("", "grillo-stdout-*")
 	if err != nil {
 		return ExitStatus{}, nil, nil, err
@@ -157,21 +169,32 @@ func (r *Runc) capture(ctx context.Context, cmd *exec.Cmd) (ExitStatus, []byte, 
 	if err := r.Reaper.Start(cmd); err != nil {
 		return ExitStatus{}, nil, nil, err
 	}
-	status, waitErr := r.wait(ctx, cmd.Process.Pid)
+	status, waitErr := r.waitWithCancel(ctx, cmd.Process.Pid, onCancel)
 	stdout, _ := readCapped(outF.Name(), maxCapturedBytes)
 	stderr, _ := readCapped(errF.Name(), maxCapturedBytes)
 	return status, stdout, stderr, waitErr
 }
 
 func (r *Runc) wait(ctx context.Context, pid int) (ExitStatus, error) {
+	return r.waitWithCancel(ctx, pid, nil)
+}
+
+func (r *Runc) waitWithCancel(ctx context.Context, pid int, onCancel func() error) (ExitStatus, error) {
 	done := make(chan ExitStatus, 1)
 	go func() { done <- r.Reaper.Wait(pid) }()
 	select {
 	case status := <-done:
 		return status, nil
 	case <-ctx.Done():
+		var cleanupErr error
+		if onCancel != nil {
+			cleanupErr = onCancel()
+		}
 		_ = syscall.Kill(pid, syscall.SIGKILL)
 		status := <-done
+		if cleanupErr != nil {
+			return status, fmt.Errorf("guest: exec cancellation cleanup failed: %w", ctx.Err())
+		}
 		return status, ctx.Err()
 	}
 }

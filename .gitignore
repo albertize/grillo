@@ -14,6 +14,10 @@
 /guest/build/
 /experiments/artifacts/
 
+# Locked frontend sources are committed; dependencies and compiled assets are not.
+/web/node_modules/
+/internal/ui/assets/generated/
+
 # Sensitive local configuration
 .env
 .env.local

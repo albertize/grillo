@@ -3,6 +3,12 @@
 **Project Specification — A MicroVM-First Local Application Runtime**  
 Version 0.1 — 3 October 2026
 
+This specification defines product goals and requirements, not a support inventory.
+Its example commands include intended future behavior. For commands available
+now, read [getting started](docs/getting-started.md); implementation status and
+approved delivery deviations are tracked in the [plan](IMPLEMENTATION_PLAN.md),
+[progress](docs/progress.md) and [ADRs](docs/adr/README.md).
+
 
 ## 1. Executive Summary
 

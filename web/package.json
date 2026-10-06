@@ -1,0 +1,22 @@
+{
+  "name": "grillo-console",
+  "version": "0.1.0",
+  "private": true,
+  "license": "Apache-2.0",
+  "type": "module",
+  "packageManager": "npm@11.16.0",
+  "engines": { "node": "24.x" },
+  "scripts": {
+    "build": "node build.mjs",
+    "check": "node build.mjs --check",
+    "test": "node --test src/client.test.mjs"
+  },
+  "dependencies": {
+    "@patternfly/react-core": "6.6.1",
+    "@patternfly/react-icons": "6.6.1",
+    "@patternfly/react-table": "6.6.1",
+    "react": "19.3.0",
+    "react-dom": "19.3.0"
+  },
+  "devDependencies": { "esbuild": "0.28.2" }
+}

@@ -1,21 +1,34 @@
 # Changelog
 
-Notable changes will be recorded here. There are no runtime releases yet.
+User-visible changes are recorded here. There are no runtime releases yet;
+[progress](docs/progress.md) tracks task completion and dated acceptance evidence.
 
 ## Unreleased
 
 ### Added
 
-- Grillo project specification and a detailed 29-task Go implementation plan.
-- Project overview, goals, philosophy, architecture, and milestone documentation.
-- Coding-agent instructions, contribution guidelines, security policy, and code of conduct.
-- Implementation progress tracker, compatibility planning overview, and ADR process.
-- Apache License 2.0 and project attribution notice.
+- Experimental Linux/amd64 QEMU/KVM runtime with a Go guest agent, guest-side
+  runc, multi-container Pods, init containers, probes and persistent storage.
+- Rootless application networking, Service DNS/TCP routing and loopback Ingress
+  fallbacks; private Unix API, CLI and desired-state recovery.
+- Compose and Kubernetes subset compilers, controlled local/exact-version OCI
+  Helm rendering and explicit compatibility diagnostics.
+- OCI image/cache tooling and a native guest-based Dockerfile build path, with
+  Podman available only by explicit opt-in.
+- Embedded React/PatternFly console with metadata-only inspection, retained-log
+  and event views, VMM metrics and bounded non-TTY exec.
+- Reproducible unit, browser and real KVM acceptance gates with dated reports.
+- Product specification, delivery plan, ADRs and Apache-2.0 contribution policy.
 
 ### Changed
 
-- Repository guidance and implementation planning standardized on English.
+- Documentation organized into practical setup, architecture, console,
+  compatibility and testing guides; historical implementation/review notes
+  separated from current status.
 
-### Status
+### Known limits
 
-- Documentation and design only; no implemented runtime, supported platform release, or completed hardware feasibility gate.
+- No packaged release, supported runtime version or completed product-hardening
+  gate. See [compatibility](docs/compatibility.md), [console limits](docs/ui.md#explicit-mvp-limits)
+  and [security policy](SECURITY.md); acceptance of a field is not universal
+  Kubernetes compatibility or production security assurance.

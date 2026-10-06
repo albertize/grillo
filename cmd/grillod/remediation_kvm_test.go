@@ -5,8 +5,12 @@
 package main
 
 import (
+	"bufio"
 	"context"
+	"encoding/json"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -17,11 +21,24 @@ import (
 	"github.com/albertize/grillo/internal/api"
 	"github.com/albertize/grillo/internal/build"
 	"github.com/albertize/grillo/internal/frontend/kubernetes"
+	"github.com/albertize/grillo/internal/ui"
 )
 
 // This gate deliberately starts the actual daemon, not a differently wired
 // executor fixture. All data, sockets, images and process logs are test-owned.
-func TestKVMDaemonRemediation(t *testing.T) {
+func TestKVMDaemonRemediation(t *testing.T) { runDaemonGate(t, false) }
+
+// TestKVMDaemonUI adds a real Firefox surface to the actual native daemon gate.
+func TestKVMDaemonUI(t *testing.T) {
+	for _, tool := range []string{"firefox", "node"} {
+		if _, err := exec.LookPath(tool); err != nil {
+			t.Skipf("browser prerequisite missing: %s", tool)
+		}
+	}
+	runDaemonGate(t, true)
+}
+
+func runDaemonGate(t *testing.T, browser bool) {
 	for _, device := range []string{"/dev/kvm", "/dev/vhost-vsock"} {
 		f, err := os.OpenFile(device, os.O_RDWR, 0)
 		if err != nil {
@@ -71,6 +88,9 @@ func TestKVMDaemonRemediation(t *testing.T) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 240*time.Second)
 	defer cancel()
+	// Leave the ordinary daemon/demo's default CID range untouched. These
+	// explicit test ranges also separate the native builder from workloads.
+	cidBase := 32768 + (os.Getpid()%4096)*128
 	socket := filepath.Join(work, "run/grillo/grillod.sock")
 	client := api.NewClient(socket)
 	var proc *exec.Cmd
@@ -81,7 +101,7 @@ func TestKVMDaemonRemediation(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		proc = exec.Command(daemon, "-kernel", kernel, "-initramfs", guest, "-key-file", key, "-netns-binary", helper)
+		proc = exec.Command(daemon, "-kernel", kernel, "-initramfs", guest, "-key-file", key, "-netns-binary", helper, "-vsock-cid-base", fmt.Sprint(cidBase), "-build-vsock-cid-base", fmt.Sprint(cidBase+64))
 		proc.Env = env
 		proc.Dir = root
 		proc.Stdout = f
@@ -220,6 +240,115 @@ func TestKVMDaemonRemediation(t *testing.T) {
 		if err != nil || code != 0 || strings.TrimSpace(out) != "cli-config" {
 			t.Fatalf("CLI-applied Service failed: code=%d err=%v", code, err)
 		}
+		t.Run("ui-lifetime-and-exec", func(t *testing.T) {
+			before, err := client.View(ctx, "scenario-c")
+			if err != nil || len(before.Sandboxes) != 3 {
+				t.Fatalf("UI snapshot: %v %+v", err, before)
+			}
+			bridge := ui.New(client)
+			server := httptest.NewServer(bridge.Handler())
+			defer server.Close()
+			if browser {
+				// Exercise the actual CLI bridge and its reported ephemeral port.
+				uiProcess := exec.CommandContext(ctx, cli, "ui", "--port", "0")
+				uiProcess.Env = env
+				stdout, err := uiProcess.StdoutPipe()
+				if err != nil {
+					t.Fatal(err)
+				}
+				if err := uiProcess.Start(); err != nil {
+					t.Fatal(err)
+				}
+				uiDone := make(chan error, 1)
+				go func() { uiDone <- uiProcess.Wait() }()
+				stopped := false
+				stopUI := func() {
+					if stopped {
+						return
+					}
+					stopped = true
+					_ = uiProcess.Process.Signal(os.Interrupt)
+					select {
+					case err := <-uiDone:
+						if err != nil {
+							t.Errorf("CLI UI exit: %v", err)
+						}
+					case <-time.After(5 * time.Second):
+						_ = uiProcess.Process.Kill()
+						<-uiDone
+						t.Error("CLI UI failed graceful shutdown")
+					}
+				}
+				defer stopUI()
+				urls := make(chan string, 1)
+				go func() {
+					scanner := bufio.NewScanner(stdout)
+					if scanner.Scan() {
+						urls <- strings.TrimPrefix(scanner.Text(), "Grillo UI: ")
+					} else {
+						urls <- ""
+					}
+				}()
+				var uiURL string
+				select {
+				case uiURL = <-urls:
+				case <-ctx.Done():
+					t.Fatal("UI startup timeout")
+				}
+				if !strings.HasPrefix(uiURL, "http://127.0.0.1:") || strings.Contains(uiURL, ":0/") {
+					t.Fatal("CLI did not report assigned UI port")
+				}
+				cmd := exec.CommandContext(ctx, "node", filepath.Join(root, "scripts/ui-browser-smoke.mjs"))
+				cmd.Env = append(os.Environ(), "GRILLO_UI_TEST_URL="+uiURL, "GRILLO_UI_TEST_LIVE=1")
+				out, err := cmd.CombinedOutput()
+				if err != nil {
+					t.Fatalf("real browser/daemon gate: %v %s", err, out)
+				}
+				t.Log(string(out))
+				stopUI()
+			} else {
+				resp, err := server.Client().Post(server.URL+"/session", "application/json", strings.NewReader(`{"token":"`+bridge.BootstrapToken()+`"}`))
+				if err != nil {
+					t.Fatal(err)
+				}
+				cookies := resp.Cookies()
+				resp.Body.Close()
+				if len(cookies) != 1 {
+					t.Fatal("UI authentication failed")
+				}
+				req, _ := http.NewRequestWithContext(ctx, "GET", server.URL+"/v1/applications/scenario-c/view", nil)
+				req.AddCookie(cookies[0])
+				resp, err = server.Client().Do(req)
+				if err != nil {
+					t.Fatal(err)
+				}
+				var view any
+				err = json.NewDecoder(resp.Body).Decode(&view)
+				resp.Body.Close()
+				if err != nil || resp.StatusCode != 200 {
+					t.Fatalf("UI view: %v", err)
+				}
+				data, _ := json.Marshal(view)
+				if strings.Contains(string(data), "synthetic-cli-private-token") {
+					t.Fatal("secret leaked to UI")
+				}
+			}
+			// Closing only the bridge must not replace or stop any microVM.
+			server.Close()
+			after, err := client.View(ctx, "scenario-c")
+			if err != nil || len(after.Sandboxes) != len(before.Sandboxes) {
+				t.Fatal("UI closure changed workload inventory", err)
+			}
+			for i, vm := range after.Sandboxes {
+				if vm.State != "running" || vm.VMM == nil || before.Sandboxes[i].VMM == nil || vm.VMM.PID != before.Sandboxes[i].VMM.PID {
+					t.Fatal("UI closure stopped/replaced VMM")
+				}
+			}
+			code, _, _, err := client.Exec(ctx, "scenario-c", "storage", []string{"/bin/busybox", "true"})
+			if err != nil || code != 0 {
+				t.Fatal("workload unavailable after UI closure", err)
+			}
+		})
 		runCLI("up", chart, "--release", "scenario-c", "-f", values)
 		runCLI("down", "scenario-c", "--volumes")
 		states, err = client.Status(ctx, "scenario-c")

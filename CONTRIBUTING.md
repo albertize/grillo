@@ -1,88 +1,84 @@
 # Contributing to Grillo
 
-Thank you for helping shape Grillo. The project currently has design documents and an initial command scaffold, not a working workload runtime. Design reviews, feasibility experiments, test design, and focused documentation improvements are especially useful at this stage.
+Grillo has a working experimental runtime, not a supported release. Contributions
+should preserve real application behavior and make unsupported semantics clear.
+Read the [README](README.md), [compatibility](docs/compatibility.md) and
+[current progress](docs/progress.md); implementation tasks and acceptance gates
+remain in the [plan](IMPLEMENTATION_PLAN.md). Coding agents follow
+[AGENTS.md](AGENTS.md). All participants follow the [Code of Conduct](CODE_OF_CONDUCT.md).
 
-## Before starting
+Use English for documentation, comments, issues and commits. Keep changes focused
+and preserve unrelated work. Discuss significant architectural or dependency
+changes before implementing them; a backlog entry alone is not authorization.
 
-Read the [README](README.md), [specification](grillo-project-specification.md), [implementation plan](IMPLEMENTATION_PLAN.md), and [progress tracker](docs/progress.md). Coding agents must also follow [AGENT.md](AGENT.md). All participants are expected to follow the [Code of Conduct](CODE_OF_CONDUCT.md).
+## Build and test
 
-Use English for documentation, code comments, issue descriptions, and pull requests. Keep technical terms precise and distinguish intended behavior from implemented, tested support.
+Use Go 1.26.8, Make, Node 24.18.0/npm 11.16.0 and a C compiler for Linux race tests:
 
-For a substantial change, discuss the problem and proposed approach with the repository maintainers before implementing it. Use the repository's issue/discussion system where available. Reference a task ID such as T04 and identify prerequisites. Do not infer that a planned task has been assigned or approved merely because it appears in the plan.
+```sh
+make ui-deps
+make check
+```
 
-## Useful contributions now
+Frontend installation is an explicit integrity-locked step with lifecycle scripts
+disabled. Node/npm are not runtime requirements of the binary. See
+[testing](docs/testing.md) for focused checks, Firefox and real KVM gates, and
+[getting started](docs/getting-started.md) for host/guest preparation.
 
-- Review the one-Pod/one-microVM architecture and frontend semantics.
-- Reproduce rootless KVM, networking, and live filesystem-sharing experiments.
-- Identify unsafe assumptions, unsupported Kubernetes fields, or misleading compatibility claims.
-- Design small positive and adversarial fixtures with clear expected behavior.
-- Review dependency, licensing, packaging, and guest-artifact choices.
-- Improve the implementation plan without weakening its acceptance gates.
+Test the failure mode the change can affect:
 
-The Go module and build system cover only the initial scaffold; use `make check` with Go 1.26.8. Do not add empty scaffolding for every planned package or claim that scaffold tests implement a runtime milestone.
+- Pure compilation/planning: valid/invalid input, unknown/degraded semantics,
+  deterministic output, source diagnostics and secret separation.
+- Runtime/state: cancellation, deadlines, crash recovery, idempotency, ownership
+  and concurrent operations.
+- Parsers/storage/networking: adversarial inputs, bounds, traversal/symlinks,
+  permissions, unsafe auth/redirects and failed cleanup.
+- CLI/UI/API: real parsing/contracts, authentication, output safety and lifetime.
 
-## Development workflow
+A fake proves its contract, not KVM/rootless networking/live sharing. Missing
+prerequisites are skips/blockers, never successful hardware evidence. Rebuild
+artifacts actually under test. Performance claims require reproducible commands,
+environment, sample counts and results. Do not weaken a gate to hide a regression.
 
-1. Check the existing work and choose a bounded task with satisfied dependencies.
-2. Create a focused branch if using a pull-request workflow.
-3. Define the behavior and tests before expanding implementation scope.
-4. Make the smallest coherent change, preserving unrelated modifications.
-5. Run applicable checks and record exact results, including skips and failures.
-6. Update relevant documentation, progress, and compatibility entries.
-7. Submit a focused pull request explaining motivation, approach, and evidence.
+For prose-only changes, check links/anchors, Markdown structure, actual command
+syntax, task/ADR consistency and diff cleanliness. Preserve historical evidence
+while keeping current guides free of superseded status claims.
 
-Avoid mixing unrelated refactors, dependency upgrades, and new features. An unavailable hardware prerequisite should be recorded as a blocker rather than bypassed using host containers or privileged setup.
+## Implementation conventions
 
-## Go and dependency guidelines
+Prefer the Go standard library and approved official `golang.org/x/*` modules;
+use the maintained approved YAML parser. New significant dependencies, CGO,
+SDKs, external tools or security-boundary changes need explicit justification
+and an [ADR](docs/adr/README.md). The React/PatternFly build is separately pinned
+under `web/`; it does not change Go dependency policy.
 
-- Prefer the Go standard library and the official `golang.org/x/*` modules identified in the plan.
-- Use the approved maintained YAML parser rather than writing a parser from scratch.
-- New third-party modules, SDKs, CGO requirements, and external tools need a concrete justification and an ADR when they affect architecture or deployment.
-- Keep interfaces narrow, typed, and testable; separate pure compilation/planning from runtime effects.
-- Use contexts, timeouts, bounded concurrency, and explicit cleanup ownership.
-- Make resource creation and deletion safe to retry.
-- Never use untrusted input in a host shell command.
-- Avoid silently ignoring errors, fields, failed ownership changes, or unsupported features.
+Keep interfaces small and typed, blocking operations contextual/bounded, and pure
+planning separate from effects. Host commands use argument arrays, never
+untrusted input in a host shell. Cleanup requires operation ownership and safe
+process/filesystem identity. Unsupported behavior fails visibly rather than
+falling back to privileged execution or host containers.
 
-Record versions, licenses, provenance, and security implications of dependencies. Guest Linux, runc, VMMs, and other external components retain their own licenses; distributing artifacts may require additional notices or source obligations.
+Record versions, licenses, provenance and security implications. External VMM,
+kernel, runc, fonts/icons and build tools retain their own licensing obligations.
 
-## Tests and verification
+## Submitting a change
 
-Documentation-only changes should verify local links, task references, Markdown formatting, and diff cleanliness.
+1. Inspect existing changes and select a bounded task with verified dependencies.
+2. Define the behavior/contracts and positive, negative and failure-path tests.
+3. Implement the smallest coherent change; avoid unrelated refactors/upgrades.
+4. Run applicable checks and record actual results, including failures and skips.
+5. Update current documentation, compatibility and progress; link detailed evidence.
+6. Submit motivation, approach, checks/environment, security/compatibility impact
+   and known limits. Use a focused branch if following a pull-request workflow.
 
-After T00 creates the module, routine Go checks include formatting, `go vet ./...`, `go test ./...`, and supported Linux race tests. Follow the repository's actual build targets when they exist. Do not present planned commands as available tooling.
+Before submission, check that there are no credentials, private runtime state,
+VM images, generated binaries or unrelated changes. Do not infer repository
+ownership, release channels, contacts or URLs. ADR approval is separate from
+implementation evidence; do not mark proposed decisions accepted without review.
 
-Tests should cover:
-
-- Normal operation and invalid input.
-- Unknown or degraded compatibility behavior.
-- Cancellation, deadlines, process exits, and recovery.
-- Secret redaction and unsafe filesystem/network input.
-- Idempotency and concurrency where relevant.
-
-Separate ordinary tests from real KVM integration tests. A fake backend proves a contract but not hardware behavior. A skipped hardware test is not a passed milestone. Benchmark claims require environment information, reproducible commands, sample counts, and results.
-
-## Architecture decisions
-
-Use an [ADR](docs/adr/README.md) for backend selection, state layout changes, new significant dependencies, security-boundary changes, and deviations from the specification. Record alternatives and consequences, not just the selected answer. Do not mark proposed choices accepted without review or evidence required by the plan.
-
-## Pull-request checklist
-
-- [ ] Scope and related task/issue are clear.
-- [ ] Dependencies and acceptance criteria have been checked.
-- [ ] Tests cover success and relevant failure/security paths.
-- [ ] Actual checks, skips, and hardware limitations are reported.
-- [ ] No credentials, local runtime state, VM images, or generated binaries are included.
-- [ ] Documentation and compatibility claims match delivered behavior.
-- [ ] Dependency/license changes and ADRs are included where needed.
-- [ ] Unrelated user changes are preserved.
-- [ ] Progress is updated without overstating completion.
-
-A useful pull-request description has **Problem**, **Approach**, **Tests**, **Compatibility/security impact**, and **Known limitations** sections.
-
-## Commit messages
-
-Use concise English messages that explain intent. Conventional prefixes such as `docs:`, `feat:`, `fix:`, `test:`, and `refactor:` are encouraged but not a substitute for a meaningful description. Keep commits reviewable and avoid history rewriting on shared branches without agreement.
+Use concise English commit messages describing intent. `docs:`, `feat:`, `fix:`,
+`test:` and `refactor:` are useful prefixes, not substitutes for an explanation.
+Commit only when authorized; avoid shared-history rewriting without agreement.
 
 ## Licensing and contribution provenance
 
@@ -100,4 +96,5 @@ This marker does not replace required third-party notices or justify altering a 
 
 ## Security reports
 
-Do not post exploit details or credentials in public issues. Follow [SECURITY.md](SECURITY.md) for the current reporting process.
+Do not post exploit details or credentials in public issues. Follow
+[SECURITY.md](SECURITY.md) for the verified private-reporting process.

@@ -4,7 +4,7 @@ These instructions apply to all work in this repository. They are intended for c
 
 ## 1. Current state
 
-Grillo has an initial Go command scaffold and build/CI tooling, but no workload runtime or release. Do not invent successful builds, existing APIs, compatibility support, or benchmark results.
+Grillo has a working experimental Linux/amd64 QEMU/KVM runtime, Compose/Kubernetes subset frontends, Helm input and an embedded console. There is no packaged release or supported runtime version; T24 product hardening remains open. Use current progress and compatibility records, not historical scaffold descriptions. Never invent checks, APIs, support or benchmark results.
 
 Start with:
 
@@ -37,7 +37,7 @@ Never edit unrelated user changes, perform destructive cleanup without permissio
 
 ## 4. Implementation conventions
 
-Use Go for runtime components, favoring the standard library. Official `golang.org/x/*` modules are allowed where the plan identifies a concrete need. The planned YAML parser is the only initially approved third-party Go dependency. Verify its maintained path/version during T00.
+Use Go for runtime components, favoring the standard library. Official `golang.org/x/*` modules are allowed where the plan identifies a concrete need. The approved maintained YAML parser (`go.yaml.in/yaml/v3`, pinned in `go.mod`) is the only third-party Go module outside that set. Review path/version/provenance when changing its pin.
 
 Do not introduce framework dependencies, SDKs, CGO, or custom cryptography without an explicit need and ADR. External VMM, OCI, Helm, and build tools must be pinned, checked, and documented separately from Go dependencies.
 
@@ -78,7 +78,7 @@ Do not mark `DONE` until all required acceptance evidence exists. Use `BLOCKED` 
 
 ## 7. Verification
 
-Check links, Markdown structure, task consistency, and diffs for documentation changes. T00 establishes the Go module and tooling; run `make check` for routine verification. Its component checks include:
+Check links, Markdown structure, task consistency, and diffs for documentation changes. The Go module and tooling are established. Frontend dependencies require the explicit `make ui-deps` step (see `web/README.md`); run `make check` for routine verification. Its component checks include:
 
 ```sh
 gofmt -l .
@@ -106,7 +106,7 @@ Never report a command as executed unless it was executed, and never omit a fail
 
 ## 8. Progress entry
 
-Record updates in [docs/progress.md](docs/progress.md):
+Record current status and the latest bounded change in [docs/progress.md](docs/progress.md). Archive older delivery entries in `docs/history/implementation-log.md` with corrected relative links; preserve failed gates, corrections, environments and blockers. Keep detailed reproducible evidence in `docs/experiments/`, and link rather than duplicate it throughout guides. Use:
 
 ```text
 Task: Txx — title

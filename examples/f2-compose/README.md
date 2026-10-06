@@ -6,6 +6,9 @@ ordering, and no Docker daemon.
 
 ## Prerequisites
 
+Follow [getting started](../../docs/getting-started.md) for frontend dependencies,
+host tools and development-fixture preparation before building/running.
+
 - Linux with `/dev/kvm` and unprivileged user/network namespaces (see `grillo doctor`).
 - Built binaries: `make build` (produces `bin/grillo`, `bin/grillod`, `bin/grillo-netns`).
 - `pasta` and `qemu-system-x86_64` on `PATH`, and the guest artifacts from

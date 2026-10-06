@@ -19,17 +19,21 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"mime"
 	"net"
 	"net/http"
 	"net/url"
+	"path"
+	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/albertize/grillo/internal/api"
 	"github.com/albertize/grillo/internal/observe"
 )
 
-//go:embed assets/index.html assets/app.js
+//go:embed assets
 var assets embed.FS
 
 // Core is the data the console reads. The API client satisfies it.
@@ -47,11 +51,17 @@ type Bridge struct {
 	core      Core
 	bootstrap string
 	session   string
+	mu        sync.Mutex
+	used      bool
+	expires   time.Time
+	now       func() time.Time
+	streams   chan struct{}
+	execs     chan struct{}
 }
 
 // New returns a bridge with fresh bootstrap and session tokens.
 func New(core Core) *Bridge {
-	return &Bridge{core: core, bootstrap: randomToken(), session: randomToken()}
+	return &Bridge{core: core, bootstrap: randomToken(), session: randomToken(), expires: time.Now().Add(5 * time.Minute), now: time.Now, streams: make(chan struct{}, 8), execs: make(chan struct{}, 4)}
 }
 
 // BootstrapToken is the one-time token placed in the URL fragment.
@@ -64,18 +74,46 @@ func (b *Bridge) URL(addr string) string {
 
 // ListenAndServe runs the console on addr until ctx is canceled.
 func (b *Bridge) ListenAndServe(ctx context.Context, addr string) error {
-	listener, err := net.Listen("tcp", addr)
+	listener, err := Listen(addr)
 	if err != nil {
 		return err
 	}
-	server := &http.Server{Handler: b.Handler(), ReadHeaderTimeout: 5 * time.Second, IdleTimeout: 60 * time.Second}
+	return b.Serve(ctx, listener)
+}
+
+// Listen rejects public bindings before opening a socket. Callers can report
+// the assigned port before serving, including when port zero was requested.
+func Listen(addr string) (net.Listener, error) {
+	host, _, err := net.SplitHostPort(addr)
+	if err != nil || net.ParseIP(host) == nil || !net.ParseIP(host).IsLoopback() {
+		return nil, errors.New("UI requires a numeric loopback listen address")
+	}
+	return net.Listen("tcp", addr)
+}
+
+// Serve owns listener until it returns, but never owns workload lifetime.
+func (b *Bridge) Serve(ctx context.Context, listener net.Listener) error {
+	defer listener.Close()
+	addr, ok := listener.Addr().(*net.TCPAddr)
+	if !ok || !addr.IP.IsLoopback() {
+		return errors.New("UI requires a loopback TCP listener")
+	}
+	server := &http.Server{Handler: b.Handler(), ReadHeaderTimeout: 5 * time.Second, IdleTimeout: 60 * time.Second, BaseContext: func(net.Listener) context.Context { return ctx }}
+	done := make(chan struct{})
+	defer close(done)
 	go func() {
-		<-ctx.Done()
+		select {
+		case <-ctx.Done():
+		case <-done:
+			return
+		}
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 		defer cancel()
-		_ = server.Shutdown(shutdownCtx)
+		if server.Shutdown(shutdownCtx) != nil {
+			_ = server.Close()
+		}
 	}()
-	err = server.Serve(listener)
+	err := server.Serve(listener)
 	if errors.Is(err, http.ErrServerClosed) {
 		return nil
 	}
@@ -85,11 +123,13 @@ func (b *Bridge) ListenAndServe(ctx context.Context, addr string) error {
 // Handler returns the console HTTP handler.
 func (b *Bridge) Handler() http.Handler {
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /", b.handleIndex)
-	mux.HandleFunc("GET /app.js", b.handleAsset("assets/app.js", "application/javascript"))
+	mux.HandleFunc("GET /{$}", b.handleIndex)
+	mux.HandleFunc("GET /assets/", b.handleStatic)
 	mux.HandleFunc("POST /session", b.handleSession)
 	mux.HandleFunc("GET /v1/applications", b.auth(b.handleApplications))
 	mux.HandleFunc("GET /v1/applications/{id}", b.auth(b.handleStatus))
+	mux.HandleFunc("GET /v1/applications/{id}/view", b.auth(b.handleView))
+	mux.HandleFunc("POST /v1/exec", b.auth(b.handleExec))
 	mux.HandleFunc("GET /v1/logs", b.auth(b.handleLogs))
 	mux.HandleFunc("GET /v1/events", b.auth(b.handleEvents))
 	return b.secure(mux)
@@ -97,17 +137,22 @@ func (b *Bridge) Handler() http.Handler {
 
 func (b *Bridge) secure(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Bound response writes too, including captured exec output to a client
+		// that stops reading. SSE refreshes this deadline for each bounded line.
+		_ = http.NewResponseController(w).SetWriteDeadline(time.Now().Add(45 * time.Second))
 		if !loopbackHost(r.Host) {
 			http.Error(w, "forbidden host", http.StatusForbidden)
 			return
 		}
 		if r.Method != http.MethodGet && r.Method != http.MethodHead {
-			if origin := r.Header.Get("Origin"); origin != "" && !loopbackOrigin(origin) {
+			_ = http.NewResponseController(w).SetReadDeadline(time.Now().Add(10 * time.Second))
+			if origin := r.Header.Get("Origin"); origin != "" && !sameOrigin(origin, r.Host) {
 				http.Error(w, "forbidden origin", http.StatusForbidden)
 				return
 			}
 		}
-		w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' data:; base-uri 'none'; form-action 'none'")
+		w.Header().Set("Cache-Control", "no-store")
+		w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'")
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("Referrer-Policy", "no-referrer")
 		w.Header().Set("Cross-Origin-Resource-Policy", "same-origin")
@@ -130,10 +175,20 @@ func (b *Bridge) handleIndex(w http.ResponseWriter, _ *http.Request) {
 	serveAsset(w, "assets/index.html", "text/html; charset=utf-8")
 }
 
-func (b *Bridge) handleAsset(name, contentType string) http.HandlerFunc {
-	return func(w http.ResponseWriter, _ *http.Request) {
-		serveAsset(w, name, contentType)
+// Static reads are confined to immutable embedded build output, not the host
+// filesystem. No directory listing, source maps or arbitrary file access.
+func (b *Bridge) handleStatic(w http.ResponseWriter, r *http.Request) {
+	name := strings.TrimPrefix(r.URL.Path, "/")
+	if !strings.HasPrefix(name, "assets/generated/") {
+		http.NotFound(w, r)
+		return
 	}
+	contentType := mime.TypeByExtension(path.Ext(name))
+	if contentType == "" {
+		http.NotFound(w, r)
+		return
+	}
+	serveAsset(w, name, contentType)
 }
 
 func serveAsset(w http.ResponseWriter, name, contentType string) {
@@ -150,11 +205,23 @@ func (b *Bridge) handleSession(w http.ResponseWriter, r *http.Request) {
 	var request struct {
 		Token string `json:"token"`
 	}
-	if err := json.NewDecoder(io.LimitReader(r.Body, 4096)).Decode(&request); err != nil {
+	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&request); err != nil {
 		http.Error(w, "bad request", http.StatusBadRequest)
 		return
 	}
-	if subtle.ConstantTimeCompare([]byte(request.Token), []byte(b.bootstrap)) != 1 {
+	if err := decoder.Decode(new(any)); err != io.EOF {
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	}
+	b.mu.Lock()
+	accepted := !b.used && b.now().Before(b.expires) && subtle.ConstantTimeCompare([]byte(request.Token), []byte(b.bootstrap)) == 1
+	if accepted {
+		b.used = true
+	}
+	b.mu.Unlock()
+	if !accepted {
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}
@@ -183,21 +250,46 @@ func (b *Bridge) handleStatus(w http.ResponseWriter, r *http.Request) {
 }
 
 func (b *Bridge) handleLogs(w http.ResponseWriter, r *http.Request) {
-	records, err := b.core.ListLogs(r.Context(), 0, r.URL.Query().Get("resource"), r.URL.Query().Get("container"))
+	since, err := cursor(r)
+	if err != nil {
+		http.Error(w, "invalid cursor", http.StatusBadRequest)
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
+	records, err := b.core.ListLogs(ctx, since, r.URL.Query().Get("resource"), r.URL.Query().Get("container"))
 	if err != nil {
 		http.Error(w, "internal", http.StatusInternalServerError)
 		return
+	}
+	// Keep each browser response bounded even when the retained spool is large.
+	if len(records) > 200 {
+		records = records[:200]
 	}
 	writeJSON(w, map[string]any{"records": records})
 }
 
 func (b *Bridge) handleEvents(w http.ResponseWriter, r *http.Request) {
+	since, err := cursor(r)
+	if err != nil {
+		http.Error(w, "invalid cursor", http.StatusBadRequest)
+		return
+	}
+	select {
+	case b.streams <- struct{}{}:
+		defer func() { <-b.streams }()
+	default:
+		http.Error(w, "too many streams", http.StatusTooManyRequests)
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Minute)
+	defer cancel()
 	flusher, ok := w.(http.Flusher)
 	if !ok {
 		http.Error(w, "streaming unsupported", http.StatusInternalServerError)
 		return
 	}
-	stream, err := b.core.Events(r.Context(), 0)
+	stream, err := b.core.Events(ctx, since)
 	if err != nil {
 		http.Error(w, "internal", http.StatusInternalServerError)
 		return
@@ -211,7 +303,16 @@ func (b *Bridge) handleEvents(w http.ResponseWriter, r *http.Request) {
 	scanner := bufio.NewScanner(stream)
 	scanner.Buffer(make([]byte, 0, 64*1024), 1<<20)
 	for scanner.Scan() {
-		fmt.Fprintln(w, scanner.Text())
+		_ = http.NewResponseController(w).SetWriteDeadline(time.Now().Add(5 * time.Second))
+		line := scanner.Text()
+		// EventSource's onmessage handles all runtime kinds; the JSON payload
+		// retains the original kind, including events.gap.
+		if strings.HasPrefix(line, "event:") {
+			line = "event: message"
+		}
+		if _, err := fmt.Fprintln(w, line); err != nil {
+			return
+		}
 		if scanner.Text() == "" {
 			flusher.Flush()
 		}
@@ -238,10 +339,21 @@ func loopbackHost(host string) bool {
 	return name == "127.0.0.1" || name == "localhost" || name == "::1"
 }
 
-func loopbackOrigin(origin string) bool {
+func cursor(r *http.Request) (uint64, error) {
+	value := r.Header.Get("Last-Event-ID")
+	if value == "" {
+		value = r.URL.Query().Get("since")
+	}
+	if value == "" {
+		return 0, nil
+	}
+	return strconv.ParseUint(value, 10, 64)
+}
+
+func sameOrigin(origin, host string) bool {
 	parsed, err := url.Parse(origin)
 	if err != nil {
 		return false
 	}
-	return loopbackHost(parsed.Host)
+	return parsed.Scheme == "http" && parsed.Host == host && parsed.User == nil && parsed.Path == "" && parsed.RawQuery == "" && parsed.Fragment == ""
 }

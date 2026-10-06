@@ -1,6 +1,6 @@
 # Dependency bootstrap
 
-`bootstrap.sh` provisions the **current development and T01 spike dependencies**.
+`bootstrap.sh` provisions **Go/kernel-source inputs and historical Firecracker experiment dependencies**.
 It is not a Grillo runtime installer. Linux/x86_64 downloads and Fedora build
 packages are supported initially; there is no automatic sudo, VM boot, persistent
 service, network change, device-permission change, or shell-profile edit.
@@ -22,7 +22,8 @@ bash scripts/bootstrap.sh --download
 source experiments/artifacts/dependencies-v1/env.sh
 
 go version
-firecracker --version
+firecracker --version  # historical experiment binary, not the runtime backend
+make ui-deps          # requires separately installed Node/npm
 make check
 ```
 
@@ -80,17 +81,17 @@ component obligations.
   boundary keeps Go's `./...` and `mod tidy` traversal out of downloaded sources;
   formatting checks cover project source directories only.
 
-## Not installed yet
+## Outside this bootstrap's scope
 
-The guest init, bootable kernel, and initramfs must still be implemented/built.
-The current `grillo-agent` is not a usable PID 1. No prebuilt distribution rootfs
-is downloaded.
-
-Networking helpers, runc, Helm, and Podman are later task choices. Adding them
-now without reviewed versions, checksums, and runtime contracts would prematurely
-fix the architecture. Alternative VMMs are not installed. Go YAML/x/* runtime
-modules are added by consumers only when needed. The separately pinned audit
-tool is available through the explicit `make vulncheck` target.
+The working runtime uses QEMU/virtiofsd, pasta, a Go PID 1 agent and guest runc;
+this script does not install the complete runtime toolchain or a bootable guest.
+Prepare those prerequisites and build the kernel/initramfs using
+[getting started](../docs/getting-started.md) and [guest inputs](../guest/README.md).
+The current OCI development-fixture export uses explicitly provisioned Podman;
+the native builder itself does not require it. Helm and Node/npm are also
+separate explicit prerequisites. No prebuilt distribution rootfs or alternative
+product backend is installed here. The pinned Go audit tool is invoked only by
+explicit `make vulncheck`.
 
 ## Verification
 

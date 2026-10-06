@@ -29,7 +29,24 @@ build:
 	CGO_ENABLED=0 $(GO) build -trimpath -buildvcs=false -o bin/grillo-netns ./cmd/grillo-netns
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 $(GO) build -trimpath -buildvcs=false -o bin/grillo-agent ./cmd/grillo-agent
 
-check: fmt vet test test-scripts race build audit
+# Frontend downloads are explicit. npm ci verifies the committed integrity lock;
+# lifecycle scripts are disabled (including native-tool post-install downloads).
+ui-deps:
+	cd web && npm ci --ignore-scripts --no-audit --no-fund
+
+ui-build:
+	@test -d web/node_modules/esbuild || { echo 'Frontend dependencies missing: run make ui-deps (explicit locked download).'; exit 1; }
+	cd web && npm run build
+
+ui-check: ui-build
+	cd web && npm test && npm run check
+
+# Embed freshly built assets even when make runs with parallel prerequisites.
+vet test race build test-ui-browser test-ui test-helm: ui-build
+
+.PHONY: ui-deps ui-build ui-check
+
+check: ui-check fmt vet test test-scripts race build audit
 
 audit:
 	$(GO) mod verify
@@ -134,6 +151,16 @@ test-k8s: t07-guest
 test-helm: t07-guest
 	go test -tags kvm -count=1 -v -timeout 360s -run 'TestKVMHelmApplication|TestKVMHelmScenarioC' ./internal/executor/
 	go test -tags kvm -count=1 -v -timeout 300s -run TestKVMDaemonRemediation ./cmd/grillod/
+
+# T23: real Firefox rendering fixtures; no downloaded browser/driver packages.
+test-ui-browser:
+	go test -tags browser -count=1 -v -timeout 90s -run TestFirefoxConsole ./internal/ui/
+
+# T23: actual CLI UI + daemon + real KVM workload, exec, metrics and lifetime.
+test-ui: t07-guest
+	go test -tags kvm -count=1 -v -timeout 360s -run TestKVMDaemonUI ./cmd/grillod/
+
+.PHONY: test-ui test-ui-browser
 
 # T18b native builder: real RUN execution inside a sandboxed guest.
 # Missing /dev/kvm or guest artifacts is a documented SKIP.

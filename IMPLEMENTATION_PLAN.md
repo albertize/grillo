@@ -1,12 +1,12 @@
 # Grillo — Implementation Plan
 
-**Status:** planning document, not an implemented runtime.
+**Status:** delivery contracts and acceptance criteria, not a current implementation inventory. The experimental runtime is implemented through T23; [progress](docs/progress.md) records actual completion and the remaining T24 gate.
 
 **Normative source:** [Project specification](grillo-project-specification.md), v0.1.
 
-**Audience:** coding agents, including LLMs with limited context and planning capacity.
+**Audience:** contributors implementing bounded tasks. For setup and everyday use, start with the [README](README.md) and [guides](docs/getting-started.md).
 
-**Language:** Go for the CLI, runtime, guest agent, and UI server; framework-free HTML/CSS/JavaScript for the browser.
+**Language:** Go for the CLI, runtime, guest agent, and UI server; React/PatternFly for the browser ([ADR 0008](docs/adr/0008-patternfly-react-console.md), explicit user-requested replacement of the original framework-free choice).
 
 ## 1. How to use this document
 
@@ -14,7 +14,7 @@ Implement **one task at a time**, following the dependencies in section 15. Do n
 
 At the beginning of each session:
 
-1. Read [AGENT.md](AGENT.md), this plan, the relevant specification sections, and [docs/progress.md](docs/progress.md).
+1. Read [AGENTS.md](AGENTS.md), this plan, the relevant specification sections, and [docs/progress.md](docs/progress.md).
 2. Check `git status`; never overwrite unrelated user changes.
 3. Select the first unfinished task whose dependencies are satisfied.
 4. Read existing code and contracts before editing them.
@@ -54,7 +54,7 @@ Rootless means host processes run with the developer's UID, normal workflows do 
 
 **Fixed:** shared versioned IR; one Pod per microVM; local Unix-socket API; per-user state; secrets separated from public views; no frontend-to-VMM coupling; offline `plan` without runtime mutations; deterministic diffs; optional UI that does not own workload lifetime.
 
-**Candidate backend:** Firecracker as an external process, using its HTTP API over a Unix socket and a Grillo-controlled Linux kernel and guest image. This is a candidate, not proven feasibility: it needs TAP networking and does not provide virtio-fs as a general bind-mount solution. **T01–T03 must validate networking and storage together before confirming the backend.** If these constraints prevent a rootless product, compare QEMU `microvm` or a backend with suitable filesystem sharing. Confirm one backend through an ADR and adjust the adapter rather than developing three implementations.
+**Implemented backend:** QEMU `microvm` with virtiofsd, following the real T01–T03 comparison recorded in [ADR 0005](docs/adr/0005-platform-qemu-virtiofsd.md) (formal status remains Proposed). Firecracker was the initial candidate, but lacks the shared-filesystem device needed for live development binds. The original feasibility acceptance criteria below remain applicable evidence requirements, not permission to introduce another adapter.
 
 **Guest:** Go PID 1 agent and an external `runc` binary inside the guest for namespaces, capabilities, cgroups, and OCI process isolation. Guest-side runc does not imply host Docker/containerd. Do not build a security-sensitive OCI runtime from scratch.
 
@@ -75,7 +75,7 @@ Additional modules are allowed only where needed:
 | `golang.org/x/sys/unix` | vsock, namespaces, ioctl, peer credentials, Linux primitives | Official Go module; confined to Linux adapters |
 | `golang.org/x/term` | Raw terminal mode and restoration for CLI sessions | Official Go module; keep out of core packages |
 | `golang.org/x/net/dns/dnsmessage` | DNS encoding and decoding | Official Go module; server and policy remain Grillo code |
-| `go.yaml.in/yaml/v3` | Compose/Kubernetes YAML, nodes, source locations | Only planned third-party module; verify maintained module path and version in T00 |
+| `go.yaml.in/yaml/v3` | Compose/Kubernetes YAML, nodes, source locations | Approved third-party Go module; maintained path/version established by T00 and pinned in go.mod |
 
 `golang.org/x/*` modules are official Go modules but **not** part of the standard library. Do not initially add Cobra, Gin, GORM, client-go, compose-go, or the Helm SDK. Do not write a homemade YAML parser. Unsupported OCI compression such as zstd should initially produce a structured error; add a library only with an ADR and tests. Commit `go.sum` and inspect `go list -m all`, licenses, and vulnerabilities.
 
@@ -85,7 +85,7 @@ Reducing Go modules does not eliminate system dependencies. Publish versions, ch
 
 - The selected VMM, guest kernel, guest runc, and rootfs construction tools.
 - Any selected rootless networking helper, such as slirp4netns or pasta, and required namespace/filesystem tools.
-- Helm for charts and rootless Podman as the first optional image builder.
+- Helm for charts; rootless Podman only as an explicit optional builder and as current development-fixture export tooling.
 - Benchmark and integration tools, separately from runtime requirements.
 
 Never silently download and execute tools. `doctor` identifies missing versions; any future `setup` operation requires consent. Verify guest artifacts before boot.
@@ -99,17 +99,17 @@ cmd/grillo-agent/            guest PID 1 and container control
 internal/model/              versioned IR and pure validation
 internal/source/             source detection, source maps, diagnostics
 internal/frontend/compose/   parsing, interpolation, compilation
-internal/frontend/kube/      Kubernetes objects to IR
+internal/frontend/kubernetes/ Kubernetes objects to IR
 internal/frontend/helm/      Helm invocation to manifests to kube frontend
 internal/plan/               normalization, hashing, diff, action DAG
-internal/core/               shared use cases and operation authorization
+internal/executor/           native runtime effects behind reconciler contracts
 internal/reconcile/          desired/observed state, retries, recovery
 internal/state/              JSON store, locks, migrations, journal
 internal/secrets/            private data and public projections
 internal/oci/                registry, CAS, unpacking, image config, GC
-internal/build/              external builder adapter
+internal/build/              native guest build; explicit optional Podman adapter
 internal/sandbox/            VMM-independent contracts
-internal/backend/firecracker/ provisional name; confirm through ADR
+internal/backend/qemu/       implemented QEMU/virtiofsd adapter (ADR 0005)
 internal/guestproto/          host/guest protocol and framing
 internal/guest/              PID 1, runc adapter, probes, mounts, streams
 internal/network/            IPAM, rootless transport, DNS, Service proxy
@@ -118,7 +118,7 @@ internal/observe/            events, log spool, metrics
 internal/api/                Unix /v1 server, DTOs, client, streams
 internal/ui/                 loopback bridge and embedded assets
 internal/platform/linux/     syscalls, process identity, namespaces, vsock
-web/                         static HTML/CSS/JavaScript
+web/                         React/PatternFly source, npm integrity lock, local build
 api/                         API and streaming specifications
 guest/                       kernel config, image build, artifact manifest
 scripts/                     build/check scripts, not business logic
@@ -128,7 +128,7 @@ internal/testutil/            fake clock/backend/registry and fixtures
 docs/                        ADRs, security, compatibility, progress
 ```
 
-Use one Go module. Do not create empty packages or speculative frameworks. The final module path depends on the repository URL; initially use a consistent local identifier and document its replacement rather than inventing a remote organization.
+Use one Go module (`github.com/albertize/grillo`, as established by T00). Do not create empty packages or speculative frameworks. This layout describes boundaries rather than promising that every indicative package exists; see [current architecture](docs/architecture.md) for implemented components.
 
 Dependency direction: frontend → model; plan → model; reconcile → state/sandbox/network/storage contracts; adapters → contracts; API → core; CLI/UI → API. `model` must not import process, HTTP, or frontend packages. Core tests must not need KVM.
 
@@ -282,7 +282,7 @@ Use locked mark-and-sweep GC with pins for desired images, in-flight operations,
 
 ### 7.2 Builds
 
-First adapter: rootless `podman build`, followed by OCI export and cache import. Verify namespace availability and export format; do not assume a Docker daemon. Keep the adapter narrow so BuildKit can be added later. Use argument arrays, explicit working directories, deadlines, process-group cancellation, and bounded output. `plan` describes builds without running them. Dockerfiles are untrusted code: execute builds only through `up` or an explicit build command. Keep build secrets out of printed arguments; reject unsupported secret mechanisms.
+The native builder is the default and required path ([ADR 0006](docs/adr/0006-native-build-system.md), specification §23 and T18/T18b). Parse the supported Dockerfile/context subset in-process and execute RUN only inside a build guest; publish verified OCI content. Copy-only builds need no guest. Rootless Podman is explicit opt-in, never an automatic fallback. Use argument arrays, deadlines, cancellation and bounded output; reject unsupported secret mechanisms. `plan` never builds, and current `up` does not automatically execute Compose build definitions. Future wiring must preserve explicit execution consent and the existing security boundary.
 
 ## 8. Networking and discovery
 
@@ -412,9 +412,17 @@ Commands: up/down/plan/ps/status/logs/shell/exec/restart/inspect/events/ui/docto
 
 `up` waits for operation acceptance; `--wait` waits for readiness with a deadline. Define/document defaults and test help/examples. Failures print an operation ID. `shell` uses an available shell and explains distroless-image limitations; never silently install a shell. Propagate exec exit status. Common CLI codes: 0 success, 1 runtime failure, 2 input/compatibility failure, 3 missing prerequisites, 4 timeout. JSON output includes the cause.
 
-### 11.3 Secure UI without frontend dependencies
+### 11.3 Secure embedded UI
 
-Embed assets, use fetch and SSE EventSource. Views cover overview, workloads/Pods, VM boundaries, logs/events, metrics, mounts/routes, diagnostics, and config/secret metadata. Generate SVG topology from actual data, marking inferred relationships. Render logs using text nodes, never HTML. No CDN dependencies.
+The original framework-free choice is superseded for implementation by the
+explicit user request recorded in [ADR 0008](docs/adr/0008-patternfly-react-console.md).
+React/PatternFly and a pinned build-only esbuild pipeline live under `web/`;
+Node/npm are development/build tools, not runtime dependencies. Dependency fetch
+is explicit (`make ui-deps`, integrity lock, installation scripts disabled).
+Build/check prepares embedded assets and verifies them against source; no CDN or
+dev server is needed. Keep the Go dependency policy and shared API boundaries.
+
+Embed assets, use fetch and SSE EventSource. Views cover overview, workloads/Pods, VM boundaries, logs/events, metrics, mounts/routes, diagnostics, and config/secret metadata. Generate SVG topology from actual data, marking inferred relationships. Render logs using escaped JSX text, never raw HTML or `dangerouslySetInnerHTML`. No CDN dependencies.
 
 Bind the bridge to `127.0.0.1:9090` or an explicitly reported available port. Generate a short-lived local bootstrap token, pass it via URL fragment/browser bootstrap, and exchange it for an HttpOnly SameSite cookie. Never log tokens. Check Host/Origin, protect mutations against CSRF, enforce CSP, and keep CORS closed: localhost alone does not prevent hostile websites or DNS rebinding. Public binding is disabled in MVP; future exposure requires TLS/auth or a deliberate insecure override as described in the specification. Initially omit UI secret reveal; explicit CLI reveal must audit the action without logging its value.
 
@@ -793,9 +801,9 @@ Pure portions of T04/T17/T20 can progress offline while hardware is unavailable,
 | §32: open questions | T01–T03, T25; evidence-backed ADRs |
 | §§33–34: success | T24/T26 and T27 comparative measurements |
 
-## 17. LLM delivery template
+## 17. Delivery records
 
-Update `docs/progress.md` with an entry like:
+Keep current status/latest delivery in `docs/progress.md`; archive older entries with intact evidence under `docs/history/`. Use:
 
 ```text
 Task: Txx — title
@@ -810,8 +818,6 @@ Known limitations:
 Next task:
 ```
 
-Suggested implementer prompt:
-
-> Read AGENT.md, IMPLEMENTATION_PLAN.md, docs/progress.md, and the specification sections relevant to Txx. Implement only Txx while respecting contracts and dependencies. Do not introduce unapproved third-party libraries, host-container fallbacks, or simulated functionality. Write positive and negative tests, run applicable checks, and update progress and compatibility documentation. If a hardware or semantic gate cannot be verified, mark it BLOCKED with evidence instead of claiming completion. Summarize changed files, checks, and the next step.
+The [agent workflow](AGENTS.md) defines session handling and verification; do not duplicate historical delivery notes here.
 
 **Final rule:** judge the project by contracts it actually preserves and limitations it clearly reports, not by the number of resource kinds its parser accepts.

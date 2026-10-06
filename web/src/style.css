@@ -1,0 +1,50 @@
+/* SPDX-License-Identifier: Apache-2.0 */
+html, body, #root { height: 100%; min-height: 100%; }
+body { margin: 0; }
+.gr-page { height: 100vh; --pf-v6-c-page__sidebar--Width: 15.5rem; }
+.gr-masthead { background: #102b35; color: #fff; border-bottom: 3px solid #32b1a3; }
+.gr-masthead .pf-v6-c-button { color: #fff; }
+.gr-release .pf-v6-c-label__text { color: #d5e7ec; }
+.gr-masthead .pf-v6-c-masthead__logo { display: flex; align-items: center; gap: .65rem; text-decoration: none; }
+.gr-brand-mark { display: inline-flex; align-items: center; justify-content: center; height: 34px; width: 34px; color: #102b35; background: #7de0bf; border-radius: 10px; font-weight: 800; font-size: 28px; font-family: "Red Hat Display", sans-serif; }
+.gr-brand { color: #fff; font-weight: 700; font-size: 27px; letter-spacing: -.6px; }
+.gr-masthead-caption { flex: 1; font-size: 14px; color: #c1d6df; }
+.gr-sidebar-footer { margin: 2rem 1rem 1rem; padding-top: 1.5rem; border-top: 1px solid #d9e2e6; font-size: 12px; color: #5b6c74; }
+.gr-sidebar-footer p { margin-top: .7rem; }
+.gr-page-heading { border-bottom: 1px solid #dde5e9; }
+.gr-page-eyebrow { font-size: 11px; letter-spacing: 1.8px; color: #63767f; font-weight: 700; margin-bottom: .5rem; }
+.gr-title-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; }
+.gr-subtitle { color: #536873; margin: .6rem 0 .9rem; max-width: 70rem; }
+.gr-muted { color: #5b6c74; font-size: 13px; line-height: 1.65; overflow-wrap: anywhere; }
+.gr-stack { display: flex; flex-direction: column; gap: 1.5rem; }
+.gr-stat { height: 100%; border-top: 3px solid #168a83; }
+.gr-stat-heading { display: flex; align-items: center; gap: .75rem; color: #47646e; font-size: 13px; font-weight: 600; }
+.gr-stat-heading svg { color: #168a83; font-size: 18px; }
+.gr-stat-value { font-size: 34px; line-height: 1.7; font-family: "Red Hat Display", sans-serif; font-weight: 600; color: #123744; }
+.gr-status-line { display: flex; flex-wrap: wrap; gap: .75rem; margin-bottom: 1.5rem; }
+.gr-route, .gr-activity { padding: .75rem 0; border-bottom: 1px solid #e8eef1; }
+.gr-route:last-child, .gr-activity:last-child { border-bottom: none; }
+.gr-route a { display: inline-block; margin-top: .5rem; }
+.gr-container-details { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 1.5rem; margin-top: 1.5rem; padding-top: 1.5rem; border-top: 1px solid #dde5e9; }
+.gr-container-details p { margin: .5rem 0; }
+.gr-tab-content { padding-top: 1.5rem; }
+.gr-actions { display: flex; align-items: center; flex-wrap: wrap; gap: .75rem; }
+.gr-output { background: #10232d; color: #d5e7ec; padding: 1.25rem; border-radius: 5px; font-family: "Red Hat Mono", monospace; font-size: 12px; line-height: 1.8; white-space: pre-wrap; overflow-wrap: anywhere; overflow: auto; min-height: 8rem; max-height: 35rem; }
+.gr-log-output { min-height: 20rem; }
+.gr-topology { overflow: auto; padding: 1rem 0; }
+.gr-topology svg { width: 100%; min-width: 640px; max-height: 700px; }
+.gr-topology rect { fill: #f4fafb; stroke: #80b3bb; stroke-width: 1.5; }
+.gr-graph-edge { fill: none; stroke: #9ab2bf; stroke-width: 2; }
+.gr-graph-heading { font-size: 13px; font-weight: 700; fill: #45626f; }
+.gr-graph-name { font-size: 13px; font-weight: 600; fill: #123744; }
+.gr-graph-detail { font-size: 11px; fill: #5b6c74; }
+.gr-loading { display: flex; justify-content: center; align-items: center; min-height: 16rem; }
+.gr-fatal { margin: 3rem; }
+.pf-v6-c-description-list { margin-bottom: 1.5rem; }
+.pf-v6-c-table td { overflow-wrap: anywhere; }
+.pf-v6-c-table td .pf-v6-c-label { margin: .2rem; }
+@media (max-width: 767px) {
+  .gr-masthead-caption { display: none; }
+  .gr-title-row { flex-direction: column; }
+  .gr-stat-value { font-size: 28px; }
+}

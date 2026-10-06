@@ -313,6 +313,13 @@ func (c *Client) Status(ctx context.Context, application string) ([]ContainerSta
 	return out.Containers, err
 }
 
+// View returns an allowlisted resource and metric snapshot.
+func (c *Client) View(ctx context.Context, application string) (observe.ApplicationView, error) {
+	var out observe.ApplicationView
+	err := c.do(ctx, http.MethodGet, "/v1/applications/"+url.PathEscape(application)+"/view", nil, &out)
+	return out, err
+}
+
 // Routes returns the daemon's actual published loopback fallback endpoints.
 func (c *Client) Routes(ctx context.Context, application string) ([]RouteStatus, error) {
 	var out struct {
