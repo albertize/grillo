@@ -187,7 +187,7 @@ func TestStoppedAppPlansTeardown(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := []ActionKind{ActionDrain, ActionStopSandbox, ActionDeleteSandbox}
+	want := []ActionKind{ActionDrain, ActionStopSandbox, ActionDeleteSandbox, ActionShutdownNetwork}
 	got := actionKinds(p)
 	if len(got) != len(want) {
 		t.Fatalf("actions = %v, want %v", got, want)

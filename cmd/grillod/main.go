@@ -311,10 +311,10 @@ func (c *core) Apply(ctx context.Context, app model.Application) (reconcile.Resu
 	if err := ctx.Err(); err != nil {
 		return reconcile.Result{}, err
 	}
-	if err := executor.ValidateDesired(app); err != nil {
-		return reconcile.Result{}, err
+	if c.exec == nil {
+		return reconcile.Result{}, fmt.Errorf("native executor is not configured")
 	}
-	if diagnostics := model.Validate(app, model.FullCapabilities()); diagnostics.HasErrors() {
+	if diagnostics := c.exec.ValidateApplication(app); diagnostics.HasErrors() {
 		return reconcile.Result{}, fmt.Errorf("invalid application: %s", diagnostics.Errors()[0].Message)
 	}
 	if c.persistent != nil {
@@ -377,6 +377,17 @@ func (c *core) Status(ctx context.Context, application string) ([]api.ContainerS
 		out = append(out, api.ContainerStatus{Container: state.Container, State: state.State, ExitCode: state.ExitCode})
 	}
 	return out, nil
+}
+
+func (c *core) Routes(ctx context.Context, application string) ([]api.RouteStatus, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	var result []api.RouteStatus
+	for _, route := range c.exec.Routes(application) {
+		result = append(result, api.RouteStatus{Hostname: route.Hostname, Path: route.Path, PathType: route.PathType, Endpoint: route.Endpoint})
+	}
+	return result, nil
 }
 
 func (c *core) ExecStream(ctx context.Context, application, container string, args []string, stdout, stderr io.Writer) (int, error) {

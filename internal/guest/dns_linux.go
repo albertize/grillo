@@ -25,6 +25,9 @@ func (a *Agent) startDNS(cfg *guestproto.DNSConfig) error {
 	if cfg == nil {
 		return nil
 	}
+	if cfg.Server != "" {
+		return writeResolver(cfg.Server, cfg.Search)
+	}
 	resolver := network.NewResolver(network.ResolverConfig{ClusterDomain: cfg.ClusterDomain, Search: cfg.Search})
 	for _, record := range cfg.Records {
 		if err := resolver.UpsertService(record.Name, record.Namespace, record.IPs, nil); err != nil {
@@ -72,17 +75,23 @@ func writeNameservers(nameservers []string) error {
 	return os.WriteFile(resolvConfPath, []byte(builder.String()), 0o644)
 }
 
-func writeResolvConf(search []string) error {
+func writeResolvConf(search []string) error { return writeResolver("127.0.0.1", search) }
+
+func resolverConfig(server string, search []string) string {
 	var builder strings.Builder
-	builder.WriteString("nameserver 127.0.0.1\n")
+	builder.WriteString("nameserver " + server + "\n")
 	if len(search) > 0 {
 		builder.WriteString("search " + strings.Join(search, " ") + "\n")
 	}
 	builder.WriteString("options ndots:5\n")
+	return builder.String()
+}
+
+func writeResolver(server string, search []string) error {
 	if err := os.MkdirAll("/etc", 0o755); err != nil {
 		return err
 	}
-	return os.WriteFile(resolvConfPath, []byte(builder.String()), 0o644)
+	return os.WriteFile(resolvConfPath, []byte(resolverConfig(server, search)), 0o644)
 }
 
 // SetupNetwork configures the sandbox interface from the spec. It uses busybox

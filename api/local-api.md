@@ -22,7 +22,7 @@ stderr.
 | --- | --- |
 | `GET /v1/version` | daemon version and API version |
 | `GET /v1/health` | liveness and uptime |
-| `GET /v1/applications/{id}` | application container status |
+| `GET /v1/applications/{id}` | container status and public route fallback endpoints |
 | `POST /v1/exec` | run a command in a container and return captured output |
 | `POST /v1/applications` | submit a desired application; `202` + `operationId` |
 | `POST /v1/applications/{id}/down` | stop an application; `?volumes=true` deletes owned managed volumes |
@@ -56,6 +56,12 @@ daemon logs a warning. `builder: "podman"` selects rootless Podman as an explici
 opt-in accelerator; it is never selected automatically. Builder output streams
 into the event stream (`kind=build`, `reason=progress`). A missing guest artifact
 or a missing Podman binary is reported as an actionable error, not a fallback.
+
+Application status includes `routes` when the runtime provides them. Each public
+route contains only `hostname`, `path`, `pathType` and the actual loopback HTTP
+`endpoint`; no guest specs or secret material are returned. `grillo inspect`
+includes this inventory. Fallback ports are allocated atomically by listening
+on `127.0.0.1:0`; `/etc/hosts` is never modified.
 
 ## Asynchronous operations
 

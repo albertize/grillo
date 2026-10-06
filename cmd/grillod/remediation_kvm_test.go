@@ -42,18 +42,19 @@ func TestKVMDaemonRemediation(t *testing.T) {
 			t.Skipf("missing artifact: %s", p)
 		}
 	}
-	for _, tool := range []string{"pasta", "qemu-system-x86_64", "ip", "nft"} {
+	for _, tool := range []string{"pasta", "qemu-system-x86_64", "ip", "nft", "helm"} {
 		if _, err := exec.LookPath(tool); err != nil {
 			t.Skipf("missing %s", tool)
 		}
 	}
-	work, err := os.MkdirTemp("", "grillo-review-")
+	work, err := os.MkdirTemp("", "g16-")
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { os.RemoveAll(work) })
 	daemon, helper := filepath.Join(work, "grillod"), filepath.Join(work, "grillo-netns")
-	for _, b := range []struct{ path, pkg string }{{daemon, "./cmd/grillod"}, {helper, "./cmd/grillo-netns"}} {
+	cli := filepath.Join(work, "grillo")
+	for _, b := range []struct{ path, pkg string }{{daemon, "./cmd/grillod"}, {helper, "./cmd/grillo-netns"}, {cli, "./cmd/grillo"}} {
 		cmd := exec.Command("go", "build", "-o", b.path, b.pkg)
 		cmd.Dir = root
 		if out, err := cmd.CombinedOutput(); err != nil {
@@ -68,7 +69,7 @@ func TestKVMDaemonRemediation(t *testing.T) {
 		}
 		env = append(env, v.name+"="+dir)
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 150*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 240*time.Second)
 	defer cancel()
 	socket := filepath.Join(work, "run/grillo/grillod.sock")
 	client := api.NewClient(socket)
@@ -92,7 +93,7 @@ func TestKVMDaemonRemediation(t *testing.T) {
 		exited = make(chan error, 1)
 		cmd := proc
 		done := exited
-		go func() { done <- cmd.Wait(); f.Close() }()
+		go func() { done <- cmd.Wait(); close(done); f.Close() }()
 		for {
 			if _, err := client.Health(ctx); err == nil {
 				return
@@ -174,6 +175,61 @@ func TestKVMDaemonRemediation(t *testing.T) {
 		}
 	}
 	waitOp(client.Build(ctx, build.Request{ContextDir: contextDir, Reference: "review:local"}))
+	t.Run("helm-cli-plan-up-inspect-down", func(t *testing.T) {
+		values := filepath.Join(work, "helm-values.yaml")
+		if err := os.WriteFile(values, []byte("image: review:local\nmessage: cli-config\ntoken: synthetic-cli-private-token\n"), 0600); err != nil {
+			t.Fatal(err)
+		}
+		chart := filepath.Join(root, "examples/helm/scenario-c")
+		runCLI := func(args ...string) string {
+			t.Helper()
+			cmd := exec.CommandContext(ctx, cli, args...)
+			cmd.Env = env
+			cmd.Dir = root
+			out, err := cmd.CombinedOutput()
+			if strings.Contains(string(out), "synthetic-cli-private-token") {
+				t.Fatal("CLI leaked private secret")
+			}
+			if err != nil {
+				t.Fatalf("CLI %s failed: %v %s", args[0], err, out)
+			}
+			return string(out)
+		}
+		planOutput := runCLI("plan", chart, "--release", "scenario-c", "-f", values, "--output=json")
+		if !strings.Contains(planOutput, "\"applicable\": true") {
+			t.Fatal("supported chart plan not applicable")
+		}
+		defer func() { waitOp(client.Down(ctx, "scenario-c", true)) }()
+		runCLI("up", chart, "--release", "scenario-c", "-f", values)
+		states, err := client.Status(ctx, "scenario-c")
+		if err != nil || len(states) != 7 {
+			t.Fatalf("wrong real chart container inventory: %d %v", len(states), err)
+		}
+		counts := map[string]int{}
+		for _, state := range states {
+			counts[state.Container]++
+		}
+		if counts["api"] != 2 || counts["sidecar"] != 2 || counts["init"] != 2 || counts["storage"] != 1 {
+			t.Fatalf("wrong Pod/init topology: %v", counts)
+		}
+		inspection := runCLI("inspect", "scenario-c")
+		if !strings.Contains(inspection, "http://127.0.0.1:") {
+			t.Fatal("inspect omitted actual Ingress fallback")
+		}
+		code, out, _, err := client.Exec(ctx, "scenario-c", "storage", []string{"/bin/busybox", "wget", "-T", "3", "-q", "-O", "-", "http://scenario-c-api:80/"})
+		if err != nil || code != 0 || strings.TrimSpace(out) != "cli-config" {
+			t.Fatalf("CLI-applied Service failed: code=%d err=%v", code, err)
+		}
+		runCLI("up", chart, "--release", "scenario-c", "-f", values)
+		runCLI("down", "scenario-c", "--volumes")
+		states, err = client.Status(ctx, "scenario-c")
+		if err != nil || len(states) != 0 {
+			t.Fatal("CLI down left containers", err)
+		}
+	})
+	if t.Failed() {
+		return
+	}
 	manifest := `apiVersion: v1
 kind: PersistentVolumeClaim
 metadata: {name: claim}
@@ -267,8 +323,12 @@ spec:
 	<-exited
 	start()
 	names, err := client.Applications(ctx)
-	if err != nil || len(names) != 1 || names[0] != "review" {
+	if err != nil || len(names) != 2 || names[0] != "review" || names[1] != "scenario-c" {
 		t.Fatalf("recovery inventory: %v %v", names, err)
+	}
+	stopped, err := client.Status(ctx, "scenario-c")
+	if err != nil || len(stopped) != 0 {
+		t.Fatal("stopped CLI chart restarted", err)
 	}
 	run("worker", "test ! -e /private-marker; /bin/busybox grep persistent /data/marker")
 	run("web", "test ! -e /private-marker")

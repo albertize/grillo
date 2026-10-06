@@ -196,6 +196,12 @@ func (r *Reconciler) Apply(ctx context.Context, desired model.Application) (Resu
 	for i := range actions.Actions {
 		action := actions.Actions[i]
 		operation := operationID(application, revision, action)
+		if !observed.NetworkPending && (action.Kind == plan.ActionCreateSandbox || action.Kind == plan.ActionUpdateEndpoints) {
+			observed.NetworkPending = true
+			if err := r.Store.Save(application, observed); err != nil {
+				return result, err
+			}
+		}
 		if err := r.executeWithRetry(ctx, application, action, operation); err != nil {
 			result.Failed = &action
 			_ = r.Store.Save(application, observed)
@@ -334,6 +340,9 @@ func advance(observed plan.Observed, action plan.Action) plan.Observed {
 		delete(observed.Sandboxes, action.Sandbox.ID)
 	case plan.ActionDeleteVolume:
 		delete(observed.Volumes, action.Volume)
+	case plan.ActionShutdownNetwork:
+		observed.RoutesHash = ""
+		observed.NetworkPending = false
 	}
 	return observed
 }

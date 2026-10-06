@@ -25,7 +25,7 @@ var registry = map[string]supportEntry{
 	"services.*.expose":         {source.Supported, "metadata-only exposed ports"},
 	"services.*.volumes":        {source.Supported, "named, anonymous, and project-relative bind volumes"},
 	"services.*.networks":       {source.Supported, "logical network attachments"},
-	"services.*.healthcheck":    {source.Supported, "mapped to a liveness probe; it does not restart the container"},
+	"services.*.healthcheck":    {source.Supported, "translated to a liveness probe; runtime restart-on-unhealthy differs from Compose health semantics"},
 	"services.*.depends_on":     {source.Degraded, "startup ordering only, not a readiness guarantee"},
 	"services.*.restart":        {source.Supported, "restart policy"},
 	"services.*.deploy":         {source.Supported, "replicas and representable resource limits"},
@@ -65,6 +65,21 @@ var registry = map[string]supportEntry{
 
 	"volumes.*":  {source.Supported, "named volume"},
 	"networks.*": {source.Supported, "logical network"},
+}
+
+// SupportEntries snapshots the same registry consulted by Compile. This is
+// compiler classification, not evidence that every runtime semantic is wired.
+func SupportEntries() []source.RegisteredFeature {
+	entries := make([]source.RegisteredFeature, 0, len(registry))
+	for field, support := range registry {
+		entries = append(entries, source.RegisteredFeature{
+			Format: "compose", Version: "Compose Specification (F2 subset)",
+			Scope: "field", Field: field, Milestone: "F2 (compiler)", State: support.State,
+			Default: "not specified by this registry", Consequence: support.Consequence,
+			Fixtures: []string{"internal/frontend/compose/testdata/full.yaml", "internal/frontend/compose/compile_test.go"},
+		})
+	}
+	return entries
 }
 
 // supportFor resolves a field path, expanding a concrete key to `*`.

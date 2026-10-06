@@ -1,0 +1,1686 @@
+{
+  "schemaVersion": 1,
+  "scope": "compiler registries only; experimental, not runtime acceptance",
+  "entries": [
+    {
+      "format": "compose",
+      "version": "Compose Specification (F2 subset)",
+      "scope": "field",
+      "field": "networks.*",
+      "milestone": "F2 (compiler)",
+      "state": "SUPPORTED",
+      "default": "not specified by this registry",
+      "consequence": "logical network",
+      "fixtures": [
+        "internal/frontend/compose/testdata/full.yaml",
+        "internal/frontend/compose/compile_test.go"
+      ]
+    },
+    {
+      "format": "compose",
+      "version": "Compose Specification (F2 subset)",
+      "scope": "field",
+      "field": "services.*.build",
+      "milestone": "F2 (compiler)",
+      "state": "VALIDATE_ONLY",
+      "default": "not specified by this registry",
+      "consequence": "build context is delegated to the image builder; the IR references the resulting image tag",
+      "fixtures": [
+        "internal/frontend/compose/testdata/full.yaml",
+        "internal/frontend/compose/compile_test.go"
+      ]
+    },
+    {
+      "format": "compose",
+      "version": "Compose Specification (F2 subset)",
+      "scope": "field",
+      "field": "services.*.cap_add",
+      "milestone": "F2 (compiler)",
+      "state": "DEGRADED",
+      "default": "not specified by this registry",
+      "consequence": "additional capabilities are recorded but not guaranteed to be applied",
+      "fixtures": [
+        "internal/frontend/compose/testdata/full.yaml",
+        "internal/frontend/compose/compile_test.go"
+      ]
+    },
+    {
+      "format": "compose",
+      "version": "Compose Specification (F2 subset)",
+      "scope": "field",
+      "field": "services.*.cap_drop",
+      "milestone": "F2 (compiler)",
+      "state": "DEGRADED",
+      "default": "not specified by this registry",
+      "consequence": "dropped capabilities are recorded but not guaranteed to be applied",
+      "fixtures": [
+        "internal/frontend/compose/testdata/full.yaml",
+        "internal/frontend/compose/compile_test.go"
+      ]
+    },
+    {
+      "format": "compose",
+      "version": "Compose Specification (F2 subset)",
+      "scope": "field",
+      "field": "services.*.command",
+      "milestone": "F2 (compiler)",
+      "state": "SUPPORTED",
+      "default": "not specified by this registry",
+      "consequence": "process arguments",
+      "fixtures": [
+        "internal/frontend/compose/testdata/full.yaml",
+        "internal/frontend/compose/compile_test.go"
+      ]
+    },
+    {
+      "format": "compose",
+      "version": "Compose Specification (F2 subset)",
+      "scope": "field",
+      "field": "services.*.configs",
+      "milestone": "F2 (compiler)",
+      "state": "UNSUPPORTED",
+      "default": "not specified by this registry",
+      "consequence": "advanced Compose configs are not supported",
+      "fixtures": [
+        "internal/frontend/compose/testdata/full.yaml",
+        "internal/frontend/compose/compile_test.go"
+      ]
+    },
+    {
+      "format": "compose",
+      "version": "Compose Specification (F2 subset)",
+      "scope": "field",
+      "field": "services.*.container_name",
+      "milestone": "F2 (compiler)",
+      "state": "VALIDATE_ONLY",
+      "default": "not specified by this registry",
+      "consequence": "ignored; the sandbox is named after the service",
+      "fixtures": [
+        "internal/frontend/compose/testdata/full.yaml",
+        "internal/frontend/compose/compile_test.go"
+      ]
+    },
+    {
+      "format": "compose",
+      "version": "Compose Specification (F2 subset)",
+      "scope": "field",
+      "field": "services.*.depends_on",
+      "milestone": "F2 (compiler)",
+      "state": "DEGRADED",
+      "default": "not specified by this registry",
+      "consequence": "startup ordering only, not a readiness guarantee",
+      "fixtures": [
+        "internal/frontend/compose/testdata/full.yaml",
+        "internal/frontend/compose/compile_test.go"
+      ]
+    },
+    {
+      "format": "compose",
+      "version": "Compose Specification (F2 subset)",
+      "scope": "field",
+      "field": "services.*.deploy",
+      "milestone": "F2 (compiler)",
+      "state": "SUPPORTED",
+      "default": "not specified by this registry",
+      "consequence": "replicas and representable resource limits",
+      "fixtures": [
+        "internal/frontend/compose/testdata/full.yaml",
+        "internal/frontend/compose/compile_test.go"
+      ]
+    },
+    {
+      "format": "compose",
+      "version": "Compose Specification (F2 subset)",
+      "scope": "field",
+      "field": "services.*.deploy.mode",
+      "milestone": "F2 (compiler)",
+      "state": "UNSUPPORTED",
+      "default": "not specified by this registry",
+      "consequence": "global/replicated modes are not supported; use replicas",
+      "fixtures": [
+        "internal/frontend/compose/testdata/full.yaml",
+        "internal/frontend/compose/compile_test.go"
+      ]
+    },
+    {
+      "format": "compose",
+      "version": "Compose Specification (F2 subset)",
+      "scope": "field",
+      "field": "services.*.deploy.placement",
+      "milestone": "F2 (compiler)",
+      "state": "UNSUPPORTED",
+      "default": "not specified by this registry",
+      "consequence": "cluster placement is not supported",
+      "fixtures": [
+        "internal/frontend/compose/testdata/full.yaml",
+        "internal/frontend/compose/compile_test.go"
+      ]
+    },
+    {
+      "format": "compose",
+      "version": "Compose Specification (F2 subset)",
+      "scope": "field",
+      "field": "services.*.deploy.replicas",
+      "milestone": "F2 (compiler)",
+      "state": "SUPPORTED",
+      "default": "not specified by this registry",
+      "consequence": "replica count",
+      "fixtures": [
+        "internal/frontend/compose/testdata/full.yaml",
+        "internal/frontend/compose/compile_test.go"
+      ]
+    },
+    {
+      "format": "compose",
+      "version": "Compose Specification (F2 subset)",
+      "scope": "field",
+      "field": "services.*.deploy.resources",
+      "milestone": "F2 (compiler)",
+      "state": "SUPPORTED",
+      "default": "not specified by this registry",
+      "consequence": "resource limits",
+      "fixtures": [
+        "internal/frontend/compose/testdata/full.yaml",
+        "internal/frontend/compose/compile_test.go"
+      ]
+    },
+    {
+      "format": "compose",
+      "version": "Compose Specification (F2 subset)",
+      "scope": "field",
+      "field": "services.*.deploy.resources.limits",
+      "milestone": "F2 (compiler)",
+      "state": "SUPPORTED",
+      "default": "not specified by this registry",
+      "consequence": "resource limits",
+      "fixtures": [
+        "internal/frontend/compose/testdata/full.yaml",
+        "internal/frontend/compose/compile_test.go"
+      ]
+    },
+    {
+      "format": "compose",
+      "version": "Compose Specification (F2 subset)",
+      "scope": "field",
+      "field": "services.*.deploy.resources.limits.cpus",
+      "milestone": "F2 (compiler)",
+      "state": "SUPPORTED",
+      "default": "not specified by this registry",
+      "consequence": "CPU limit",
+      "fixtures": [
+        "internal/frontend/compose/testdata/full.yaml",
+        "internal/frontend/compose/compile_test.go"
+      ]
+    },
+    {
+      "format": "compose",
+      "version": "Compose Specification (F2 subset)",
+      "scope": "field",
+      "field": "services.*.deploy.resources.limits.memory",
+      "milestone": "F2 (compiler)",
+      "state": "SUPPORTED",
+      "default": "not specified by this registry",
+      "consequence": "memory limit",
+      "fixtures": [
+        "internal/frontend/compose/testdata/full.yaml",
+        "internal/frontend/compose/compile_test.go"
+      ]
+    },
+    {
+      "format": "compose",
+      "version": "Compose Specification (F2 subset)",
+      "scope": "field",
+      "field": "services.*.deploy.restart_policy",
+      "milestone": "F2 (compiler)",
+      "state": "DEGRADED",
+      "default": "not specified by this registry",
+      "consequence": "restart condition mapped; retry backoff is not represented",
+      "fixtures": [
+        "internal/frontend/compose/testdata/full.yaml",
+        "internal/frontend/compose/compile_test.go"
+      ]
+    },
+    {
+      "format": "compose",
+      "version": "Compose Specification (F2 subset)",
+      "scope": "field",
+      "field": "services.*.deploy.update_config",
+      "milestone": "F2 (compiler)",
+      "state": "UNSUPPORTED",
+      "default": "not specified by this registry",
+      "consequence": "rolling updates are not supported",
+      "fixtures": [
+        "internal/frontend/compose/testdata/full.yaml",
+        "internal/frontend/compose/compile_test.go"
+      ]
+    },
+    {
+      "format": "compose",
+      "version": "Compose Specification (F2 subset)",
+      "scope": "field",
+      "field": "services.*.devices",
+      "milestone": "F2 (compiler)",
+      "state": "UNSUPPORTED",
+      "default": "not specified by this registry",
+      "consequence": "host devices are not supported",
+      "fixtures": [
+        "internal/frontend/compose/testdata/full.yaml",
+        "internal/frontend/compose/compile_test.go"
+      ]
+    },
+    {
+      "format": "compose",
+      "version": "Compose Specification (F2 subset)",
+      "scope": "field",
+      "field": "services.*.entrypoint",
+      "milestone": "F2 (compiler)",
+      "state": "SUPPORTED",
+      "default": "not specified by this registry",
+      "consequence": "process entrypoint",
+      "fixtures": [
+        "internal/frontend/compose/testdata/full.yaml",
+        "internal/frontend/compose/compile_test.go"
+      ]
+    },
+    {
+      "format": "compose",
+      "version": "Compose Specification (F2 subset)",
+      "scope": "field",
+      "field": "services.*.env_file",
+      "milestone": "F2 (compiler)",
+      "state": "SUPPORTED",
+      "default": "not specified by this registry",
+      "consequence": "environment file resolved relative to the Compose file",
+      "fixtures": [
+        "internal/frontend/compose/testdata/full.yaml",
+        "internal/frontend/compose/compile_test.go"
+      ]
+    },
+    {
+      "format": "compose",
+      "version": "Compose Specification (F2 subset)",
+      "scope": "field",
+      "field": "services.*.environment",
+      "milestone": "F2 (compiler)",
+      "state": "SUPPORTED",
+      "default": "not specified by this registry",
+      "consequence": "literal environment",
+      "fixtures": [
+        "internal/frontend/compose/testdata/full.yaml",
+        "internal/frontend/compose/compile_test.go"
+      ]
+    },
+    {
+      "format": "compose",
+      "version": "Compose Specification (F2 subset)",
+      "scope": "field",
+      "field": "services.*.expose",
+      "milestone": "F2 (compiler)",
+      "state": "SUPPORTED",
+      "default": "not specified by this registry",
+      "consequence": "metadata-only exposed ports",
+      "fixtures": [
+        "internal/frontend/compose/testdata/full.yaml",
+        "internal/frontend/compose/compile_test.go"
+      ]
+    },
+    {
+      "format": "compose",
+      "version": "Compose Specification (F2 subset)",
+      "scope": "field",
+      "field": "services.*.extends",
+      "milestone": "F2 (compiler)",
+      "state": "UNSUPPORTED",
+      "default": "not specified by this registry",
+      "consequence": "extends is not supported",
+      "fixtures": [
+        "internal/frontend/compose/testdata/full.yaml",
+        "internal/frontend/compose/compile_test.go"
+      ]
+    },
+    {
+      "format": "compose",
+      "version": "Compose Specification (F2 subset)",
+      "scope": "field",
+      "field": "services.*.healthcheck",
+      "milestone": "F2 (compiler)",
+      "state": "SUPPORTED",
+      "default": "not specified by this registry",
+      "consequence": "translated to a liveness probe; runtime restart-on-unhealthy differs from Compose health semantics",
+      "fixtures": [
+        "internal/frontend/compose/testdata/full.yaml",
+        "internal/frontend/compose/compile_test.go"
+      ]
+    },
+    {
+      "format": "compose",
+      "version": "Compose Specification (F2 subset)",
+      "scope": "field",
+      "field": "services.*.image",
+      "milestone": "F2 (compiler)",
+      "state": "SUPPORTED",
+      "default": "not specified by this registry",
+      "consequence": "container image",
+      "fixtures": [
+        "internal/frontend/compose/testdata/full.yaml",
+        "internal/frontend/compose/compile_test.go"
+      ]
+    },
+    {
+      "format": "compose",
+      "version": "Compose Specification (F2 subset)",
+      "scope": "field",
+      "field": "services.*.ipc",
+      "milestone": "F2 (compiler)",
+      "state": "UNSUPPORTED",
+      "default": "not specified by this registry",
+      "consequence": "host IPC mode is not supported",
+      "fixtures": [
+        "internal/frontend/compose/testdata/full.yaml",
+        "internal/frontend/compose/compile_test.go"
+      ]
+    },
+    {
+      "format": "compose",
+      "version": "Compose Specification (F2 subset)",
+      "scope": "field",
+      "field": "services.*.labels",
+      "milestone": "F2 (compiler)",
+      "state": "VALIDATE_ONLY",
+      "default": "not specified by this registry",
+      "consequence": "metadata only",
+      "fixtures": [
+        "internal/frontend/compose/testdata/full.yaml",
+        "internal/frontend/compose/compile_test.go"
+      ]
+    },
+    {
+      "format": "compose",
+      "version": "Compose Specification (F2 subset)",
+      "scope": "field",
+      "field": "services.*.logging",
+      "milestone": "F2 (compiler)",
+      "state": "VALIDATE_ONLY",
+      "default": "not specified by this registry",
+      "consequence": "logging driver options are ignored; logs are captured by Grillo",
+      "fixtures": [
+        "internal/frontend/compose/testdata/full.yaml",
+        "internal/frontend/compose/compile_test.go"
+      ]
+    },
+    {
+      "format": "compose",
+      "version": "Compose Specification (F2 subset)",
+      "scope": "field",
+      "field": "services.*.network_mode",
+      "milestone": "F2 (compiler)",
+      "state": "UNSUPPORTED",
+      "default": "not specified by this registry",
+      "consequence": "host/container network modes are not supported",
+      "fixtures": [
+        "internal/frontend/compose/testdata/full.yaml",
+        "internal/frontend/compose/compile_test.go"
+      ]
+    },
+    {
+      "format": "compose",
+      "version": "Compose Specification (F2 subset)",
+      "scope": "field",
+      "field": "services.*.networks",
+      "milestone": "F2 (compiler)",
+      "state": "SUPPORTED",
+      "default": "not specified by this registry",
+      "consequence": "logical network attachments",
+      "fixtures": [
+        "internal/frontend/compose/testdata/full.yaml",
+        "internal/frontend/compose/compile_test.go"
+      ]
+    },
+    {
+      "format": "compose",
+      "version": "Compose Specification (F2 subset)",
+      "scope": "field",
+      "field": "services.*.pid",
+      "milestone": "F2 (compiler)",
+      "state": "UNSUPPORTED",
+      "default": "not specified by this registry",
+      "consequence": "host PID mode is not supported",
+      "fixtures": [
+        "internal/frontend/compose/testdata/full.yaml",
+        "internal/frontend/compose/compile_test.go"
+      ]
+    },
+    {
+      "format": "compose",
+      "version": "Compose Specification (F2 subset)",
+      "scope": "field",
+      "field": "services.*.platform",
+      "milestone": "F2 (compiler)",
+      "state": "UNSUPPORTED",
+      "default": "not specified by this registry",
+      "consequence": "platform selection is not supported",
+      "fixtures": [
+        "internal/frontend/compose/testdata/full.yaml",
+        "internal/frontend/compose/compile_test.go"
+      ]
+    },
+    {
+      "format": "compose",
+      "version": "Compose Specification (F2 subset)",
+      "scope": "field",
+      "field": "services.*.ports",
+      "milestone": "F2 (compiler)",
+      "state": "SUPPORTED",
+      "default": "not specified by this registry",
+      "consequence": "published ports",
+      "fixtures": [
+        "internal/frontend/compose/testdata/full.yaml",
+        "internal/frontend/compose/compile_test.go"
+      ]
+    },
+    {
+      "format": "compose",
+      "version": "Compose Specification (F2 subset)",
+      "scope": "field",
+      "field": "services.*.privileged",
+      "milestone": "F2 (compiler)",
+      "state": "UNSUPPORTED",
+      "default": "not specified by this registry",
+      "consequence": "privileged containers are not supported",
+      "fixtures": [
+        "internal/frontend/compose/testdata/full.yaml",
+        "internal/frontend/compose/compile_test.go"
+      ]
+    },
+    {
+      "format": "compose",
+      "version": "Compose Specification (F2 subset)",
+      "scope": "field",
+      "field": "services.*.profiles",
+      "milestone": "F2 (compiler)",
+      "state": "UNSUPPORTED",
+      "default": "not specified by this registry",
+      "consequence": "profiles are not supported",
+      "fixtures": [
+        "internal/frontend/compose/testdata/full.yaml",
+        "internal/frontend/compose/compile_test.go"
+      ]
+    },
+    {
+      "format": "compose",
+      "version": "Compose Specification (F2 subset)",
+      "scope": "field",
+      "field": "services.*.read_only",
+      "milestone": "F2 (compiler)",
+      "state": "SUPPORTED",
+      "default": "not specified by this registry",
+      "consequence": "read-only root filesystem",
+      "fixtures": [
+        "internal/frontend/compose/testdata/full.yaml",
+        "internal/frontend/compose/compile_test.go"
+      ]
+    },
+    {
+      "format": "compose",
+      "version": "Compose Specification (F2 subset)",
+      "scope": "field",
+      "field": "services.*.restart",
+      "milestone": "F2 (compiler)",
+      "state": "SUPPORTED",
+      "default": "not specified by this registry",
+      "consequence": "restart policy",
+      "fixtures": [
+        "internal/frontend/compose/testdata/full.yaml",
+        "internal/frontend/compose/compile_test.go"
+      ]
+    },
+    {
+      "format": "compose",
+      "version": "Compose Specification (F2 subset)",
+      "scope": "field",
+      "field": "services.*.secrets",
+      "milestone": "F2 (compiler)",
+      "state": "UNSUPPORTED",
+      "default": "not specified by this registry",
+      "consequence": "advanced Compose secrets are not supported",
+      "fixtures": [
+        "internal/frontend/compose/testdata/full.yaml",
+        "internal/frontend/compose/compile_test.go"
+      ]
+    },
+    {
+      "format": "compose",
+      "version": "Compose Specification (F2 subset)",
+      "scope": "field",
+      "field": "services.*.shm_size",
+      "milestone": "F2 (compiler)",
+      "state": "UNSUPPORTED",
+      "default": "not specified by this registry",
+      "consequence": "shm size is not supported",
+      "fixtures": [
+        "internal/frontend/compose/testdata/full.yaml",
+        "internal/frontend/compose/compile_test.go"
+      ]
+    },
+    {
+      "format": "compose",
+      "version": "Compose Specification (F2 subset)",
+      "scope": "field",
+      "field": "services.*.sysctls",
+      "milestone": "F2 (compiler)",
+      "state": "UNSUPPORTED",
+      "default": "not specified by this registry",
+      "consequence": "kernel sysctls are not supported",
+      "fixtures": [
+        "internal/frontend/compose/testdata/full.yaml",
+        "internal/frontend/compose/compile_test.go"
+      ]
+    },
+    {
+      "format": "compose",
+      "version": "Compose Specification (F2 subset)",
+      "scope": "field",
+      "field": "services.*.tmpfs",
+      "milestone": "F2 (compiler)",
+      "state": "UNSUPPORTED",
+      "default": "not specified by this registry",
+      "consequence": "tmpfs mounts are not supported",
+      "fixtures": [
+        "internal/frontend/compose/testdata/full.yaml",
+        "internal/frontend/compose/compile_test.go"
+      ]
+    },
+    {
+      "format": "compose",
+      "version": "Compose Specification (F2 subset)",
+      "scope": "field",
+      "field": "services.*.ulimits",
+      "milestone": "F2 (compiler)",
+      "state": "UNSUPPORTED",
+      "default": "not specified by this registry",
+      "consequence": "ulimits are not supported",
+      "fixtures": [
+        "internal/frontend/compose/testdata/full.yaml",
+        "internal/frontend/compose/compile_test.go"
+      ]
+    },
+    {
+      "format": "compose",
+      "version": "Compose Specification (F2 subset)",
+      "scope": "field",
+      "field": "services.*.user",
+      "milestone": "F2 (compiler)",
+      "state": "SUPPORTED",
+      "default": "not specified by this registry",
+      "consequence": "container user",
+      "fixtures": [
+        "internal/frontend/compose/testdata/full.yaml",
+        "internal/frontend/compose/compile_test.go"
+      ]
+    },
+    {
+      "format": "compose",
+      "version": "Compose Specification (F2 subset)",
+      "scope": "field",
+      "field": "services.*.volumes",
+      "milestone": "F2 (compiler)",
+      "state": "SUPPORTED",
+      "default": "not specified by this registry",
+      "consequence": "named, anonymous, and project-relative bind volumes",
+      "fixtures": [
+        "internal/frontend/compose/testdata/full.yaml",
+        "internal/frontend/compose/compile_test.go"
+      ]
+    },
+    {
+      "format": "compose",
+      "version": "Compose Specification (F2 subset)",
+      "scope": "field",
+      "field": "services.*.working_dir",
+      "milestone": "F2 (compiler)",
+      "state": "SUPPORTED",
+      "default": "not specified by this registry",
+      "consequence": "container working directory",
+      "fixtures": [
+        "internal/frontend/compose/testdata/full.yaml",
+        "internal/frontend/compose/compile_test.go"
+      ]
+    },
+    {
+      "format": "compose",
+      "version": "Compose Specification (F2 subset)",
+      "scope": "field",
+      "field": "volumes.*",
+      "milestone": "F2 (compiler)",
+      "state": "SUPPORTED",
+      "default": "not specified by this registry",
+      "consequence": "named volume",
+      "fixtures": [
+        "internal/frontend/compose/testdata/full.yaml",
+        "internal/frontend/compose/compile_test.go"
+      ]
+    },
+    {
+      "format": "kubernetes",
+      "version": "v1 / apps/v1 / networking.k8s.io/v1",
+      "scope": "Container",
+      "field": "args",
+      "milestone": "F3 (compiler)",
+      "state": "SUPPORTED",
+      "default": "not specified by this registry",
+      "consequence": "",
+      "fixtures": [
+        "internal/frontend/kubernetes/compile_test.go",
+        "internal/frontend/kubernetes/remediation_test.go"
+      ]
+    },
+    {
+      "format": "kubernetes",
+      "version": "v1 / apps/v1 / networking.k8s.io/v1",
+      "scope": "Container",
+      "field": "command",
+      "milestone": "F3 (compiler)",
+      "state": "SUPPORTED",
+      "default": "not specified by this registry",
+      "consequence": "",
+      "fixtures": [
+        "internal/frontend/kubernetes/compile_test.go",
+        "internal/frontend/kubernetes/remediation_test.go"
+      ]
+    },
+    {
+      "format": "kubernetes",
+      "version": "v1 / apps/v1 / networking.k8s.io/v1",
+      "scope": "Container",
+      "field": "env",
+      "milestone": "F3 (compiler)",
+      "state": "SUPPORTED",
+      "default": "not specified by this registry",
+      "consequence": "",
+      "fixtures": [
+        "internal/frontend/kubernetes/compile_test.go",
+        "internal/frontend/kubernetes/remediation_test.go"
+      ]
+    },
+    {
+      "format": "kubernetes",
+      "version": "v1 / apps/v1 / networking.k8s.io/v1",
+      "scope": "Container",
+      "field": "envFrom",
+      "milestone": "F3 (compiler)",
+      "state": "SUPPORTED",
+      "default": "not specified by this registry",
+      "consequence": "",
+      "fixtures": [
+        "internal/frontend/kubernetes/compile_test.go",
+        "internal/frontend/kubernetes/remediation_test.go"
+      ]
+    },
+    {
+      "format": "kubernetes",
+      "version": "v1 / apps/v1 / networking.k8s.io/v1",
+      "scope": "Container",
+      "field": "image",
+      "milestone": "F3 (compiler)",
+      "state": "SUPPORTED",
+      "default": "not specified by this registry",
+      "consequence": "",
+      "fixtures": [
+        "internal/frontend/kubernetes/compile_test.go",
+        "internal/frontend/kubernetes/remediation_test.go"
+      ]
+    },
+    {
+      "format": "kubernetes",
+      "version": "v1 / apps/v1 / networking.k8s.io/v1",
+      "scope": "Container",
+      "field": "imagePullPolicy",
+      "milestone": "F3 (compiler)",
+      "state": "SUPPORTED",
+      "default": "not specified by this registry",
+      "consequence": "",
+      "fixtures": [
+        "internal/frontend/kubernetes/compile_test.go",
+        "internal/frontend/kubernetes/remediation_test.go"
+      ]
+    },
+    {
+      "format": "kubernetes",
+      "version": "v1 / apps/v1 / networking.k8s.io/v1",
+      "scope": "Container",
+      "field": "lifecycle",
+      "milestone": "F3 (compiler)",
+      "state": "UNSUPPORTED",
+      "default": "not specified by this registry",
+      "consequence": "lifecycle hooks are not implemented",
+      "fixtures": [
+        "internal/frontend/kubernetes/compile_test.go",
+        "internal/frontend/kubernetes/remediation_test.go"
+      ]
+    },
+    {
+      "format": "kubernetes",
+      "version": "v1 / apps/v1 / networking.k8s.io/v1",
+      "scope": "Container",
+      "field": "livenessProbe",
+      "milestone": "F3 (compiler)",
+      "state": "SUPPORTED",
+      "default": "not specified by this registry",
+      "consequence": "",
+      "fixtures": [
+        "internal/frontend/kubernetes/compile_test.go",
+        "internal/frontend/kubernetes/remediation_test.go"
+      ]
+    },
+    {
+      "format": "kubernetes",
+      "version": "v1 / apps/v1 / networking.k8s.io/v1",
+      "scope": "Container",
+      "field": "name",
+      "milestone": "F3 (compiler)",
+      "state": "SUPPORTED",
+      "default": "not specified by this registry",
+      "consequence": "",
+      "fixtures": [
+        "internal/frontend/kubernetes/compile_test.go",
+        "internal/frontend/kubernetes/remediation_test.go"
+      ]
+    },
+    {
+      "format": "kubernetes",
+      "version": "v1 / apps/v1 / networking.k8s.io/v1",
+      "scope": "Container",
+      "field": "ports",
+      "milestone": "F3 (compiler)",
+      "state": "SUPPORTED",
+      "default": "not specified by this registry",
+      "consequence": "",
+      "fixtures": [
+        "internal/frontend/kubernetes/compile_test.go",
+        "internal/frontend/kubernetes/remediation_test.go"
+      ]
+    },
+    {
+      "format": "kubernetes",
+      "version": "v1 / apps/v1 / networking.k8s.io/v1",
+      "scope": "Container",
+      "field": "readinessProbe",
+      "milestone": "F3 (compiler)",
+      "state": "SUPPORTED",
+      "default": "not specified by this registry",
+      "consequence": "",
+      "fixtures": [
+        "internal/frontend/kubernetes/compile_test.go",
+        "internal/frontend/kubernetes/remediation_test.go"
+      ]
+    },
+    {
+      "format": "kubernetes",
+      "version": "v1 / apps/v1 / networking.k8s.io/v1",
+      "scope": "Container",
+      "field": "resources",
+      "milestone": "F3 (compiler)",
+      "state": "SUPPORTED",
+      "default": "not specified by this registry",
+      "consequence": "",
+      "fixtures": [
+        "internal/frontend/kubernetes/compile_test.go",
+        "internal/frontend/kubernetes/remediation_test.go"
+      ]
+    },
+    {
+      "format": "kubernetes",
+      "version": "v1 / apps/v1 / networking.k8s.io/v1",
+      "scope": "Container",
+      "field": "securityContext",
+      "milestone": "F3 (compiler)",
+      "state": "SUPPORTED",
+      "default": "not specified by this registry",
+      "consequence": "",
+      "fixtures": [
+        "internal/frontend/kubernetes/compile_test.go",
+        "internal/frontend/kubernetes/remediation_test.go"
+      ]
+    },
+    {
+      "format": "kubernetes",
+      "version": "v1 / apps/v1 / networking.k8s.io/v1",
+      "scope": "Container",
+      "field": "startupProbe",
+      "milestone": "F3 (compiler)",
+      "state": "SUPPORTED",
+      "default": "not specified by this registry",
+      "consequence": "",
+      "fixtures": [
+        "internal/frontend/kubernetes/compile_test.go",
+        "internal/frontend/kubernetes/remediation_test.go"
+      ]
+    },
+    {
+      "format": "kubernetes",
+      "version": "v1 / apps/v1 / networking.k8s.io/v1",
+      "scope": "Container",
+      "field": "stdin",
+      "milestone": "F3 (compiler)",
+      "state": "UNSUPPORTED",
+      "default": "not specified by this registry",
+      "consequence": "interactive stdin is not supported",
+      "fixtures": [
+        "internal/frontend/kubernetes/compile_test.go",
+        "internal/frontend/kubernetes/remediation_test.go"
+      ]
+    },
+    {
+      "format": "kubernetes",
+      "version": "v1 / apps/v1 / networking.k8s.io/v1",
+      "scope": "Container",
+      "field": "stdinOnce",
+      "milestone": "F3 (compiler)",
+      "state": "UNSUPPORTED",
+      "default": "not specified by this registry",
+      "consequence": "interactive stdin is not supported",
+      "fixtures": [
+        "internal/frontend/kubernetes/compile_test.go",
+        "internal/frontend/kubernetes/remediation_test.go"
+      ]
+    },
+    {
+      "format": "kubernetes",
+      "version": "v1 / apps/v1 / networking.k8s.io/v1",
+      "scope": "Container",
+      "field": "terminationMessagePath",
+      "milestone": "F3 (compiler)",
+      "state": "VALIDATE_ONLY",
+      "default": "not specified by this registry",
+      "consequence": "ignored",
+      "fixtures": [
+        "internal/frontend/kubernetes/compile_test.go",
+        "internal/frontend/kubernetes/remediation_test.go"
+      ]
+    },
+    {
+      "format": "kubernetes",
+      "version": "v1 / apps/v1 / networking.k8s.io/v1",
+      "scope": "Container",
+      "field": "terminationMessagePolicy",
+      "milestone": "F3 (compiler)",
+      "state": "VALIDATE_ONLY",
+      "default": "not specified by this registry",
+      "consequence": "ignored",
+      "fixtures": [
+        "internal/frontend/kubernetes/compile_test.go",
+        "internal/frontend/kubernetes/remediation_test.go"
+      ]
+    },
+    {
+      "format": "kubernetes",
+      "version": "v1 / apps/v1 / networking.k8s.io/v1",
+      "scope": "Container",
+      "field": "tty",
+      "milestone": "F3 (compiler)",
+      "state": "UNSUPPORTED",
+      "default": "not specified by this registry",
+      "consequence": "TTY is not supported",
+      "fixtures": [
+        "internal/frontend/kubernetes/compile_test.go",
+        "internal/frontend/kubernetes/remediation_test.go"
+      ]
+    },
+    {
+      "format": "kubernetes",
+      "version": "v1 / apps/v1 / networking.k8s.io/v1",
+      "scope": "Container",
+      "field": "volumeMounts",
+      "milestone": "F3 (compiler)",
+      "state": "SUPPORTED",
+      "default": "not specified by this registry",
+      "consequence": "",
+      "fixtures": [
+        "internal/frontend/kubernetes/compile_test.go",
+        "internal/frontend/kubernetes/remediation_test.go"
+      ]
+    },
+    {
+      "format": "kubernetes",
+      "version": "v1 / apps/v1 / networking.k8s.io/v1",
+      "scope": "Container",
+      "field": "workingDir",
+      "milestone": "F3 (compiler)",
+      "state": "SUPPORTED",
+      "default": "not specified by this registry",
+      "consequence": "",
+      "fixtures": [
+        "internal/frontend/kubernetes/compile_test.go",
+        "internal/frontend/kubernetes/remediation_test.go"
+      ]
+    },
+    {
+      "format": "kubernetes",
+      "version": "apps/v1",
+      "scope": "Deployment",
+      "field": "spec.strategy",
+      "milestone": "F3 (compiler)",
+      "state": "DEGRADED",
+      "default": "RollingUpdate; requires consent, then Recreate",
+      "consequence": "Grillo replaces sandboxes (Recreate); in-place rolling updates are not faithful",
+      "fixtures": [
+        "internal/frontend/kubernetes/testdata/rollingupdate.yaml",
+        "internal/frontend/kubernetes/testdata/deployment.yaml"
+      ]
+    },
+    {
+      "format": "kubernetes",
+      "version": "v1 / apps/v1 / networking.k8s.io/v1",
+      "scope": "PodSpec",
+      "field": "affinity",
+      "milestone": "F3 (compiler)",
+      "state": "UNSUPPORTED",
+      "default": "not specified by this registry",
+      "consequence": "scheduling is not supported",
+      "fixtures": [
+        "internal/frontend/kubernetes/compile_test.go",
+        "internal/frontend/kubernetes/remediation_test.go"
+      ]
+    },
+    {
+      "format": "kubernetes",
+      "version": "v1 / apps/v1 / networking.k8s.io/v1",
+      "scope": "PodSpec",
+      "field": "automountServiceAccountToken",
+      "milestone": "F3 (compiler)",
+      "state": "VALIDATE_ONLY",
+      "default": "not specified by this registry",
+      "consequence": "metadata only",
+      "fixtures": [
+        "internal/frontend/kubernetes/compile_test.go",
+        "internal/frontend/kubernetes/remediation_test.go"
+      ]
+    },
+    {
+      "format": "kubernetes",
+      "version": "v1 / apps/v1 / networking.k8s.io/v1",
+      "scope": "PodSpec",
+      "field": "containers",
+      "milestone": "F3 (compiler)",
+      "state": "SUPPORTED",
+      "default": "not specified by this registry",
+      "consequence": "",
+      "fixtures": [
+        "internal/frontend/kubernetes/compile_test.go",
+        "internal/frontend/kubernetes/remediation_test.go"
+      ]
+    },
+    {
+      "format": "kubernetes",
+      "version": "v1 / apps/v1 / networking.k8s.io/v1",
+      "scope": "PodSpec",
+      "field": "dnsConfig",
+      "milestone": "F3 (compiler)",
+      "state": "DEGRADED",
+      "default": "not specified by this registry",
+      "consequence": "search domains and nameservers are applied; other options may be ignored",
+      "fixtures": [
+        "internal/frontend/kubernetes/compile_test.go",
+        "internal/frontend/kubernetes/remediation_test.go"
+      ]
+    },
+    {
+      "format": "kubernetes",
+      "version": "v1 / apps/v1 / networking.k8s.io/v1",
+      "scope": "PodSpec",
+      "field": "dnsPolicy",
+      "milestone": "F3 (compiler)",
+      "state": "VALIDATE_ONLY",
+      "default": "not specified by this registry",
+      "consequence": "the guest resolver is fixed",
+      "fixtures": [
+        "internal/frontend/kubernetes/compile_test.go",
+        "internal/frontend/kubernetes/remediation_test.go"
+      ]
+    },
+    {
+      "format": "kubernetes",
+      "version": "v1 / apps/v1 / networking.k8s.io/v1",
+      "scope": "PodSpec",
+      "field": "enableServiceLinks",
+      "milestone": "F3 (compiler)",
+      "state": "VALIDATE_ONLY",
+      "default": "not specified by this registry",
+      "consequence": "ignored",
+      "fixtures": [
+        "internal/frontend/kubernetes/compile_test.go",
+        "internal/frontend/kubernetes/remediation_test.go"
+      ]
+    },
+    {
+      "format": "kubernetes",
+      "version": "v1 / apps/v1 / networking.k8s.io/v1",
+      "scope": "PodSpec",
+      "field": "hostIPC",
+      "milestone": "F3 (compiler)",
+      "state": "UNSUPPORTED",
+      "default": "not specified by this registry",
+      "consequence": "host IPC namespace is not supported",
+      "fixtures": [
+        "internal/frontend/kubernetes/compile_test.go",
+        "internal/frontend/kubernetes/remediation_test.go"
+      ]
+    },
+    {
+      "format": "kubernetes",
+      "version": "v1 / apps/v1 / networking.k8s.io/v1",
+      "scope": "PodSpec",
+      "field": "hostNetwork",
+      "milestone": "F3 (compiler)",
+      "state": "UNSUPPORTED",
+      "default": "not specified by this registry",
+      "consequence": "host networking is not supported",
+      "fixtures": [
+        "internal/frontend/kubernetes/compile_test.go",
+        "internal/frontend/kubernetes/remediation_test.go"
+      ]
+    },
+    {
+      "format": "kubernetes",
+      "version": "v1 / apps/v1 / networking.k8s.io/v1",
+      "scope": "PodSpec",
+      "field": "hostPID",
+      "milestone": "F3 (compiler)",
+      "state": "UNSUPPORTED",
+      "default": "not specified by this registry",
+      "consequence": "host PID namespace is not supported",
+      "fixtures": [
+        "internal/frontend/kubernetes/compile_test.go",
+        "internal/frontend/kubernetes/remediation_test.go"
+      ]
+    },
+    {
+      "format": "kubernetes",
+      "version": "v1 / apps/v1 / networking.k8s.io/v1",
+      "scope": "PodSpec",
+      "field": "hostname",
+      "milestone": "F3 (compiler)",
+      "state": "SUPPORTED",
+      "default": "not specified by this registry",
+      "consequence": "",
+      "fixtures": [
+        "internal/frontend/kubernetes/compile_test.go",
+        "internal/frontend/kubernetes/remediation_test.go"
+      ]
+    },
+    {
+      "format": "kubernetes",
+      "version": "v1 / apps/v1 / networking.k8s.io/v1",
+      "scope": "PodSpec",
+      "field": "initContainers",
+      "milestone": "F3 (compiler)",
+      "state": "SUPPORTED",
+      "default": "not specified by this registry",
+      "consequence": "",
+      "fixtures": [
+        "internal/frontend/kubernetes/compile_test.go",
+        "internal/frontend/kubernetes/remediation_test.go"
+      ]
+    },
+    {
+      "format": "kubernetes",
+      "version": "v1 / apps/v1 / networking.k8s.io/v1",
+      "scope": "PodSpec",
+      "field": "nodeSelector",
+      "milestone": "F3 (compiler)",
+      "state": "UNSUPPORTED",
+      "default": "not specified by this registry",
+      "consequence": "multi-node scheduling is not supported",
+      "fixtures": [
+        "internal/frontend/kubernetes/compile_test.go",
+        "internal/frontend/kubernetes/remediation_test.go"
+      ]
+    },
+    {
+      "format": "kubernetes",
+      "version": "v1 / apps/v1 / networking.k8s.io/v1",
+      "scope": "PodSpec",
+      "field": "priorityClassName",
+      "milestone": "F3 (compiler)",
+      "state": "UNSUPPORTED",
+      "default": "not specified by this registry",
+      "consequence": "scheduling is not supported",
+      "fixtures": [
+        "internal/frontend/kubernetes/compile_test.go",
+        "internal/frontend/kubernetes/remediation_test.go"
+      ]
+    },
+    {
+      "format": "kubernetes",
+      "version": "v1 / apps/v1 / networking.k8s.io/v1",
+      "scope": "PodSpec",
+      "field": "restartPolicy",
+      "milestone": "F3 (compiler)",
+      "state": "SUPPORTED",
+      "default": "Always",
+      "consequence": "",
+      "fixtures": [
+        "internal/frontend/kubernetes/compile_test.go",
+        "internal/frontend/kubernetes/remediation_test.go"
+      ]
+    },
+    {
+      "format": "kubernetes",
+      "version": "v1 / apps/v1 / networking.k8s.io/v1",
+      "scope": "PodSpec",
+      "field": "securityContext",
+      "milestone": "F3 (compiler)",
+      "state": "SUPPORTED",
+      "default": "not specified by this registry",
+      "consequence": "",
+      "fixtures": [
+        "internal/frontend/kubernetes/compile_test.go",
+        "internal/frontend/kubernetes/remediation_test.go"
+      ]
+    },
+    {
+      "format": "kubernetes",
+      "version": "v1 / apps/v1 / networking.k8s.io/v1",
+      "scope": "PodSpec",
+      "field": "serviceAccountName",
+      "milestone": "F3 (compiler)",
+      "state": "VALIDATE_ONLY",
+      "default": "not specified by this registry",
+      "consequence": "metadata only",
+      "fixtures": [
+        "internal/frontend/kubernetes/compile_test.go",
+        "internal/frontend/kubernetes/remediation_test.go"
+      ]
+    },
+    {
+      "format": "kubernetes",
+      "version": "v1 / apps/v1 / networking.k8s.io/v1",
+      "scope": "PodSpec",
+      "field": "subdomain",
+      "milestone": "F3 (compiler)",
+      "state": "VALIDATE_ONLY",
+      "default": "not specified by this registry",
+      "consequence": "ignored",
+      "fixtures": [
+        "internal/frontend/kubernetes/compile_test.go",
+        "internal/frontend/kubernetes/remediation_test.go"
+      ]
+    },
+    {
+      "format": "kubernetes",
+      "version": "v1 / apps/v1 / networking.k8s.io/v1",
+      "scope": "PodSpec",
+      "field": "terminationGracePeriodSeconds",
+      "milestone": "F3 (compiler)",
+      "state": "VALIDATE_ONLY",
+      "default": "not specified by this registry",
+      "consequence": "ignored",
+      "fixtures": [
+        "internal/frontend/kubernetes/compile_test.go",
+        "internal/frontend/kubernetes/remediation_test.go"
+      ]
+    },
+    {
+      "format": "kubernetes",
+      "version": "v1 / apps/v1 / networking.k8s.io/v1",
+      "scope": "PodSpec",
+      "field": "tolerations",
+      "milestone": "F3 (compiler)",
+      "state": "UNSUPPORTED",
+      "default": "not specified by this registry",
+      "consequence": "scheduling is not supported",
+      "fixtures": [
+        "internal/frontend/kubernetes/compile_test.go",
+        "internal/frontend/kubernetes/remediation_test.go"
+      ]
+    },
+    {
+      "format": "kubernetes",
+      "version": "v1 / apps/v1 / networking.k8s.io/v1",
+      "scope": "PodSpec",
+      "field": "topologySpreadConstraints",
+      "milestone": "F3 (compiler)",
+      "state": "UNSUPPORTED",
+      "default": "not specified by this registry",
+      "consequence": "scheduling is not supported",
+      "fixtures": [
+        "internal/frontend/kubernetes/compile_test.go",
+        "internal/frontend/kubernetes/remediation_test.go"
+      ]
+    },
+    {
+      "format": "kubernetes",
+      "version": "v1 / apps/v1 / networking.k8s.io/v1",
+      "scope": "PodSpec",
+      "field": "volumes",
+      "milestone": "F3 (compiler)",
+      "state": "SUPPORTED",
+      "default": "not specified by this registry",
+      "consequence": "",
+      "fixtures": [
+        "internal/frontend/kubernetes/compile_test.go",
+        "internal/frontend/kubernetes/remediation_test.go"
+      ]
+    },
+    {
+      "format": "kubernetes",
+      "version": "v1 / apps/v1 / networking.k8s.io/v1",
+      "scope": "SecurityContext",
+      "field": "capabilities",
+      "milestone": "F3 (compiler)",
+      "state": "UNSUPPORTED",
+      "default": "not specified by this registry",
+      "consequence": "capability overrides are not implemented",
+      "fixtures": [
+        "internal/frontend/kubernetes/compile_test.go",
+        "internal/frontend/kubernetes/remediation_test.go"
+      ]
+    },
+    {
+      "format": "kubernetes",
+      "version": "v1 / apps/v1 / networking.k8s.io/v1",
+      "scope": "SecurityContext",
+      "field": "privileged",
+      "milestone": "F3 (compiler)",
+      "state": "SUPPORTED",
+      "default": "false",
+      "consequence": "false only; true is rejected",
+      "fixtures": [
+        "internal/frontend/kubernetes/compile_test.go",
+        "internal/frontend/kubernetes/remediation_test.go"
+      ]
+    },
+    {
+      "format": "kubernetes",
+      "version": "v1 / apps/v1 / networking.k8s.io/v1",
+      "scope": "SecurityContext",
+      "field": "readOnlyRootFilesystem",
+      "milestone": "F3 (compiler)",
+      "state": "SUPPORTED",
+      "default": "false",
+      "consequence": "",
+      "fixtures": [
+        "internal/frontend/kubernetes/compile_test.go",
+        "internal/frontend/kubernetes/remediation_test.go"
+      ]
+    },
+    {
+      "format": "kubernetes",
+      "version": "v1 / apps/v1 / networking.k8s.io/v1",
+      "scope": "SecurityContext",
+      "field": "runAsGroup",
+      "milestone": "F3 (compiler)",
+      "state": "SUPPORTED",
+      "default": "not specified by this registry",
+      "consequence": "",
+      "fixtures": [
+        "internal/frontend/kubernetes/compile_test.go",
+        "internal/frontend/kubernetes/remediation_test.go"
+      ]
+    },
+    {
+      "format": "kubernetes",
+      "version": "v1 / apps/v1 / networking.k8s.io/v1",
+      "scope": "SecurityContext",
+      "field": "runAsUser",
+      "milestone": "F3 (compiler)",
+      "state": "SUPPORTED",
+      "default": "not specified by this registry",
+      "consequence": "",
+      "fixtures": [
+        "internal/frontend/kubernetes/compile_test.go",
+        "internal/frontend/kubernetes/remediation_test.go"
+      ]
+    },
+    {
+      "format": "kubernetes",
+      "version": "v1 / apps/v1 / networking.k8s.io/v1",
+      "scope": "SecurityContext",
+      "field": "seccompProfile",
+      "milestone": "F3 (compiler)",
+      "state": "UNSUPPORTED",
+      "default": "not specified by this registry",
+      "consequence": "custom seccomp policy is not implemented",
+      "fixtures": [
+        "internal/frontend/kubernetes/compile_test.go",
+        "internal/frontend/kubernetes/remediation_test.go"
+      ]
+    },
+    {
+      "format": "kubernetes",
+      "version": "v1 / apps/v1 / networking.k8s.io/v1",
+      "scope": "VolumeSource",
+      "field": "configMap",
+      "milestone": "F3 (compiler)",
+      "state": "UNSUPPORTED",
+      "default": "not specified by this registry",
+      "consequence": "projected ConfigMap volumes are not implemented; use env or a Config entry",
+      "fixtures": [
+        "internal/frontend/kubernetes/compile_test.go",
+        "internal/frontend/kubernetes/remediation_test.go"
+      ]
+    },
+    {
+      "format": "kubernetes",
+      "version": "v1 / apps/v1 / networking.k8s.io/v1",
+      "scope": "VolumeSource",
+      "field": "csi",
+      "milestone": "F3 (compiler)",
+      "state": "UNSUPPORTED",
+      "default": "not specified by this registry",
+      "consequence": "CSI drivers are not supported",
+      "fixtures": [
+        "internal/frontend/kubernetes/compile_test.go",
+        "internal/frontend/kubernetes/remediation_test.go"
+      ]
+    },
+    {
+      "format": "kubernetes",
+      "version": "v1 / apps/v1 / networking.k8s.io/v1",
+      "scope": "VolumeSource",
+      "field": "downwardAPI",
+      "milestone": "F3 (compiler)",
+      "state": "UNSUPPORTED",
+      "default": "not specified by this registry",
+      "consequence": "the downward API is not implemented",
+      "fixtures": [
+        "internal/frontend/kubernetes/compile_test.go",
+        "internal/frontend/kubernetes/remediation_test.go"
+      ]
+    },
+    {
+      "format": "kubernetes",
+      "version": "v1 / apps/v1 / networking.k8s.io/v1",
+      "scope": "VolumeSource",
+      "field": "emptyDir",
+      "milestone": "F3 (compiler)",
+      "state": "SUPPORTED",
+      "default": "not specified by this registry",
+      "consequence": "",
+      "fixtures": [
+        "internal/frontend/kubernetes/compile_test.go",
+        "internal/frontend/kubernetes/remediation_test.go"
+      ]
+    },
+    {
+      "format": "kubernetes",
+      "version": "v1 / apps/v1 / networking.k8s.io/v1",
+      "scope": "VolumeSource",
+      "field": "hostPath",
+      "milestone": "F3 (compiler)",
+      "state": "UNSUPPORTED",
+      "default": "not specified by this registry",
+      "consequence": "host paths are not exposed to workloads",
+      "fixtures": [
+        "internal/frontend/kubernetes/compile_test.go",
+        "internal/frontend/kubernetes/remediation_test.go"
+      ]
+    },
+    {
+      "format": "kubernetes",
+      "version": "v1 / apps/v1 / networking.k8s.io/v1",
+      "scope": "VolumeSource",
+      "field": "name",
+      "milestone": "F3 (compiler)",
+      "state": "SUPPORTED",
+      "default": "not specified by this registry",
+      "consequence": "",
+      "fixtures": [
+        "internal/frontend/kubernetes/compile_test.go",
+        "internal/frontend/kubernetes/remediation_test.go"
+      ]
+    },
+    {
+      "format": "kubernetes",
+      "version": "v1 / apps/v1 / networking.k8s.io/v1",
+      "scope": "VolumeSource",
+      "field": "nfs",
+      "milestone": "F3 (compiler)",
+      "state": "UNSUPPORTED",
+      "default": "not specified by this registry",
+      "consequence": "network filesystems are not supported",
+      "fixtures": [
+        "internal/frontend/kubernetes/compile_test.go",
+        "internal/frontend/kubernetes/remediation_test.go"
+      ]
+    },
+    {
+      "format": "kubernetes",
+      "version": "v1 / apps/v1 / networking.k8s.io/v1",
+      "scope": "VolumeSource",
+      "field": "persistentVolumeClaim",
+      "milestone": "F3 (compiler)",
+      "state": "SUPPORTED",
+      "default": "not specified by this registry",
+      "consequence": "",
+      "fixtures": [
+        "internal/frontend/kubernetes/compile_test.go",
+        "internal/frontend/kubernetes/remediation_test.go"
+      ]
+    },
+    {
+      "format": "kubernetes",
+      "version": "v1 / apps/v1 / networking.k8s.io/v1",
+      "scope": "VolumeSource",
+      "field": "projected",
+      "milestone": "F3 (compiler)",
+      "state": "UNSUPPORTED",
+      "default": "not specified by this registry",
+      "consequence": "projected volumes are not implemented",
+      "fixtures": [
+        "internal/frontend/kubernetes/compile_test.go",
+        "internal/frontend/kubernetes/remediation_test.go"
+      ]
+    },
+    {
+      "format": "kubernetes",
+      "version": "v1 / apps/v1 / networking.k8s.io/v1",
+      "scope": "VolumeSource",
+      "field": "secret",
+      "milestone": "F3 (compiler)",
+      "state": "UNSUPPORTED",
+      "default": "not specified by this registry",
+      "consequence": "projected Secret volumes are not implemented; use env",
+      "fixtures": [
+        "internal/frontend/kubernetes/compile_test.go",
+        "internal/frontend/kubernetes/remediation_test.go"
+      ]
+    },
+    {
+      "format": "kubernetes",
+      "version": "v1 / apps/v1 / networking.k8s.io/v1",
+      "scope": "kind",
+      "field": "ConfigMap",
+      "milestone": "F3 (compiler)",
+      "state": "SUPPORTED",
+      "default": "not specified by this registry",
+      "consequence": "",
+      "fixtures": [
+        "internal/frontend/kubernetes/compile_test.go",
+        "internal/frontend/kubernetes/remediation_test.go"
+      ]
+    },
+    {
+      "format": "kubernetes",
+      "version": "v1 / apps/v1 / networking.k8s.io/v1",
+      "scope": "kind",
+      "field": "CronJob",
+      "milestone": "F3 (compiler)",
+      "state": "UNSUPPORTED",
+      "default": "not specified by this registry",
+      "consequence": "CronJob scheduling is scheduled for F4",
+      "fixtures": [
+        "internal/frontend/kubernetes/compile_test.go",
+        "internal/frontend/kubernetes/remediation_test.go"
+      ]
+    },
+    {
+      "format": "kubernetes",
+      "version": "v1 / apps/v1 / networking.k8s.io/v1",
+      "scope": "kind",
+      "field": "DaemonSet",
+      "milestone": "F3 (compiler)",
+      "state": "DEGRADED",
+      "default": "not specified by this registry",
+      "consequence": "interpreted as one local replica",
+      "fixtures": [
+        "internal/frontend/kubernetes/compile_test.go",
+        "internal/frontend/kubernetes/remediation_test.go"
+      ]
+    },
+    {
+      "format": "kubernetes",
+      "version": "v1 / apps/v1 / networking.k8s.io/v1",
+      "scope": "kind",
+      "field": "Deployment",
+      "milestone": "F3 (compiler)",
+      "state": "SUPPORTED",
+      "default": "not specified by this registry",
+      "consequence": "",
+      "fixtures": [
+        "internal/frontend/kubernetes/compile_test.go",
+        "internal/frontend/kubernetes/remediation_test.go"
+      ]
+    },
+    {
+      "format": "kubernetes",
+      "version": "v1 / apps/v1 / networking.k8s.io/v1",
+      "scope": "kind",
+      "field": "Ingress",
+      "milestone": "F3 (compiler)",
+      "state": "SUPPORTED",
+      "default": "not specified by this registry",
+      "consequence": "",
+      "fixtures": [
+        "internal/frontend/kubernetes/compile_test.go",
+        "internal/frontend/kubernetes/remediation_test.go"
+      ]
+    },
+    {
+      "format": "kubernetes",
+      "version": "v1 / apps/v1 / networking.k8s.io/v1",
+      "scope": "kind",
+      "field": "Job",
+      "milestone": "F3 (compiler)",
+      "state": "UNSUPPORTED",
+      "default": "not specified by this registry",
+      "consequence": "Job completion semantics are scheduled for F4",
+      "fixtures": [
+        "internal/frontend/kubernetes/compile_test.go",
+        "internal/frontend/kubernetes/remediation_test.go"
+      ]
+    },
+    {
+      "format": "kubernetes",
+      "version": "v1 / apps/v1 / networking.k8s.io/v1",
+      "scope": "kind",
+      "field": "NetworkPolicy",
+      "milestone": "F3 (compiler)",
+      "state": "UNSUPPORTED",
+      "default": "not specified by this registry",
+      "consequence": "a reduced local policy model is not implemented",
+      "fixtures": [
+        "internal/frontend/kubernetes/compile_test.go",
+        "internal/frontend/kubernetes/remediation_test.go"
+      ]
+    },
+    {
+      "format": "kubernetes",
+      "version": "v1 / apps/v1 / networking.k8s.io/v1",
+      "scope": "kind",
+      "field": "PersistentVolumeClaim",
+      "milestone": "F3 (compiler)",
+      "state": "SUPPORTED",
+      "default": "not specified by this registry",
+      "consequence": "",
+      "fixtures": [
+        "internal/frontend/kubernetes/compile_test.go",
+        "internal/frontend/kubernetes/remediation_test.go"
+      ]
+    },
+    {
+      "format": "kubernetes",
+      "version": "v1 / apps/v1 / networking.k8s.io/v1",
+      "scope": "kind",
+      "field": "Pod",
+      "milestone": "F3 (compiler)",
+      "state": "SUPPORTED",
+      "default": "not specified by this registry",
+      "consequence": "",
+      "fixtures": [
+        "internal/frontend/kubernetes/compile_test.go",
+        "internal/frontend/kubernetes/remediation_test.go"
+      ]
+    },
+    {
+      "format": "kubernetes",
+      "version": "v1 / apps/v1 / networking.k8s.io/v1",
+      "scope": "kind",
+      "field": "PodDisruptionBudget",
+      "milestone": "F3 (compiler)",
+      "state": "VALIDATE_ONLY",
+      "default": "not specified by this registry",
+      "consequence": "validation only",
+      "fixtures": [
+        "internal/frontend/kubernetes/compile_test.go",
+        "internal/frontend/kubernetes/remediation_test.go"
+      ]
+    },
+    {
+      "format": "kubernetes",
+      "version": "v1 / apps/v1 / networking.k8s.io/v1",
+      "scope": "kind",
+      "field": "Secret",
+      "milestone": "F3 (compiler)",
+      "state": "SUPPORTED",
+      "default": "not specified by this registry",
+      "consequence": "",
+      "fixtures": [
+        "internal/frontend/kubernetes/compile_test.go",
+        "internal/frontend/kubernetes/remediation_test.go"
+      ]
+    },
+    {
+      "format": "kubernetes",
+      "version": "v1 / apps/v1 / networking.k8s.io/v1",
+      "scope": "kind",
+      "field": "Service",
+      "milestone": "F3 (compiler)",
+      "state": "SUPPORTED",
+      "default": "not specified by this registry",
+      "consequence": "",
+      "fixtures": [
+        "internal/frontend/kubernetes/compile_test.go",
+        "internal/frontend/kubernetes/remediation_test.go"
+      ]
+    },
+    {
+      "format": "kubernetes",
+      "version": "v1 / apps/v1 / networking.k8s.io/v1",
+      "scope": "kind",
+      "field": "ServiceAccount",
+      "milestone": "F3 (compiler)",
+      "state": "VALIDATE_ONLY",
+      "default": "not specified by this registry",
+      "consequence": "metadata only; no credential behavior",
+      "fixtures": [
+        "internal/frontend/kubernetes/compile_test.go",
+        "internal/frontend/kubernetes/remediation_test.go"
+      ]
+    },
+    {
+      "format": "kubernetes",
+      "version": "v1 / apps/v1 / networking.k8s.io/v1",
+      "scope": "kind",
+      "field": "StatefulSet",
+      "milestone": "F3 (compiler)",
+      "state": "UNSUPPORTED",
+      "default": "not specified by this registry",
+      "consequence": "StatefulSet identity and per-ordinal storage are scheduled for F4",
+      "fixtures": [
+        "internal/frontend/kubernetes/compile_test.go",
+        "internal/frontend/kubernetes/remediation_test.go"
+      ]
+    }
+  ]
+}

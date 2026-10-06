@@ -39,7 +39,38 @@ func containerSecurity(c model.Container) (guestproto.UserSpec, bool, error) {
 // ValidateDesired rejects unsupported policy before any runtime effects. It is
 // also used by the daemon for native API input, not just frontend compilation.
 func ValidateDesired(app model.Application) error {
+	if _, err := publications(app); err != nil {
+		return err
+	}
+	for _, service := range app.Services {
+		for _, port := range service.Ports {
+			if port.Protocol != "" && port.Protocol != "TCP" && port.Protocol != "tcp" {
+				return fmt.Errorf("executor: UDP Services are not implemented")
+			}
+		}
+	}
+	seenRoutes := map[string]bool{}
+	for _, route := range app.Routes {
+		if route.TLSRef != nil || route.PathType != "Exact" && route.PathType != "Prefix" {
+			return fmt.Errorf("executor: route TLS/path semantics are unsupported")
+		}
+		key := route.Hostname + "\x00" + route.Path + "\x00" + route.PathType
+		if seenRoutes[key] {
+			return fmt.Errorf("executor: conflicting Ingress host/path")
+		}
+		seenRoutes[key] = true
+	}
 	for _, w := range app.Workloads {
+		if w.Template.DNS != nil {
+			return fmt.Errorf("executor: custom Pod DNS settings are not implemented")
+		}
+		for _, c := range w.Template.InitContainers {
+			for _, port := range c.Ports {
+				if port.HostPort != 0 {
+					return fmt.Errorf("executor: init container host ports are unsupported")
+				}
+			}
+		}
 		for _, c := range allContainers(w) {
 			if c.SecurityProfile == nil {
 				c.SecurityProfile = &w.Template.SecurityProfile

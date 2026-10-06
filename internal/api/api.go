@@ -63,6 +63,18 @@ type ContainerStatus struct {
 	ExitCode  int    `json:"exitCode,omitempty"`
 }
 
+// RouteStatus contains only public routing metadata, never a private guest spec.
+type RouteStatus struct {
+	Hostname string `json:"hostname"`
+	Path     string `json:"path"`
+	PathType string `json:"pathType"`
+	Endpoint string `json:"endpoint,omitempty"`
+}
+
+type RouteViewer interface {
+	Routes(context.Context, string) ([]RouteStatus, error)
+}
+
 // Core is the subset of the runtime the API uses.
 type Core interface {
 	Apply(ctx context.Context, desired model.Application) (reconcile.Result, error)
@@ -201,7 +213,16 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "status_failed", err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"application": id, "containers": containers})
+	response := map[string]any{"application": id, "containers": containers}
+	if viewer, ok := s.opts.Core.(RouteViewer); ok {
+		routes, err := viewer.Routes(r.Context(), id)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "routes_failed", "route inventory unavailable")
+			return
+		}
+		response["routes"] = routes
+	}
+	writeJSON(w, http.StatusOK, response)
 }
 
 func (s *Server) handleExec(w http.ResponseWriter, r *http.Request) {

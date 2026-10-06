@@ -20,7 +20,7 @@ import (
 // within the same major version.
 const (
 	ProtocolMajor = 1
-	ProtocolMinor = 0
+	ProtocolMinor = 1
 )
 
 // ProtocolVersion is a major/minor protocol version.
@@ -44,12 +44,13 @@ var ErrAuthFailed = errors.New("guestproto: handshake authentication failed")
 type Capability string
 
 const (
-	CapExec   Capability = "exec"
-	CapTTY    Capability = "tty"
-	CapResize Capability = "resize"
-	CapStdin  Capability = "stdin"
-	CapProbe  Capability = "probe"
-	CapFiles  Capability = "files"
+	CapExec           Capability = "exec"
+	CapTTY            Capability = "tty"
+	CapResize         Capability = "resize"
+	CapStdin          Capability = "stdin"
+	CapProbe          Capability = "probe"
+	CapFiles          Capability = "files"
+	CapApplicationDNS Capability = "application-dns"
 )
 
 // Role identifies which side of the handshake is running.

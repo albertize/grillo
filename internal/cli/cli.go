@@ -19,6 +19,7 @@ import (
 
 	"github.com/albertize/grillo/internal/api"
 	"github.com/albertize/grillo/internal/build"
+	"github.com/albertize/grillo/internal/executor"
 	"github.com/albertize/grillo/internal/frontend/compose"
 	"github.com/albertize/grillo/internal/frontend/detect"
 	"github.com/albertize/grillo/internal/frontend/helm"
@@ -193,31 +194,52 @@ func (a *App) cmdPlan(ctx context.Context, args []string) int {
 	if err := fs.Parse(flags); err != nil {
 		return 2
 	}
-	app, code := a.loadApplication(ctx, inputOptions{Format: *format, Release: *release, Namespace: *namespace, ChartVersion: *chartVersion, ChartDigest: *chartDigest, Fetch: *fetchChart}, files, positionals, allowDegraded)
-	if code != 0 {
+	var diagnostics source.List
+	app, code := a.loadApplication(ctx, inputOptions{Format: *format, Release: *release, Namespace: *namespace, ChartVersion: *chartVersion, ChartDigest: *chartDigest, Fetch: *fetchChart, Diagnostics: &diagnostics}, files, positionals, allowDegraded)
+	if code != 0 && app.APIVersion == "" {
+		if *output == "json" {
+			if err := json.NewEncoder(a.Stdout).Encode(struct {
+				Applicable  bool        `json:"applicable"`
+				Diagnostics source.List `json:"diagnostics"`
+			}{false, diagnostics}); err != nil {
+				return fail(a.Stderr, err)
+			}
+		}
 		return code
 	}
 	result, err := plan.Build(app, plan.Observed{Sandboxes: map[string]plan.ObservedSandbox{}, Volumes: map[string]bool{}})
 	if err != nil {
 		return fail(a.Stderr, err)
 	}
+	counts := plan.Summarize(app, result)
 	if *output == "json" {
 		encoder := json.NewEncoder(a.Stdout)
 		encoder.SetIndent("", "  ")
-		if err := encoder.Encode(result); err != nil {
+		report := struct {
+			plan.Plan
+			Counts      plan.Counts `json:"counts"`
+			Applicable  bool        `json:"applicable"`
+			Diagnostics source.List `json:"diagnostics"`
+		}{result, counts, code == 0, diagnostics}
+		if err := encoder.Encode(report); err != nil {
 			return fail(a.Stderr, err)
 		}
-		return 0
+		return code
 	}
 	fmt.Fprintf(a.Stdout, "Plan for application %q:\n", app.Identity.Name)
+	if code != 0 {
+		fmt.Fprintln(a.Stdout, "  BLOCKED: required runtime capabilities are unavailable; these actions cannot be applied.")
+	}
+	fmt.Fprintf(a.Stdout, "  Resources: %d workloads, %d sandboxes, %d containers, %d init containers, %d services, %d routes, %d volumes, %d configs, %d secrets\n",
+		counts.Workloads, counts.Sandboxes, counts.Containers, counts.InitContainers, counts.Services, counts.Routes, counts.Volumes, counts.Configs, counts.Secrets)
 	if result.Empty() {
 		fmt.Fprintln(a.Stdout, "  (no actions)")
-		return 0
+		return code
 	}
 	for _, action := range result.Actions {
 		fmt.Fprintf(a.Stdout, "  %-16s %-28s %s\n", action.Kind, action.Resource, action.Reason)
 	}
-	return 0
+	return code
 }
 
 func (a *App) cmdUp(ctx context.Context, args []string) int {
@@ -313,13 +335,24 @@ func (a *App) cmdInspect(ctx context.Context, args []string) int {
 	if code := a.ensureDaemon(ctx); code != 0 {
 		return code
 	}
-	containers, err := a.ClientFactory(a.SocketPath).Status(ctx, application)
+	client := a.ClientFactory(a.SocketPath)
+	containers, err := client.Status(ctx, application)
 	if err != nil {
 		return fail(a.Stderr, err)
 	}
 	encoder := json.NewEncoder(a.Stdout)
 	encoder.SetIndent("", "  ")
-	if err := encoder.Encode(map[string]any{"application": application, "containers": containers}); err != nil {
+	report := map[string]any{"application": application, "containers": containers}
+	if viewer, ok := client.(interface {
+		Routes(context.Context, string) ([]api.RouteStatus, error)
+	}); ok {
+		routes, err := viewer.Routes(ctx, application)
+		if err != nil {
+			return fail(a.Stderr, err)
+		}
+		report["routes"] = routes
+	}
+	if err := encoder.Encode(report); err != nil {
 		return fail(a.Stderr, err)
 	}
 	return 0
@@ -625,6 +658,7 @@ type inputOptions struct {
 	Apply                      bool
 	ChartVersion, ChartDigest  string
 	Fetch                      bool
+	Diagnostics                *source.List // optional public report, owned by this invocation
 }
 
 func (a *App) loadApplication(ctx context.Context, opts inputOptions, files stringSlice, positionals []string, allowDegraded []string) (model.Application, int) {
@@ -747,14 +781,32 @@ func (a *App) loadApplication(ctx context.Context, opts inputOptions, files stri
 
 	var validation source.List
 	if !diagnostics.HasErrors() {
-		validation = model.Validate(app, model.Capabilities{})
+		validation = executor.ValidateApplication(app, true)
 	}
 	all := append(diagnostics, validation...)
 	all.Sort()
+	if opts.Diagnostics != nil {
+		*opts.Diagnostics = append(source.List(nil), all...)
+	}
 	for _, diagnostic := range all {
 		fmt.Fprintln(a.Stderr, diagnostic.Error())
 	}
 	if all.HasErrors() {
+		// A structurally valid offline plan may still report topology/counts
+		// when only capability availability blocks it. Keep the nonzero exit
+		// and never allow Apply or incomplete frontend output through.
+		onlyCapabilities := !opts.Apply && !diagnostics.HasErrors()
+		for _, diagnostic := range validation.Errors() {
+			if diagnostic.Code != model.CodeSupportUnsupported {
+				onlyCapabilities = false
+			}
+		}
+		if onlyCapabilities {
+			for i := range app.Secrets {
+				app.Secrets[i].Version = "unresolved-offline"
+			}
+			return app, 1
+		}
 		return model.Application{}, 1
 	}
 	if len(secretData) > 0 {

@@ -108,15 +108,19 @@ func TestKVMBridgedApplicationNetwork(t *testing.T) {
 	want := strings.TrimSpace(string(expected))
 	runInEventually(t, ctx, exec, infos[0].Key, want, "/bin/wget", "-qO-", "http://"+infos[1].IP+":8080/")
 
-	// DNS records carry the real sandbox addresses. nslookup exits non-zero from
-	// search-domain NXDOMAIN noise, so only the answer is asserted.
+	// Normal Services expose a namespace VIP, not individual sandbox addresses.
+	// Query absolutely to avoid BusyBox search-domain NXDOMAIN noise.
 	var dnsOut, dnsErr bytes.Buffer
-	_, _ = exec.ExecRuntime(ctx, infos[0].Key, "web", []string{"/bin/nslookup", "web.default.svc.cluster.local"}, &dnsOut, &dnsErr)
+	_, _ = exec.ExecRuntime(ctx, infos[0].Key, "web", []string{"/bin/nslookup", "-type=A", "web.default.svc.cluster.local."}, &dnsOut, &dnsErr)
+	if !strings.Contains(dnsOut.String(), "10.78.") {
+		t.Fatalf("DNS output %q missing Service VIP", dnsOut.String())
+	}
 	for _, info := range infos {
-		if !strings.Contains(dnsOut.String(), info.IP) {
-			t.Fatalf("DNS output %q missing %s", dnsOut.String(), info.IP)
+		if strings.Contains(dnsOut.String(), info.IP) {
+			t.Fatal("normal Service returned Pod IP")
 		}
 	}
+	runInEventually(t, ctx, exec, infos[0].Key, want, "/bin/wget", "-qO-", "http://web:8080/")
 
 	// Guest egress through the bridge and pasta NAT.
 	if err := guestEgress(ctx, infos[0], key); err != nil {

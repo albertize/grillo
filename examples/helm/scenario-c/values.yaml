@@ -1,0 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+image: busybox:1.37
+message: initial-config
+# Synthetic fixture value; never use live credentials in this chart.
+token: synthetic-t22-token

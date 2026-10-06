@@ -6,9 +6,11 @@ package netns
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"os/exec"
@@ -25,36 +27,106 @@ type Client struct {
 
 // request sends one command and reads one response.
 func (c *Client) request(request Request) (Response, error) {
-	conn, err := net.DialTimeout("unix", c.SocketPath, 5*time.Second)
-	if err != nil {
-		return Response{}, err
+	return c.requestContext(context.Background(), request)
+}
+
+func (c *Client) requestContext(ctx context.Context, request Request) (Response, error) {
+	response, conn, err := c.exchange(ctx, request)
+	if conn != nil {
+		_ = conn.Close()
 	}
-	defer conn.Close()
-	_ = conn.SetDeadline(time.Now().Add(30 * time.Second))
+	return response, err
+}
+
+type bufferedConn struct {
+	net.Conn
+	reader *bufio.Reader
+}
+
+func (c *bufferedConn) Read(p []byte) (int, error) { return c.reader.Read(p) }
+func (c *bufferedConn) CloseWrite() error {
+	if c, ok := c.Conn.(interface{ CloseWrite() error }); ok {
+		return c.CloseWrite()
+	}
+	return nil
+}
+
+func (c *Client) exchange(ctx context.Context, request Request) (Response, net.Conn, error) {
+	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	deadline, _ := ctx.Deadline()
+	request.Deadline = deadline.UnixMilli()
+	conn, err := (&net.Dialer{Timeout: 5 * time.Second}).DialContext(ctx, "unix", c.SocketPath)
+	if err != nil {
+		return Response{}, nil, err
+	}
+	stop := context.AfterFunc(ctx, func() { _ = conn.Close() })
+	defer stop()
+	fail := func(err error) (Response, net.Conn, error) { _ = conn.Close(); return Response{}, nil, err }
+	_ = conn.SetDeadline(deadline)
 	data, err := json.Marshal(request)
 	if err != nil {
-		return Response{}, err
+		return fail(err)
 	}
-	if _, err := conn.Write(append(data, '\n')); err != nil {
-		return Response{}, err
+	if len(data) > 1<<20 {
+		return fail(fmt.Errorf("netns: request limit exceeded"))
 	}
-	line, err := bufio.NewReader(conn).ReadBytes('\n')
-	if err != nil {
-		return Response{}, err
+	if _, err := io.Copy(conn, bytes.NewReader(append(data, '\n'))); err != nil {
+		return fail(err)
+	}
+	reader := bufio.NewReaderSize(conn, 4096)
+	var line []byte
+	for {
+		part, err := reader.ReadSlice('\n')
+		if len(line)+len(part) > 1<<20 {
+			return fail(fmt.Errorf("netns: response limit exceeded"))
+		}
+		line = append(line, part...)
+		if err == nil {
+			break
+		}
+		if err != bufio.ErrBufferFull {
+			return fail(err)
+		}
 	}
 	var response Response
 	if err := json.Unmarshal(line, &response); err != nil {
-		return Response{}, err
+		return fail(err)
 	}
 	if !response.OK {
-		return response, fmt.Errorf("netns: %s", response.Error)
+		return fail(fmt.Errorf("netns: %s", response.Error))
 	}
-	return response, nil
+	if err := ctx.Err(); err != nil {
+		return fail(err)
+	}
+	_ = conn.SetDeadline(time.Time{})
+	return response, &bufferedConn{Conn: conn, reader: reader}, nil
+}
+
+// UpdateServices publishes a complete, bounded application snapshot.
+func (c *Client) UpdateServices(ctx context.Context, updates []ServiceUpdate) (map[string]string, error) {
+	response, err := c.requestContext(ctx, Request{Op: "services", Services: updates})
+	return response.VIPs, err
+}
+
+// DialService relays only a declared Service port through the private socket.
+func (c *Client) DialService(ctx context.Context, address string) (net.Conn, error) {
+	_, conn, err := c.exchange(ctx, Request{Op: "connect-service", Target: address})
+	return conn, err
 }
 
 // Ping checks the supervisor.
 func (c *Client) Ping() error {
 	_, err := c.request(Request{Op: "ping"})
+	return err
+}
+
+func (c *Client) PingContext(ctx context.Context) error {
+	_, err := c.requestContext(ctx, Request{Op: "ping"})
+	return err
+}
+func (c *Client) ShutdownContext(ctx context.Context) error {
+	_, err := c.requestContext(ctx, Request{Op: "shutdown"})
 	return err
 }
 
@@ -127,7 +199,7 @@ func StartSupervisor(ctx context.Context, cfg Config, command SupervisorCommand,
 	}
 	args := []string{
 		"-f", "-4", "-I", cfg.Uplink,
-		"--config-net", "--no-map-gw",
+		"--config-net", "--no-map-gw", "--dns-forward", "169.254.1.1",
 		"-t", "none", "-u", "none", "-T", "none", "-U", "none",
 		"--",
 		command.Bin,
@@ -137,7 +209,9 @@ func StartSupervisor(ctx context.Context, cfg Config, command SupervisorCommand,
 	if log != nil {
 		cmd.Stdout, cmd.Stderr = log, log
 	}
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true, Pdeathsig: syscall.SIGKILL}
+	// Go may retire the launching OS thread, and applications outlive the
+	// daemon. Neither event must kill their private namespace supervisor.
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	if err := cmd.Start(); err != nil {
 		return nil, err
 	}

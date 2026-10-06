@@ -115,7 +115,7 @@ func serve(ctx context.Context, conn net.Conn, key []byte, sandboxID string, age
 		Sandbox:      sandboxID,
 		Key:          key,
 		Agent:        agentVersion,
-		Capabilities: []guestproto.Capability{guestproto.CapExec, guestproto.CapProbe},
+		Capabilities: []guestproto.Capability{guestproto.CapExec, guestproto.CapProbe, guestproto.CapApplicationDNS},
 	}
 	srv, err := guestproto.NewServer(ctx, conn, cfg, agent)
 	if err != nil {

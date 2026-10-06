@@ -5,6 +5,7 @@ package guestproto
 import (
 	"errors"
 	"fmt"
+	"net/netip"
 	"strings"
 )
 
@@ -36,6 +37,7 @@ type NetworkConfig struct {
 // DNSConfig is the guest resolver configuration: service records the agent
 // serves on 127.0.0.1:53 plus search domains.
 type DNSConfig struct {
+	Server        string      `json:"server,omitempty"` // private application resolver; empty serves local records
 	ClusterDomain string      `json:"clusterDomain,omitempty"`
 	Search        []string    `json:"search,omitempty"`
 	Records       []DNSRecord `json:"records,omitempty"`
@@ -110,6 +112,12 @@ func (s SandboxSpec) Validate() error {
 	}
 	if len(s.Containers) == 0 && !s.Build {
 		return errors.New("guestproto: sandbox has no containers")
+	}
+	if s.DNS != nil && s.DNS.Server != "" {
+		ip, err := netip.ParseAddr(s.DNS.Server)
+		if err != nil || !ip.Is4() {
+			return errors.New("guestproto: DNS server must be an IPv4 address")
+		}
 	}
 	seen := make(map[string]bool, len(s.Containers))
 	seenShares := make(map[string]bool, len(s.Shares))

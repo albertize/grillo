@@ -286,6 +286,10 @@ func compileService(name string, node *yaml.Node, topVolumes map[string]model.Vo
 	if service == nil {
 		service = &model.Service{Name: name, Selector: workload.Labels}
 	}
+	// Compose names identify container addresses, not Kubernetes ClusterIP
+	// virtual ports. Headless DNS preserves access to undeclared image ports;
+	// explicit host publication is handled separately by the runtime.
+	service.Headless = true
 	if container.Image.Reference == "" && !hasBuild(node) {
 		*diagnostics = append(*diagnostics, diagnostic(source.SeverityError, source.Unsupported, "compose.missing_image", node, file, "services/"+name, "image", "service "+name+" has neither image nor build", ""))
 	}

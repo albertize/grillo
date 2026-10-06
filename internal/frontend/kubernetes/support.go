@@ -95,6 +95,52 @@ var volumeSourceFields = map[string]supportEntry{
 	"csi":                   {source.Unsupported, "CSI drivers are not supported"},
 }
 
+var securityContextFields = map[string]supportEntry{
+	"runAsUser":              {source.Supported, ""},
+	"runAsGroup":             {source.Supported, ""},
+	"readOnlyRootFilesystem": {source.Supported, ""},
+	"privileged":             {source.Supported, "false only; true is rejected"},
+	"seccompProfile":         {source.Unsupported, "custom seccomp policy is not implemented"},
+	"capabilities":           {source.Unsupported, "capability overrides are not implemented"},
+}
+
+var rolloutSupport = supportEntry{source.Degraded, "Grillo replaces sandboxes (Recreate); in-place rolling updates are not faithful"}
+
+// SupportEntries snapshots the actual kind/field registries used by Compile.
+// Helm delegates rendered manifests to these same rules. Entries describe
+// compiler classification only, not a complete Kubernetes field inventory or
+// proof that Service/Ingress datapaths are wired to the runtime.
+func SupportEntries() []source.RegisteredFeature {
+	var entries []source.RegisteredFeature
+	for scope, registry := range map[string]map[string]supportEntry{
+		"kind": kinds, "PodSpec": podSpecFields, "Container": containerFields,
+		"VolumeSource": volumeSourceFields, "SecurityContext": securityContextFields,
+	} {
+		for field, support := range registry {
+			defaultValue := "not specified by this registry"
+			if scope == "PodSpec" && field == "restartPolicy" {
+				defaultValue = "Always"
+			}
+			if scope == "SecurityContext" && (field == "privileged" || field == "readOnlyRootFilesystem") {
+				defaultValue = "false"
+			}
+			entries = append(entries, source.RegisteredFeature{
+				Format: "kubernetes", Version: "v1 / apps/v1 / networking.k8s.io/v1",
+				Scope: scope, Field: field, Milestone: "F3 (compiler)", State: support.state,
+				Default: defaultValue, Consequence: support.consequence,
+				Fixtures: []string{"internal/frontend/kubernetes/compile_test.go", "internal/frontend/kubernetes/remediation_test.go"},
+			})
+		}
+	}
+	entries = append(entries, source.RegisteredFeature{
+		Format: "kubernetes", Version: "apps/v1", Scope: "Deployment", Field: "spec.strategy",
+		Milestone: "F3 (compiler)", State: rolloutSupport.state, Default: "RollingUpdate; requires consent, then Recreate",
+		Consequence: rolloutSupport.consequence,
+		Fixtures:    []string{"internal/frontend/kubernetes/testdata/rollingupdate.yaml", "internal/frontend/kubernetes/testdata/deployment.yaml"},
+	})
+	return entries
+}
+
 // fieldSupport resolves a dotted field path within a kind.
 func fieldSupport(registry map[string]supportEntry, path string) (supportEntry, bool) {
 	entry, ok := registry[path]

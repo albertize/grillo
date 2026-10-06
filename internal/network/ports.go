@@ -77,6 +77,9 @@ func (p *Ports) Reserve(hostIP string, hostPort int, sandboxID, application stri
 	if protocol == "" {
 		protocol = "tcp"
 	}
+	if protocol != "tcp" {
+		return PortReservation{}, fmt.Errorf("%w: only TCP publishing is implemented", ErrUnsupported)
+	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	k := key(hostIP, hostPort)
@@ -108,11 +111,16 @@ func (p *Ports) Release(hostIP string, hostPort int) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	k := key(hostIP, hostPort)
-	if _, ok := p.reservations[k]; !ok {
+	previous, ok := p.reservations[k]
+	if !ok {
 		return nil
 	}
 	delete(p.reservations, k)
-	return p.saveLocked()
+	if err := p.saveLocked(); err != nil {
+		p.reservations[k] = previous
+		return err
+	}
+	return nil
 }
 
 // ReleaseSandbox frees every reservation for a sandbox.

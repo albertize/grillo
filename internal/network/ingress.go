@@ -118,6 +118,7 @@ type IngressProxy struct {
 	resolve               func(service string, port int) (string, bool)
 	proxy                 *httputil.ReverseProxy
 	responseHeaderTimeout time.Duration
+	dial                  func(context.Context, string, string) (net.Conn, error)
 }
 
 // IngressOption customizes the proxy.
@@ -129,6 +130,12 @@ func WithResponseHeaderTimeout(d time.Duration) IngressOption {
 	return func(p *IngressProxy) { p.responseHeaderTimeout = d }
 }
 
+// WithIngressDialContext keeps namespace access in the runtime adapter. The
+// caller's dialer must restrict targets to declared application Services.
+func WithIngressDialContext(dial func(context.Context, string, string) (net.Conn, error)) IngressOption {
+	return func(p *IngressProxy) { p.dial = dial }
+}
+
 // NewIngressProxy builds a reverse proxy. resolve returns the backend host:port
 // for a Service and port.
 func NewIngressProxy(ingress *Ingress, resolve func(service string, port int) (string, bool), opts ...IngressOption) *IngressProxy {
@@ -136,10 +143,13 @@ func NewIngressProxy(ingress *Ingress, resolve func(service string, port int) (s
 	for _, opt := range opts {
 		opt(p)
 	}
+	if p.dial == nil {
+		p.dial = (&net.Dialer{Timeout: 5 * time.Second}).DialContext
+	}
 	p.proxy = &httputil.ReverseProxy{
 		Rewrite: p.rewrite,
 		Transport: &http.Transport{
-			DialContext:           (&net.Dialer{Timeout: 5 * time.Second}).DialContext,
+			DialContext:           p.dial,
 			ResponseHeaderTimeout: p.responseHeaderTimeout,
 			IdleConnTimeout:       30 * time.Second,
 			MaxIdleConnsPerHost:   16,
@@ -149,6 +159,13 @@ func NewIngressProxy(ingress *Ingress, resolve func(service string, port int) (s
 		},
 	}
 	return p
+}
+
+// CloseIdleConnections releases cached relay connections on update/teardown.
+func (p *IngressProxy) CloseIdleConnections() {
+	if transport, ok := p.proxy.Transport.(*http.Transport); ok {
+		transport.CloseIdleConnections()
+	}
 }
 
 // ServeHTTP matches and forwards a request.

@@ -22,24 +22,30 @@ import (
 	"sync"
 	"syscall"
 	"time"
+
+	"github.com/albertize/grillo/internal/network"
 )
 
 // Request is one supervisor command (JSON line).
 type Request struct {
-	Op      string   `json:"op"` // "ping", "launch", "remove", "stop", "alive"
-	Tap     string   `json:"tap,omitempty"`
-	QEMU    string   `json:"qemu,omitempty"`
-	Args    []string `json:"args,omitempty"`
-	LogPath string   `json:"log,omitempty"`
-	MAC     string   `json:"mac,omitempty"`
+	Op       string          `json:"op"` // "ping", "launch", "remove", "stop", "alive"
+	Tap      string          `json:"tap,omitempty"`
+	QEMU     string          `json:"qemu,omitempty"`
+	Args     []string        `json:"args,omitempty"`
+	LogPath  string          `json:"log,omitempty"`
+	MAC      string          `json:"mac,omitempty"`
+	Services []ServiceUpdate `json:"services,omitempty"`
+	Target   string          `json:"target,omitempty"`   // declared Service VIP:port only
+	Deadline int64           `json:"deadline,omitempty"` // Unix milliseconds
 }
 
 // Response is the supervisor reply.
 type Response struct {
-	OK    bool   `json:"ok"`
-	Error string `json:"error,omitempty"`
-	PID   int    `json:"pid,omitempty"`
-	Alive bool   `json:"alive,omitempty"`
+	OK    bool              `json:"ok"`
+	Error string            `json:"error,omitempty"`
+	PID   int               `json:"pid,omitempty"`
+	Alive bool              `json:"alive,omitempty"`
+	VIPs  map[string]string `json:"vips,omitempty"`
 }
 
 // Config configures the supervisor.
@@ -59,6 +65,8 @@ type Supervisor struct {
 	mu       sync.Mutex
 	children map[string]*child
 	cancel   context.CancelFunc
+	datapath *serviceDatapath
+	slots    chan struct{}
 }
 
 type child struct {
@@ -77,7 +85,7 @@ func NewSupervisor(cfg Config) *Supervisor {
 	if cfg.Uplink == "" {
 		cfg.Uplink = "uplink"
 	}
-	return &Supervisor{cfg: cfg, children: map[string]*child{}}
+	return &Supervisor{cfg: cfg, children: map[string]*child{}, slots: make(chan struct{}, 64)}
 }
 
 // Run sets up the network and serves until ctx is canceled.
@@ -88,6 +96,30 @@ func (s *Supervisor) Run(ctx context.Context) error {
 	if err := s.setup(ctx); err != nil {
 		return err
 	}
+	resolver := network.NewResolver(network.ResolverConfig{Forwarder: "169.254.1.1:53"})
+	datapath, err := newServiceDatapath(s.cfg, resolver)
+	if err != nil {
+		return err
+	}
+	s.datapath = datapath
+	defer datapath.Close()
+	dns, err := network.NewDNSServer(net.JoinHostPort(s.cfg.Gateway, "53"), resolver)
+	if err != nil {
+		return err
+	}
+	defer dns.Close()
+	go func() { _ = dns.Serve(ctx) }()
+	defer func() {
+		s.mu.Lock()
+		var taps []string
+		for tap := range s.children {
+			taps = append(taps, tap)
+		}
+		s.mu.Unlock()
+		for _, tap := range taps {
+			s.stopTap(tap)
+		}
+	}()
 	if err := os.Remove(s.cfg.SocketPath); err != nil && !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
@@ -95,7 +127,12 @@ func (s *Supervisor) Run(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	if err := os.Chmod(s.cfg.SocketPath, 0600); err != nil {
+		_ = listener.Close()
+		return err
+	}
 	s.listener = listener
+	defer listener.Close()
 	go func() {
 		<-ctx.Done()
 		_ = listener.Close()
@@ -110,7 +147,13 @@ func (s *Supervisor) Run(ctx context.Context) error {
 				return err
 			}
 		}
-		go s.serveConn(conn)
+		select {
+		case s.slots <- struct{}{}:
+		default:
+			_ = conn.Close()
+			continue
+		}
+		go func() { defer func() { <-s.slots }(); s.serveConn(ctx, conn) }()
 	}
 }
 
@@ -148,6 +191,7 @@ func (s *Supervisor) rules() string {
   ct state established,related accept
   ip saddr %s udp dport 53 accept
   ip saddr %s tcp dport 53 accept
+  ip saddr %s ip daddr %s meta l4proto tcp accept
   counter drop
  }
  chain forward { type filter hook forward priority 0; policy drop;
@@ -162,11 +206,14 @@ table ip grillonat {
   oifname "%s" ip saddr %s masquerade
  }
 }
-`, subnet, subnet, s.cfg.Bridge, s.cfg.Bridge, subnet, s.cfg.Uplink, s.cfg.Uplink, subnet)
+`, subnet, subnet, subnet, ServiceSubnet, s.cfg.Bridge, s.cfg.Bridge, subnet, s.cfg.Uplink, s.cfg.Uplink, subnet)
 }
 
-func (s *Supervisor) serveConn(conn net.Conn) {
+func (s *Supervisor) serveConn(ctx context.Context, conn net.Conn) {
 	defer conn.Close()
+	stop := context.AfterFunc(ctx, func() { _ = conn.Close() })
+	defer stop()
+	_ = conn.SetDeadline(time.Now().Add(30 * time.Second))
 	scanner := bufio.NewScanner(conn)
 	scanner.Buffer(make([]byte, 0, 64*1024), 1<<20)
 	encoder := json.NewEncoder(conn)
@@ -176,11 +223,23 @@ func (s *Supervisor) serveConn(conn net.Conn) {
 			_ = encoder.Encode(Response{Error: "invalid request"})
 			continue
 		}
-		_ = encoder.Encode(s.handle(request))
+		deadline := time.Now().Add(15 * time.Second)
+		if request.Deadline != 0 && time.UnixMilli(request.Deadline).Before(deadline) {
+			deadline = time.UnixMilli(request.Deadline)
+		}
+		requestCtx, cancel := context.WithDeadline(ctx, deadline)
+		if request.Op == "connect-service" {
+			s.relay(requestCtx, ctx, conn, request.Target)
+			cancel()
+			return
+		}
+		response := s.handle(requestCtx, request)
+		cancel()
+		_ = encoder.Encode(response)
 	}
 }
 
-func (s *Supervisor) handle(request Request) Response {
+func (s *Supervisor) handle(ctx context.Context, request Request) Response {
 	switch request.Op {
 	case "ping":
 		return Response{OK: true}
@@ -194,6 +253,12 @@ func (s *Supervisor) handle(request Request) Response {
 		// Let serveConn flush the response before Run exits.
 		time.AfterFunc(50*time.Millisecond, s.cancel)
 		return Response{OK: true}
+	case "services":
+		vips, err := s.datapath.Update(ctx, request.Services)
+		if err != nil {
+			return Response{Error: err.Error()}
+		}
+		return Response{OK: true, VIPs: vips}
 	case "launch":
 		pid, err := s.launch(request)
 		if err != nil {
@@ -333,6 +398,8 @@ func macArg(mac string) string {
 }
 
 func run(ctx context.Context, name string, args ...string) error {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
 	cmd := exec.CommandContext(ctx, name, args...)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("netns: %s %s: %w: %s", name, strings.Join(args, " "), err, out)

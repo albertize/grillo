@@ -144,7 +144,8 @@
       "name": "db",
       "selector": {
         "io.grillo.compose.service": "db"
-      }
+      },
+      "headless": true
     },
     {
       "name": "web",
@@ -159,7 +160,8 @@
             "number": 80
           }
         }
-      ]
+      ],
+      "headless": true
     }
   ],
   "volumes": [

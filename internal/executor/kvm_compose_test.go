@@ -164,7 +164,8 @@ func TestKVMComposeF2Application(t *testing.T) {
 		t.Fatalf("worker result = %q, want web index content", result)
 	}
 
-	// DNS resolves the service FQDN to the web sandbox address.
+	// Compose names use headless DNS: they identify container addresses,
+	// unlike explicit Kubernetes ClusterIP Services.
 	var dnsOut, dnsErr bytes.Buffer
 	_, _ = runtime.ExecRuntime(ctx, workerInfo.Key, "worker", []string{"/bin/nslookup", "web.default.svc.cluster.local"}, &dnsOut, &dnsErr)
 	if !strings.Contains(dnsOut.String(), webInfo.IP) {

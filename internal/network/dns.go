@@ -23,6 +23,7 @@ const DefaultTTL = 5
 
 // SRVRecord is one SRV target for a named service port.
 type SRVRecord struct {
+	PortName string
 	Target   string
 	Port     uint16
 	Priority uint16
@@ -31,6 +32,9 @@ type SRVRecord struct {
 
 // ResolverConfig configures the guest DNS resolver.
 type ResolverConfig struct {
+	// Forwarder is an explicit IP:port upstream reachable only from this
+	// private application namespace. Empty preserves REFUSED for outsiders.
+	Forwarder string
 	// ClusterDomain defaults to "cluster.local".
 	ClusterDomain string
 	// Namespaces are the namespaces this application serves (currently "default").
@@ -101,14 +105,28 @@ func (r *Resolver) UpsertService(name, namespace string, ips []string, srv []SRV
 		if err != nil {
 			return fmt.Errorf("%w: service %s: %v", ErrInvalid, name, err)
 		}
+		if !addr.Is4() {
+			return fmt.Errorf("%w: only IPv4 DNS records are implemented", ErrUnsupported)
+		}
 		addrs = append(addrs, addr)
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	for _, alias := range serviceAliases(name, namespace, r.cfg.ClusterDomain) {
 		r.a[alias] = append([]netip.Addr(nil), addrs...)
+		for key := range r.srv {
+			if strings.HasSuffix(key, "."+alias) {
+				delete(r.srv, key)
+			}
+		}
 		if len(srv) > 0 {
 			r.srv["_tcp."+alias] = append([]SRVRecord(nil), srv...)
+			for _, record := range srv {
+				if record.PortName != "" {
+					key := "_" + record.PortName + "._tcp." + alias
+					r.srv[key] = append(r.srv[key], record)
+				}
+			}
 		}
 	}
 	return nil
@@ -122,7 +140,11 @@ func (r *Resolver) RemoveService(name, namespace string) {
 	defer r.mu.Unlock()
 	for _, alias := range serviceAliases(name, namespace, r.cfg.ClusterDomain) {
 		delete(r.a, alias)
-		delete(r.srv, "_tcp."+alias)
+		for key := range r.srv {
+			if strings.HasSuffix(key, "."+alias) {
+				delete(r.srv, key)
+			}
+		}
 	}
 }
 
@@ -196,8 +218,14 @@ type DNSServer struct {
 	udp      *net.UDPConn
 	tcp      net.Listener
 
-	closeOnce sync.Once
-	wg        sync.WaitGroup
+	closeOnce   sync.Once
+	wg          sync.WaitGroup
+	closed      chan struct{}
+	slots       chan struct{}
+	mu          sync.Mutex
+	connections map[net.Conn]bool
+	ctx         context.Context
+	cancel      context.CancelFunc
 }
 
 // NewDNSServer binds a resolver to a UDP and TCP socket on addr.
@@ -215,7 +243,16 @@ func NewDNSServer(addr string, resolver *Resolver) (*DNSServer, error) {
 		udp.Close()
 		return nil, err
 	}
-	return &DNSServer{resolver: resolver, udp: udp, tcp: tcp}, nil
+	if upstream := resolver.cfg.Forwarder; upstream != "" {
+		addr, err := netip.ParseAddrPort(upstream)
+		if err != nil || !addr.Addr().Is4() || addr.Port() == 0 || addr.String() == udp.LocalAddr().String() {
+			_ = udp.Close()
+			_ = tcp.Close()
+			return nil, fmt.Errorf("invalid or looping DNS forwarder")
+		}
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	return &DNSServer{resolver: resolver, udp: udp, tcp: tcp, closed: make(chan struct{}), slots: make(chan struct{}, 64), connections: map[net.Conn]bool{}, ctx: ctx, cancel: cancel}, nil
 }
 
 // Addr returns the bound UDP address.
@@ -224,8 +261,11 @@ func (s *DNSServer) Addr() string { return s.udp.LocalAddr().String() }
 // Serve runs the UDP and TCP handlers until Close or ctx cancellation.
 func (s *DNSServer) Serve(ctx context.Context) error {
 	go func() {
-		<-ctx.Done()
-		s.Close()
+		select {
+		case <-ctx.Done():
+			s.Close()
+		case <-s.closed:
+		}
 	}()
 	s.wg.Add(1)
 	go func() {
@@ -246,6 +286,13 @@ func (s *DNSServer) Close() error {
 	s.closeOnce.Do(func() {
 		_ = s.udp.Close()
 		_ = s.tcp.Close()
+		close(s.closed)
+		s.cancel()
+		s.mu.Lock()
+		for conn := range s.connections {
+			_ = conn.Close()
+		}
+		s.mu.Unlock()
 	})
 	return nil
 }
@@ -271,9 +318,27 @@ func (s *DNSServer) serveTCP() {
 		if err != nil {
 			return
 		}
+		select {
+		case s.slots <- struct{}{}:
+		default:
+			_ = conn.Close()
+			continue
+		}
+		s.mu.Lock()
+		select {
+		case <-s.closed:
+			s.mu.Unlock()
+			_ = conn.Close()
+			<-s.slots
+			return
+		default:
+		}
+		s.connections[conn] = true
+		s.mu.Unlock()
 		s.wg.Add(1)
 		go func() {
 			defer s.wg.Done()
+			defer func() { s.mu.Lock(); delete(s.connections, conn); s.mu.Unlock(); <-s.slots }()
 			defer conn.Close()
 			_ = conn.SetDeadline(time.Now().Add(10 * time.Second))
 			for {
@@ -289,7 +354,7 @@ func (s *DNSServer) serveTCP() {
 				if _, err := readFull(conn, query); err != nil {
 					return
 				}
-				resp, err := s.respond(query)
+				resp, err := s.respondTransport(query, true)
 				if err != nil {
 					return
 				}
@@ -314,11 +379,16 @@ func readFull(conn net.Conn, buf []byte) (int, error) {
 	return total, nil
 }
 
-func (s *DNSServer) respond(query []byte) ([]byte, error) {
+func (s *DNSServer) respond(query []byte) ([]byte, error) { return s.respondTransport(query, false) }
+
+func (s *DNSServer) respondTransport(query []byte, tcp bool) ([]byte, error) {
 	parser := dnsmessage.Parser{}
 	header, err := parser.Start(query)
 	if err != nil {
 		return nil, err
+	}
+	if header.Response {
+		return nil, fmt.Errorf("expected DNS query")
 	}
 	questions, err := parser.AllQuestions()
 	if err != nil && !errors.Is(err, dnsmessage.ErrSectionDone) {
@@ -327,11 +397,22 @@ func (s *DNSServer) respond(query []byte) ([]byte, error) {
 	rcode := dnsmessage.RCodeSuccess
 	answers := make([]dnsmessage.Resource, 0, len(questions))
 	for _, question := range questions {
+		if question.Class != dnsmessage.ClassINET || header.OpCode != 0 {
+			rcode = dnsmessage.RCodeRefused
+			continue
+		}
 		resolved, code := s.resolver.answer(question, s.udp.LocalAddr())
 		if code != dnsmessage.RCodeSuccess && rcode == dnsmessage.RCodeSuccess {
 			rcode = code
 		}
 		answers = append(answers, resolved...)
+	}
+	if rcode == dnsmessage.RCodeRefused && len(questions) == 1 && questions[0].Class == dnsmessage.ClassINET && header.OpCode == 0 && strings.Contains(normalizeDNSName(questions[0].Name.String()), ".") && s.resolver.cfg.Forwarder != "" {
+		response, err := s.forward(query, questions[0], header.ID, tcp)
+		if err == nil {
+			return response, nil
+		}
+		rcode = dnsmessage.RCodeServerFailure
 	}
 	builder := dnsmessage.NewBuilder(nil, dnsmessage.Header{
 		ID:                 header.ID,
@@ -374,9 +455,12 @@ func (s *DNSServer) respond(query []byte) ([]byte, error) {
 func (r *Resolver) answer(question dnsmessage.Question, _ net.Addr) ([]dnsmessage.Resource, dnsmessage.RCode) {
 	name := normalizeDNSName(question.Name.String())
 	for _, candidate := range r.nameCandidates(name) {
-		if question.Type == dnsmessage.TypeA {
-			if addrs, ok := r.LookupA(candidate); ok {
+		if addrs, ok := r.LookupA(candidate); ok {
+			if question.Type == dnsmessage.TypeA {
 				return aResources(question.Name, addrs, r.ttl()), dnsmessage.RCodeSuccess
+			}
+			if question.Type != dnsmessage.TypeSRV {
+				return nil, dnsmessage.RCodeSuccess // registered name, absent RR type
 			}
 		}
 		if question.Type == dnsmessage.TypeSRV {

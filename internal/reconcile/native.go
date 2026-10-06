@@ -18,6 +18,13 @@ type SandboxController interface {
 	Delete(ctx context.Context, application string, descriptor plan.Descriptor) error
 }
 
+// EndpointController owns application discovery/route lifecycle. Fake sandbox
+// controllers may omit it; the production adapter must implement it.
+type EndpointController interface {
+	UpdateEndpoints(context.Context, string) error
+	ShutdownNetwork(context.Context, string) error
+}
+
 // VolumeController prepares and deletes application volumes. Bind and external
 // volumes must never be deleted by Delete.
 type VolumeController interface {
@@ -64,9 +71,18 @@ func (e *NativeExecutor) Apply(ctx context.Context, application string, action p
 			return nil
 		}
 		return e.Sandboxes.Delete(ctx, application, action.Sandbox)
-	case plan.ActionUpdateEndpoints, plan.ActionPullImage:
-		// Endpoint wiring (T12) and image pulls (T09) are performed by their own
-		// subsystems; the plan records the action for observability.
+	case plan.ActionUpdateEndpoints:
+		if controller, ok := e.Sandboxes.(EndpointController); ok {
+			return controller.UpdateEndpoints(ctx, application)
+		}
+		return nil
+	case plan.ActionShutdownNetwork:
+		if controller, ok := e.Sandboxes.(EndpointController); ok {
+			return controller.ShutdownNetwork(ctx, application)
+		}
+		return nil
+	case plan.ActionPullImage:
+		// Ensure resolves and verifies container images before boot.
 		return nil
 	default:
 		return fmt.Errorf("reconcile: unknown action %q", action.Kind)

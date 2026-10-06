@@ -45,13 +45,25 @@ func (e *Executor) LaunchSandbox(ctx context.Context, spec sandbox.Spec, args []
 func (e *Executor) ensureSupervisor(ctx context.Context, application string) (*netns.Helper, error) {
 	e.launchMu.Lock()
 	defer e.launchMu.Unlock()
-	if helper, ok := e.supervisors[application]; ok && helper.Alive() {
-		return helper, nil
+	if err := ctx.Err(); err != nil {
+		return nil, err
 	}
 	socket := e.socketPath(application)
+	client := &netns.Client{SocketPath: socket}
+	if helper, ok := e.supervisors[application]; ok && helper.Alive() {
+		if err := client.PingContext(ctx); err != nil {
+			return nil, fmt.Errorf("executor: application network supervisor unavailable: %w", err)
+		}
+		return helper, nil
+	}
 	// Reuse a surviving supervisor rather than orphaning its namespace.
-	if err := (&netns.Client{SocketPath: socket}).Ping(); err == nil {
+	if err := client.PingContext(ctx); err == nil {
 		return nil, nil
+	}
+	// Existing VMs still hold the old namespace. Creating a new namespace
+	// with identical IPs would hide the failure, not reconnect those VMs.
+	if len(e.Sandboxes(application)) != 0 {
+		return nil, fmt.Errorf("executor: application network supervisor lost; recover the application before restarting its network")
 	}
 	var logFile *os.File
 	if e.cfg.RuntimeDir != "" {
@@ -146,6 +158,26 @@ func (e *Executor) ExecRuntime(ctx context.Context, key, container string, args 
 
 // Close stops the application network supervisors.
 func (e *Executor) Close() {
+	e.mu.Lock()
+	for _, rt := range e.runtimes {
+		if rt.cancel != nil {
+			rt.cancel()
+		}
+	}
+	e.mu.Unlock()
+	e.networkMu.Lock()
+	var apps []string
+	for app := range e.ingresses {
+		apps = append(apps, app)
+	}
+	e.networkMu.Unlock()
+	for _, app := range apps {
+		if err := e.closeIngress(app); err != nil {
+			e.mu.Lock()
+			e.networkErrors[app] = err
+			e.mu.Unlock()
+		}
+	}
 	e.launchMu.Lock()
 	helpers := make([]*netns.Helper, 0, len(e.supervisors))
 	for _, helper := range e.supervisors {

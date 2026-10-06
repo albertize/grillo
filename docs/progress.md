@@ -31,7 +31,17 @@ real KVM/QEMU and passes OCI scenario A plus an init-failure case.
 
 **T11 is complete.** `internal/network` provides IPAM with persistent owner-bound leases and reconciliation, host loopback port reservations with privileged-port and collision rejection, application isolation policy, a rootless publishing proxy, and a supervised pasta helper that runs a child in a fresh user+network namespace. `make test-netns` verifies egress, distinct namespaces, mutually isolated same-port binds, and host-loopback management unreachability with real pasta, and asserts each sandbox receives its own IPAM address via `pasta -a`. The production backend now runs each application in a dedicated `internal/netns` supervisor: one pasta user+network namespace, a bridge with the application gateway, one TAP per sandbox, and nftables forwarding with masqueraded egress. `make test-bridged` verifies cross-VM reachability, real DNS addresses, guest egress, and application isolation on real KVM.
 
-**T12 is complete.** `internal/network` adds an application DNS resolver and UDP/TCP server (all four Kubernetes service names resolve, NXDOMAIN for in-zone misses, REFUSED rather than acting as an open resolver), a Service registry with a dedicated VIP pool, a readiness-aware round-robin balancer and TCP service proxy, and an Ingress matcher/reverse proxy with segment-aware Prefix, Exact, sanitized forwarded headers, and bounded backend timeouts. `golang.org/x/net` (dnsmessage) is now a pinned dependency. The resolver runs inside the guest: the sandbox spec carries service records, the agent serves them on 127.0.0.1:53 and writes `/etc/resolv.conf`, every container bind-mounts it, and the four Kubernetes names resolve end to end on real KVM. With the production bridge, service records carry the real per-replica sandbox addresses, so replicas resolve and reach each other across VMs.
+**T12 is complete after production revalidation on 2026-10-06.** Application
+namespace DNS now supplies normal Service VIPs, headless ready-Pod addresses and
+named SRV records. TCP proxies resolve named target ports, balance real replicas,
+and exclude unready/draining sandboxes. Ingress publishes stable loopback HTTP
+fallbacks; `inspect` includes public route endpoints. Fixed TCP host ports are
+reserved before VM boot and released on removal/down. Namespace DNS forwarding
+has bounded UDP/TCP exchanges through pasta's explicit DNS forwarding address;
+external DNS availability still depends on the host resolver. Compose names use
+headless DNS rather than pretending to be Kubernetes ClusterIP Services.
+`make test-helm`, `make test-f2`, `make test-k8s` and `make check` pass. The original
+missing-datapath failures remain recorded as historical evidence in the T22 report.
 
 **T13 is complete.** `internal/observe` provides a sequenced event stream (reusing the state journal's rotation and sequence IDs) with `Follow` and gap detection, a bounded log spool with follow, `/proc`-based resource snapshots with CPU deltas, and exec/HTTP/TCP probes with startup/readiness/liveness roles, thresholds, injected-clock scheduling, and nonoverlapping ticks. A bounded exit watcher emits an event only on container state change. The executor wires the probes and restarts a container whose liveness probe fails, verified on real KVM by a PID change.
 
@@ -57,7 +67,14 @@ pass; this is not the T22 real-workload gate. See
 
 **T17 is complete.** `internal/frontend/compose` parses Compose YAML with source maps, interpolation (`$VAR`, `${VAR}`, defaults, required, alternatives, `$$`), `.env`/host environment precedence, `env_file`, ports, volumes, healthchecks, `depends_on`, restart policies, resources, and networks, and compiles to the IR with field-level support diagnostics and a golden fixture. `internal/frontend/detect` identifies Compose, native, Kubernetes, and Helm input, and the CLI now accepts Compose files.
 
-**T16 is complete.** `internal/cli` implements the native-runtime command line with a parser for flags before/after positionals, repeated `-f`, and the exec `--` terminator; offline `plan`; `up` (daemon autostart + async apply), `down`, `status`, `inspect`, `logs`, `events`, `exec` against a live container, and a read-only `doctor` that never requires root. `cmd/grillo` is wired to it. It also provides `ps`, `restart`, and a `shell` that streams `/bin/sh`, and a `ui` command that serves a secure loopback web console (`internal/ui`) with a bootstrap token exchanged for an HttpOnly cookie, Host/Origin checks, a strict CSP, and text-node rendering.
+**T16 is complete after capability-policy revalidation on 2026-10-06.** CLI,
+executor and daemon share an explicit native implementation whitelist rather
+than empty or blanket capabilities. Supported storage, init/multiple containers,
+probes and bridged routes/host ports are admitted; privileged, StatefulSet/Job
+and unknown features remain unavailable. Offline applicability describes
+implementation semantics, not host feasibility. Real CLI Helm plan/up/inspect/
+down through the actual daemon now passes, with secret separation and recovery.
+`internal/cli` implements the native-runtime command line with a parser for flags before/after positionals, repeated `-f`, and the exec `--` terminator; offline `plan`; `up` (daemon autostart + async apply), `down`, `status`, `inspect`, `logs`, `events`, `exec` against a live container, and a read-only `doctor` that never requires root. `cmd/grillo` is wired to it. It also provides `ps`, `restart`, and a `shell` that streams `/bin/sh`, and a `ui` command that serves a secure loopback web console (`internal/ui`) with a bootstrap token exchanged for an HttpOnly cookie, Host/Origin checks, a strict CSP, and text-node rendering.
 
 Hosted CI has not yet been executed.
 
@@ -77,18 +94,18 @@ Hosted CI has not yet been executed.
 | T09 | OCI registry and CAS | DONE | `internal/oci`; unit + adversarial + concurrent-dedup tests, and `make test-netreg` live digest-pinned pull PASS |
 | T10 | Storage manager | DONE | `internal/storage`; `make test-t10` (scenario G) and a `virtio-blk` ext4 persistence test PASS on real KVM |
 | T11 | Production rootless networking and IPAM | DONE | `internal/network` + `internal/netns`; `make test-netns` and `make test-bridged` PASS (egress, unique addresses, isolation, cross-VM, host-loopback denied) |
-| T12 | DNS, Service proxy, and Ingress | DONE | `internal/network` + in-guest resolver with real replica addresses; cross-VM resolve/reach, balancing, readiness, timeout, path-segment tests |
+| T12 | DNS, Service proxy, and Ingress | DONE | Production namespace DNS/VIPs, targetPort, replica balancing, readiness, headless SRV, Ingress and host TCP publication pass real KVM; revalidated 2026-10-06 |
 | T13 | Observability and probes | DONE | `internal/observe` + executor probe wiring; startup gating, thresholds, fake-clock, timeout-kill, liveness-restart KVM test |
 | T14 | Planner, reconciler, and updates | DONE | `internal/plan` + `internal/reconcile` + `internal/executor`; diff/recreate/route-only, retries, crash replay, idempotent down, bounded workers, `make test-executor` end-to-end on KVM |
 | T15 | Local API and daemon lifetime | DONE | `internal/api` + `cmd/grillod`; peer UID, async ops, status/exec endpoints, SSE cursors, disconnect/leak tests |
-| T16 | Native-runtime CLI | DONE | `internal/cli` + `cmd/grillo`; plan, up/down/status/inspect/ps/restart/logs/events/exec/shell/ui, terminal restore, read-only doctor |
+| T16 | Native-runtime CLI | DONE | Shared explicit capability policy; real CLI Helm lifecycle/inspection and daemon recovery pass KVM, plus parser/terminal/doctor regressions |
 | T17 | Compose parser and compiler | DONE | `internal/frontend/compose` + `detect`; interpolation/env precedence, support diagnostics, golden IR, CLI integration |
 | T18 | Native build system and image tooling | DONE | `internal/dockerfile` + `internal/build.NativeBuilder`; copy-only and sandboxed `RUN` builds, Podman opt-in, image store/GC, API/CLI (ADR 0006) |
 | T18b | Build execution in the guest (protocol) | DONE | `run` guest message + `SandboxRunner`; real KVM evidence |
 | T19 | F2 gate: Compose application | DONE | `make test-f2` real KVM: DNS, volume persistence, idempotent re-apply, down/recovery/cleanup; report `docs/experiments/t19-f2-compose.md` |
 | T20 | Kubernetes MVP compiler | DONE | `internal/frontend/kubernetes`; goldens, rejections, secret separation, RollingUpdate consent, multi-container KVM; `docs/experiments/t20-kubernetes-compiler.md` |
 | T21 | Helm rendering and OCI charts | DONE | Real Helm package/template, local/OCI equivalence, explicit HTTPS fetch, verified atomic cache, stable offline plans, archive/corruption/concurrency/dependency restrictions; `docs/experiments/t21-helm-renderer.md` |
-| T22 | Helm gate and compatibility reporting | TODO | T19, T21 |
+| T22 | Helm gate and compatibility reporting | DONE | Full direct-runtime scenario C plus actual CLI/daemon chart gate PASS; unsupported provisioning blocked; compiler registry/counts and consumer/PVC semantics verified |
 | T23 | Web console and secure bridge | IN_PROGRESS | Bridge + minimal console in `internal/ui` and `grillo ui`; full views pending |
 | T24 | F3 MVP gate and hardening | TODO | T23 |
 | T25 | StatefulSet and Job | TODO | T24 |
@@ -1283,6 +1300,176 @@ historical evidence only.
   embed source values), but never desired runtime state or the secret store.
   Cache publication is Linux-only; non-Linux behavior is not a platform claim.
 - **Next task:** T22 — Helm gate and compatibility reporting on the real runtime.
+
+## T22 initial Helm hardware check
+
+- **Task:** T22 — Helm gate and compatibility reporting (bounded initial subtask).
+- **Status:** IN_PROGRESS; not the full scenario C gate.
+- **Dependencies verified:** T19 and T21 completion reports; clean initial tree;
+  official Helm v4.2.2, KVM, QEMU/virtiofsd, pasta and existing OCI fixture.
+- **Files and contracts changed:** `internal/executor/kvm_helm_test.go`,
+  `Makefile` (`test-helm`), compatibility and progress. No production contract
+  or dependency change. The official renderer compiles `examples/helm/demo`
+  into the shared IR; the real executor boots one microVM and starts its OCI
+  container. Default/overridden environment values are read through guest exec.
+  Guest kernel boot IDs prove unchanged apply preserves the VM and a template
+  update recreates it (stable resource keys alone are insufficient evidence).
+  Cleanup is registered before apply, has its own deadline, reports failures,
+  and checks that down leaves no sandbox/backend directory.
+- **Decisions/ADRs:** None; retains ADR 0005/0007 contracts.
+- **Tests run:** Linux/amd64, kernel 7.2.8-200.fc44.x86_64, UID 1000,
+  Go go1.26.8-X:nodwarf5, SELinux Permissive:
+  - `make test-helm`: PASS, rebuilt guest image, real KVM test (3.47 s).
+  - `go test -race -tags kvm -count=2 -v -timeout 300s -run
+    '^TestKVMHelmApplication$' ./internal/executor/`: PASS twice, no skips.
+  - `go test -count=1 ./internal/frontend/helm ./internal/cli`: PASS,
+    including existing rejection/redaction/consent and failure-path tests.
+  - `make check`: PASS (format, vet, ordinary unit/race tests, scripts,
+    host/agent builds, module audit); `git diff --check`: PASS.
+  - Post-test process listing found no QEMU, virtiofsd or grillo-netns process
+    (grep returned 1 because there were no matches).
+- **Tests NOT run and why:** Full scenario C, multi-consumer config/secret
+  updates, PVC persistence, readiness endpoint removal/restoration, Service
+  VIP/Ingress datapaths, registry-derived matrix and text/JSON plan counts
+  remain separate T22 work. Hosted CI and clean-host verification not run.
+- **Integration evidence:** Actual Helm render → shared IR → reconciler →
+  QEMU/KVM → guest runc, exec and down, without a Kubernetes control plane or
+  privileged host operation. Guest initramfs SHA-256:
+  `27462af7ca589331861eaac4bd6ba9bab5be6db78b21b6dc88173f343ec90415`.
+- **Known limitations:** The image resolver supplies a preexisting busybox OCI
+  rootfs for this test; it does not prove registry pulls/digest resolution. The
+  demo has one Deployment and literal env values, not ConfigMap/Secret/PVC,
+  Service/Ingress, init containers or sidecars. No complete T22/MVP claim.
+- **Next task:** Continue T22 with scenario C and registry-derived compatibility
+  reporting; missing runtime datapaths must remain explicit blockers.
+
+## T22 full gate attempt and prerequisite corrections
+
+- **Task:** T22 — Helm gate and compatibility reporting.
+- **Status:** BLOCKED, with a reproducible failing acceptance gate, not an
+  unfinished smoke-only task. See [full report](experiments/t22-helm-gate.md).
+- **Dependencies verified:** T19/T21 evidence inspected; real Helm v4.2.2,
+  KVM/QEMU/virtiofsd, pasta, OCI rootfs fixture and guest artifacts present.
+  The full scenario exposed incomplete T12/T16 prerequisites despite their
+  previous DONE labels; their current summaries/table are now BLOCKED.
+- **Files and contracts changed:** `examples/helm/scenario-c`, full tagged KVM
+  gate, executor ephemeral volume scoping/cleanup and regression tests;
+  `internal/source/support.go`, frontend registry snapshots,
+  `scripts/compatibility` and generated JSON/Markdown data with CI drift tests;
+  explicit Kubernetes validation-only diagnostics; pure plan resource/action
+  counts and CLI text/JSON reports/fixtures. JSON includes `applicable` and
+  structured diagnostics. Capability-blocked structural previews keep failure
+  exits, do not store secrets, and cannot provision. No dependency changes.
+- **Decisions/ADRs:** No new backend or bypass. The gate uses production
+  components, never a test-local Service/Ingress proxy. The registry inventory
+  explicitly classifies compilation, not stable runtime/per-field parity.
+- **Tests run:** Linux/amd64, UID 1000, kernel 7.2.8-200.fc44.x86_64,
+  Go go1.26.8-X:nodwarf5, SELinux Permissive:
+  - `make test-helm`: **FAIL**, no skips, Make exit 2. Three real VMs start;
+    init/sidecar/config/secret, identical apply, config-only and secret-only
+    consumer replacement, PVC retention and explicit cleanup pass. ClusterIP
+    DNS returns Pod IPs; Service port 80→named 8080 fails; Ingress has no
+    endpoint; readiness filtering cannot pass its positive Service prerequisite
+    and restoration times out. Simple demo still passes. No complete gate claim.
+  - Earlier attempts failed on shared emptyDir RWO identity (fixed), then on
+    overly long test Unix socket paths/partial observation cleanup (fixture
+    shortened; attempted owned sandboxes explicitly cleaned). An initial DNS
+    check queried both A/AAAA with busybox; it now explicitly requests A so
+    unsupported AAAA does not obscure the actual VIP failure.
+  - `make check`: PASS (format/vet/unit/race/scripts/build/module audit), including
+    registry drift/fixture validation and CLI state/redaction/consent tests.
+  - `make test-k8s`: PASS (2.37 s); `make test-f2`: PASS (5.68 s), real KVM,
+    no skips after the ephemeral storage fix. Final selected demo/Kubernetes/
+    Compose hardware tests with `-race -count=1` also PASS (12.09 s total).
+    `go vet -tags kvm ./internal/executor` PASS.
+  - CLI scenario tests initially failed on the actual empty capability set and
+    existing compatibility exit 1 (rather than the assumed 2). The tests now
+    preserve rejection and assert explicit blocked previews, not fake support.
+    The first Markdown checker failed on README's existing percent-encoded
+    image path; URL-decoded checking then PASS. Final `git diff --check`, all
+    changed/new Markdown links, process and owned-workspace checks PASS.
+- **Tests NOT run and why:** Full CLI chart execution is rejected by current
+  capability validation; no capability bypass was added. End-to-end readiness
+  removal/Ingress forwarding cannot be verified without T12 wiring. Hosted CI,
+  clean second host, external-registry pulls and long benchmarks/fuzzing not run.
+- **Integration evidence:** Actual official Helm → IR → reconciler → QEMU/KVM
+  → guest runc; final full gate 31.13 s, rebuilt initramfs SHA-256
+  `86daf5760176539fc66a5cf043907dc224b8829feb3ca223e6506ce6e6412c69`.
+  This uses a fixed preexisting OCI rootfs, not live pull/digest evidence.
+- **Known limitations:** Service/Ingress are component-only; no-op endpoint and
+  drain actions must be replaced. CLI capability reporting is incomplete. The
+  generated matrix covers registered compiler rules, not exhaustive defaults
+  or per-feature hardware coverage. Historical dependent DONE claims need
+  reassessment after these prerequisites are repaired.
+- **Next task:** Repair T12 production datapaths/readiness/draining, then T16
+  accurate capabilities, and rerun the complete T22 gate before proceeding.
+
+## T12 production repair and acceptance — 2026-10-06
+
+- **Status:** DONE. T22 remains BLOCKED on T16, not on the repaired datapaths.
+- **Dependencies verified:** T04 IR/planning tests; T11 real namespace bridge via
+  the Helm/Compose/Kubernetes KVM gates. Same Linux/amd64 host, UID 1000,
+  SELinux Permissive, provisioned QEMU/virtiofsd/pasta/Helm and OCI fixture.
+- **Contracts:** namespace-supervised DNS/VIP proxies and restricted Unix relay;
+  regular-container startup/readiness/exit gating; endpoint draining; stable
+  localhost Ingress and pre-boot TCP port reservation. Public API/CLI inspect
+  includes route fallbacks. Guest protocol 1.1 advertises `application-dns`;
+  old agents are rejected explicitly for bridged execution.
+- **Lifecycle:** cleanup intent is saved before possible network effects, even
+  when the first VM creation fails. `ShutdownNetwork` is journaled separately
+  from VM replacement. Helper parent-death signals no longer tie application
+  lifetime to a Go launching thread/daemon. Missing live-application supervisors
+  produce errors rather than a disconnected replacement namespace.
+- **Evidence:** `make check` PASS; extended `make test-helm` PASS (scenario C
+  16.26 s, demo 2.01 s, no skips), including four DNS aliases, real two-replica
+  balancing, headless named SRV, readiness removal/restoration, host TCP
+  publication/release and PVC persistence. `make test-f2 test-k8s` PASS (3.35 s,
+  1.22 s). `make test-bridged` PASS (5.75 s). Extended Helm, Compose and
+  Kubernetes KVM regressions with `-race -count=1` PASS (24.357 s total).
+  Component race tests PASS. See the T22 report for artifact hashes.
+- **Failures retained:** malformed nftables protocol syntax, missing test
+  imports, a BusyBox search-expanded nslookup failure, and Compose regression
+  were observed and corrected. Compose now explicitly uses headless DNS,
+  preserving undeclared container-port reachability rather than empty VIPs.
+- **Limits:** TCP only; fixed host ports require one replica and unprivileged
+  ports. TCP streams have bounded lifetime/concurrency. Custom Pod DNS and TLS
+  routes are rejected. Forwarding uses the host resolver through pasta; live
+  Internet DNS, a second host, hosted CI, and daemon-crash continuity were not
+  newly tested. No general StatefulSet/Job or full CLI capability claim.
+- **Next:** T16 accurate runtime capability policy, then final T22 CLI/daemon gate.
+
+## T16 and T22 final acceptance — 2026-10-06
+
+- **Status:** DONE for T16 and T22. T15 shared API and T19/T21 gates verified;
+  T12 repair is followed by full native CLI/daemon chart evidence.
+- **Policy:** `internal/executor/capabilities.go` is an explicit native whitelist,
+  shared by CLI preview, executor and daemon. Network-dependent features follow
+  executor configuration. Neither empty capabilities nor `FullCapabilities`
+  authorizes runtime apply. Implementation-specific restrictions remain blocking
+  structured diagnostics before secret persistence and desired-state writes.
+- **Real gate:** `make test-helm` now includes the actual daemon/CLI remediation
+  test. Final PASS: scenario C 16.23 s, demo 1.97 s; daemon test 19.44 s, CLI
+  chart subtest 9.06 s. CLI processes exit while all five regular and two finished
+  init containers remain visible; inspect reports real Ingress; a storage guest
+  fetches Service port 80; unchanged CLI up succeeds; down removes containers;
+  stopped chart stays stopped through actual daemon crash/recovery.
+- **Checks:** final `make check`, `git diff --check`, KVM-tagged vet PASS;
+  actual daemon gate with `-race -count=1` PASS (20.491 s). No remaining owned
+  QEMU/virtiofsd/grillo-netns/pasta processes. No commits were requested.
+- **Fixture:** image is assembled by the native builder from the preexisting
+  pinned OCI rootfs and cached locally, not a host-container fallback or live
+  registry pull. Values contain only synthetic test secrets and never appear
+  in CLI output. Existing direct gate proves consumer-only updates/PVC retention.
+- **Failures:** first real-daemon attempt exceeded Unix socket path limits and
+  exposed a cleanup channel wait bug. Owned leftover VMMs/helpers were stopped
+  through their private RPCs. A short private fixture path and closed exit
+  channel fixed the harness. Subsequent assertions were corrected to include
+  completed init containers and retained stopped-application inventory.
+- **Remaining limitation:** production long Unix socket paths still need earlier
+  actionable diagnostics; these tests use documented short private paths. No
+  second-host, hosted CI, full browser, long fuzz/benchmark or general Job/
+  StatefulSet support claim. F3 is not complete until T23 and later product gates.
+- **Next task:** T23 web console/secure bridge.
 
 ## Updating this file
 

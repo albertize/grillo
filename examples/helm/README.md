@@ -55,6 +55,26 @@ even if locked, and lockfiles are never updated. The initial OCI subset accepts
 one Helm config and one chart-content layer, not indexes/provenance artifacts.
 No private-registry credential CLI or automatic tool installation is provided.
 
-T21's rendering/CLI gates are complete; the T22 runtime acceptance gate is not.
+## Full scenario C acceptance chart
+
+`scenario-c/` is a hardware acceptance fixture, **not a working full chart**.
+It contains two API replicas with init/sidecar, ConfigMap/Secret, readiness,
+Service/Ingress and a separate storage Pod with one RWO PVC. Values are synthetic;
+never place live credentials in these examples.
+
+```sh
+make test-helm
+bin/grillo plan examples/helm/scenario-c --release scenario-c --output=json
+```
+
+The hardware and actual CLI/daemon gates now pass, including ClusterIP
+VIP/targetPort, replica balancing, headless SRV, Ingress, readiness and localhost
+TCP publication. The supported chart plan returns `applicable: true`; unsupported
+inputs still return nonzero with structured diagnostics. Offline applicability
+means implementation compatibility, not host feasibility. `up` requires the
+provisioned guest/runtime tools and an available image. See the
+[T22 report](../../docs/experiments/t22-helm-gate.md).
+
+T21's rendering/CLI gates and T22's runtime/CLI acceptance are complete.
 See [compatibility](../../docs/compatibility.md) and
 [ADR 0007](../../docs/adr/0007-controlled-helm-renderer.md) for restrictions.

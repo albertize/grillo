@@ -180,8 +180,10 @@ func (c *compiler) compileResource(ctx context.Context, doc *yaml.Node) {
 		c.downgrade("kubernetes."+strings.ToLower(kind)+"_degraded", doc, resourceID(kind, doc), "", kind+" is degraded", entry.consequence)
 	}
 	if entry.state == source.ValidateOnly {
-		// Metadata only: validate the namespace and move on.
+		// Metadata-only acceptance still needs an explicit diagnostic: a
+		// user must not mistake it for credential or eviction behavior.
 		c.checkNamespace(doc, kind)
+		c.add(source.SeverityInfo, entry.state, "kubernetes.validate_only_kind", doc, resourceID(kind, doc), "", kind+" is validation only", entry.consequence)
 		return
 	}
 	if !c.checkNamespace(doc, kind) {
@@ -405,7 +407,7 @@ func (c *compiler) compileDeployment(doc *yaml.Node) {
 		}
 	}
 	if strategy != "Recreate" {
-		c.downgrade("kubernetes.rollout_strategy", spec, resource, "spec.strategy", "strategy "+strategy+" is not implemented", "Grillo replaces sandboxes (Recreate); in-place rolling updates are not faithful")
+		c.downgrade("kubernetes.rollout_strategy", spec, resource, "spec.strategy", "strategy "+strategy+" is not implemented", rolloutSupport.consequence)
 	}
 	workload.UpdatePolicy = &model.UpdatePolicy{Strategy: "Recreate"}
 	templateSpec, ok := mapGet(templateNode, "spec")
@@ -886,14 +888,7 @@ func ingressPort(serviceNode *yaml.Node) *model.PortRef {
 
 // applySecurity copies the supported security-context fields.
 func (c *compiler) applySecurity(profile *model.SecurityProfile, node *yaml.Node, resource, field string) {
-	c.checkFields(map[string]supportEntry{
-		"runAsUser":              {source.Supported, ""},
-		"runAsGroup":             {source.Supported, ""},
-		"readOnlyRootFilesystem": {source.Supported, ""},
-		"privileged":             {source.Supported, ""},
-		"seccompProfile":         {source.Unsupported, "custom seccomp policy is not implemented"},
-		"capabilities":           {source.Unsupported, "capability overrides are not implemented"},
-	}, node, resource, field, "")
+	c.checkFields(securityContextFields, node, resource, field, "")
 	if value, ok := scalarValue(node, "runAsUser"); ok {
 		if parsed, err := strconv.ParseInt(value, 10, 64); err == nil && parsed >= 0 && parsed <= 1<<32-1 {
 			profile.RunAsUser = &parsed
@@ -943,6 +938,8 @@ func (c *compiler) checkFields(registry map[string]supportEntry, node *yaml.Node
 			c.add(source.SeverityError, entry.state, "kubernetes.unsupported_field", node.Content[i], resource, field+"."+key, "unsupported field "+key, entry.consequence)
 		} else if entry.state == source.Degraded {
 			c.downgrade("kubernetes.degraded_"+key, node.Content[i], resource, field+"."+key, "field "+key+" is degraded", entry.consequence)
+		} else if entry.state == source.ValidateOnly {
+			c.add(source.SeverityInfo, entry.state, "kubernetes.validate_only_field", node.Content[i], resource, field+"."+key, "field "+key+" is validation only", entry.consequence)
 		}
 	}
 }

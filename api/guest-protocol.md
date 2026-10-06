@@ -1,6 +1,6 @@
 # Guest protocol
 
-Status: version 1.0 (implemented in `internal/guestproto`).
+Status: version 1.1 (implemented in `internal/guestproto`).
 
 This document is the contract between the Grillo host runtime and the guest
 agent. It follows the specification's host/guest control channel (§6.4): a
@@ -136,7 +136,10 @@ versions match and replies with the lower minor version. A different major is a
 `version_mismatch` error. The negotiated version is fixed for the connection.
 
 Capabilities the guest may advertise: `exec`, `tty`, `resize`, `stdin`,
-`probe`, `files`. A client must not send a message the guest did not advertise.
+`probe`, `files`, `application-dns`. A client must not send a message the guest did not advertise.
+The additive `DNSConfig.server` IPv4 field selects the private application
+namespace resolver instead of a guest-local static resolver. Bridged executors
+require `application-dns` and reject old agents with a rebuild instruction.
 
 ### Security notes
 

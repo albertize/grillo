@@ -9,6 +9,7 @@ package executor
 
 import (
 	"context"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"io"
@@ -78,9 +79,16 @@ type Executor struct {
 	runtimes map[string]*sandboxRuntime // by backend sandbox ID
 	nextCID  uint32
 
-	launchMu    sync.Mutex
-	supervisors map[string]*netns.Helper
-	ipams       map[string]*network.IPAM
+	launchMu      sync.Mutex
+	supervisors   map[string]*netns.Helper
+	ipams         map[string]*network.IPAM
+	networkMu     sync.Mutex
+	ingresses     map[string]map[string]*ingressServer
+	ingressSlots  chan struct{}
+	networks      map[string]networkSnapshot
+	networkErrors map[string]error
+	ports         *network.Ports
+	published     map[string]map[int]*publishedPort
 }
 
 type sandboxRuntime struct {
@@ -92,6 +100,9 @@ type sandboxRuntime struct {
 	runner     *observe.Runner
 	cancel     context.CancelFunc
 	containers map[string]bool
+	workload   string
+	ready      bool
+	draining   bool
 }
 
 // New returns an executor.
@@ -119,12 +130,17 @@ func New(cfg Config) (*Executor, error) {
 		cfg.MemoryMiB = 512
 	}
 	return &Executor{
-		cfg:         cfg,
-		desired:     map[string]model.Application{},
-		runtimes:    map[string]*sandboxRuntime{},
-		supervisors: map[string]*netns.Helper{},
-		ipams:       map[string]*network.IPAM{},
-		nextCID:     cfg.VsockCIDBase,
+		cfg:           cfg,
+		desired:       map[string]model.Application{},
+		runtimes:      map[string]*sandboxRuntime{},
+		supervisors:   map[string]*netns.Helper{},
+		ipams:         map[string]*network.IPAM{},
+		nextCID:       cfg.VsockCIDBase,
+		ingresses:     map[string]map[string]*ingressServer{},
+		ingressSlots:  make(chan struct{}, 128),
+		networks:      map[string]networkSnapshot{},
+		networkErrors: map[string]error{},
+		published:     map[string]map[int]*publishedPort{},
 	}, nil
 }
 
@@ -132,6 +148,16 @@ func New(cfg Config) (*Executor, error) {
 func (e *Executor) SetDesired(app model.Application) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
+	app.Routes = append([]model.Route(nil), app.Routes...)
+	previous := e.desired[app.Identity.Name]
+	for i := range app.Routes {
+		for _, route := range previous.Routes {
+			if route.Hostname == app.Routes[i].Hostname {
+				app.Routes[i].Endpoint = route.Endpoint
+				break
+			}
+		}
+	}
 	e.desired[app.Identity.Name] = app
 }
 
@@ -156,8 +182,10 @@ func (e *Executor) DeleteVolume(ctx context.Context, application, volume string)
 	return e.cfg.Volumes.Delete(ctx, volumeID(application, volume))
 }
 
-// Drain is a no-op until endpoints are attached.
-func (e *Executor) Drain(context.Context, string, plan.Descriptor) error { return nil }
+// Drain excludes a sandbox from all new Service/Ingress connections.
+func (e *Executor) Drain(ctx context.Context, application string, d plan.Descriptor) error {
+	return e.drainEndpoints(ctx, application, d)
+}
 
 // Ensure creates and starts a sandbox and its containers.
 func (e *Executor) Ensure(ctx context.Context, application string, descriptor plan.Descriptor) error {
@@ -167,8 +195,15 @@ func (e *Executor) Ensure(ctx context.Context, application string, descriptor pl
 	if !ok {
 		return fmt.Errorf("executor: no desired application %q", application)
 	}
-	if err := ValidateDesired(app); err != nil {
-		return err
+	if diagnostics := e.ValidateApplication(app); diagnostics.HasErrors() {
+		return fmt.Errorf("executor: invalid application: %s", diagnostics.Errors()[0].Message)
+	}
+	if e.cfg.EnableNetwork {
+		// Reserve actual host listeners before starting any VM. Endpoint
+		// snapshots remain empty until observed startup/readiness succeeds.
+		if err := e.UpdateEndpoints(ctx, application); err != nil {
+			return err
+		}
 	}
 	workload := findWorkload(app, descriptor.Workload)
 	if workload == nil {
@@ -195,6 +230,11 @@ func (e *Executor) Ensure(ctx context.Context, application string, descriptor pl
 		_ = e.cfg.Backend.Stop(ctx, sandbox.Handle{ID: spec.ID}, 0)
 		return fmt.Errorf("executor: connect guest: %w", err)
 	}
+	if e.cfg.EnableNetwork && !client.Info().Supports(guestproto.CapApplicationDNS) {
+		_ = client.Close()
+		_ = e.cfg.Backend.Stop(ctx, sandbox.Handle{ID: spec.ID}, 0)
+		return fmt.Errorf("executor: guest agent lacks application DNS support; rebuild the guest image")
+	}
 	startCtx := ctx
 	if _, err := client.Start(startCtx, guestproto.StartRequest{Sandbox: &guestSpec}); err != nil {
 		_ = client.Close()
@@ -206,58 +246,117 @@ func (e *Executor) Ensure(ctx context.Context, application string, descriptor pl
 	for _, c := range workload.Template.Containers {
 		names[c.Name] = true
 	}
-	e.runtimes[spec.ID] = &sandboxRuntime{id: spec.ID, app: application, cid: spec.VsockCID, ip: ip, guest: client, containers: names}
+	e.runtimes[spec.ID] = &sandboxRuntime{id: spec.ID, app: application, cid: spec.VsockCID, ip: ip, guest: client, containers: names, workload: workload.ID}
 	rt := e.runtimes[spec.ID]
 	e.mu.Unlock()
-	if runner, cancel, ok := e.startProbes(client, *workload); ok {
-		e.mu.Lock()
-		rt.runner = runner
-		rt.cancel = cancel
-		e.mu.Unlock()
+	if err := e.startHealth(ctx, rt, *workload); err != nil {
+		return err
 	}
-	return nil
+	return e.UpdateEndpoints(ctx, application)
 }
 
-// startProbes runs the container probes and restarts a container whose liveness
-// probe fails.
-func (e *Executor) startProbes(client *guestproto.Client, workload model.Workload) (*observe.Runner, context.CancelFunc, bool) {
-	runner := observe.NewRunner(observe.RealClock{}, observe.GuestProber{Client: client}, nil)
-	configured := false
-	for _, container := range allContainers(workload) {
+// startHealth gates Pod endpoints on every regular container's running,
+// startup and readiness state. No-probe containers are observed too, so exit
+// removes them rather than leaving a permanently healthy endpoint.
+func (e *Executor) startHealth(initial context.Context, rt *sandboxRuntime, workload model.Workload) error {
+	runner := observe.NewRunner(observe.RealClock{}, observe.GuestProber{Client: rt.guest}, nil)
+	for _, container := range workload.Template.Containers {
 		cfg := probeConfig(container)
-		if cfg.Startup == nil && cfg.Readiness == nil && cfg.Liveness == nil {
-			continue
+		if cfg.Startup != nil || cfg.Readiness != nil || cfg.Liveness != nil {
+			if err := runner.Set(container.Name, cfg); err != nil {
+				return err
+			}
 		}
-		if err := runner.Set(container.Name, cfg); err != nil {
-			continue
-		}
-		configured = true
 	}
-	if !configured {
-		return nil, nil, false
-	}
+	lifetime, cancel := context.WithCancel(context.Background())
 	runner.OnLivenessFailure = func(container string) {
-		_, _ = client.Restart(context.Background(), container)
+		ctx, stop := context.WithTimeout(lifetime, 5*time.Second)
+		defer stop()
+		_, _ = rt.guest.Restart(ctx, container)
 	}
-	ctx, cancel := context.WithCancel(context.Background())
+	e.mu.Lock()
+	rt.runner = runner
+	rt.cancel = cancel
+	e.mu.Unlock()
+	poll := func(ctx context.Context) (bool, error) {
+		runner.Tick(ctx)
+		status, err := rt.guest.Status(ctx)
+		ready := err == nil
+		states := map[string]string{}
+		if err == nil {
+			for _, container := range status.Containers {
+				states[container.Name] = container.State
+			}
+		}
+		for _, container := range workload.Template.Containers {
+			if states[container.Name] != "running" {
+				ready = false
+			}
+			if health, ok := runner.Status(container.Name); ok {
+				if !health.StartupDone || health.Failed || container.Probes.Readiness != nil && !health.Ready {
+					ready = false
+				}
+			}
+		}
+		e.mu.Lock()
+		defer e.mu.Unlock()
+		if e.runtimes[rt.id] != rt {
+			return false, err
+		}
+		changed := rt.ready != ready
+		rt.ready = ready
+		return changed, err
+	}
+	ctx, stop := context.WithTimeout(initial, 15*time.Second)
+	_, err := poll(ctx)
+	stop()
+	if err != nil {
+		cancel()
+		return err
+	}
 	go func() {
 		ticker := time.NewTicker(time.Second)
 		defer ticker.Stop()
 		for {
 			select {
-			case <-ctx.Done():
+			case <-lifetime.Done():
 				return
 			case <-ticker.C:
-				runner.Tick(ctx)
+				ctx, stop := context.WithTimeout(lifetime, 15*time.Second)
+				changed, err := poll(ctx)
+				if e.cfg.EnableNetwork && lifetime.Err() == nil {
+					statusErr := err
+					e.mu.Lock()
+					retry := e.networkErrors[rt.app] != nil
+					e.mu.Unlock()
+					if !changed && !retry {
+						err = (&netns.Client{SocketPath: e.socketPath(rt.app)}).PingContext(ctx)
+					}
+					if changed || retry {
+						err = e.UpdateEndpoints(ctx, rt.app)
+					}
+					if statusErr != nil {
+						err = fmt.Errorf("executor: guest status unavailable")
+					}
+					if err != nil && lifetime.Err() == nil {
+						e.mu.Lock()
+						e.networkErrors[rt.app] = err
+						e.mu.Unlock()
+					}
+				}
+				stop()
 			}
 		}
 	}()
-	return runner, cancel, true
+	return nil
 }
 
 // Stop stops a sandbox's containers and the sandbox itself.
 func (e *Executor) Stop(ctx context.Context, application string, descriptor plan.Descriptor) error {
 	sandboxID := application + "-" + descriptor.ID
+	if err := e.Drain(ctx, application, descriptor); err != nil {
+		return err
+	}
 	e.mu.Lock()
 	rt := e.runtimes[sandboxID]
 	delete(e.runtimes, sandboxID)
@@ -275,36 +374,6 @@ func (e *Executor) Stop(ctx context.Context, application string, descriptor plan
 	e.releaseIP(application, descriptor.ID)
 	if err := e.detachVolumes(ctx, application, sandboxID); err != nil {
 		return err
-	}
-	if e.cfg.EnableNetwork && len(e.Sandboxes(application)) == 0 {
-		client := &netns.Client{SocketPath: e.socketPath(application)}
-		// An already absent supervisor is harmless; a reachable supervisor
-		// must confirm it has no remaining VMMs before it exits.
-		if err := client.Ping(); err == nil {
-			if err := client.Shutdown(); err != nil {
-				return err
-			}
-			e.launchMu.Lock()
-			helper := e.supervisors[application]
-			delete(e.supervisors, application)
-			e.launchMu.Unlock()
-			if helper != nil {
-				if err := helper.Stop(2 * time.Second); err != nil {
-					return err
-				}
-			}
-			deadline := time.Now().Add(5 * time.Second)
-			for client.Ping() == nil {
-				if time.Now().After(deadline) {
-					return fmt.Errorf("executor: network supervisor did not stop")
-				}
-				select {
-				case <-ctx.Done():
-					return ctx.Err()
-				case <-time.After(20 * time.Millisecond):
-				}
-			}
-		}
 	}
 	return nil
 }
@@ -330,6 +399,10 @@ type ContainerState struct {
 // Status aggregates container state across an application's sandboxes.
 func (e *Executor) Status(ctx context.Context, application string) ([]ContainerState, error) {
 	e.mu.Lock()
+	if err := e.networkErrors[application]; err != nil {
+		e.mu.Unlock()
+		return nil, err
+	}
 	var clients []*guestproto.Client
 	for _, rt := range e.runtimes {
 		if rt.app == application && rt.guest != nil {
@@ -341,7 +414,7 @@ func (e *Executor) Status(ctx context.Context, application string) ([]ContainerS
 	for _, client := range clients {
 		status, err := client.Status(ctx)
 		if err != nil {
-			continue
+			return nil, fmt.Errorf("executor: guest status unavailable: %w", err)
 		}
 		for _, container := range status.Containers {
 			states = append(states, ContainerState{Container: container.Name, State: container.State, ExitCode: container.ExitCode, PID: container.PID})
@@ -487,6 +560,9 @@ func (e *Executor) buildSpecs(ctx context.Context, application string, app model
 // workload. With networking each service resolves to its sandboxes' addresses;
 // without it, a service resolves to the guest itself.
 func (e *Executor) dnsConfig(app model.Application, workload model.Workload) *guestproto.DNSConfig {
+	if e.cfg.EnableNetwork {
+		return &guestproto.DNSConfig{Server: bridgeGateway, ClusterDomain: "cluster.local", Search: []string{app.Identity.Namespace + ".svc.cluster.local", "svc.cluster.local", "cluster.local"}}
+	}
 	var records []guestproto.DNSRecord
 	for _, service := range app.Services {
 		ips := []string{"127.0.0.1"}
@@ -588,6 +664,11 @@ func (e *Executor) attachVolume(ctx context.Context, application string, app mod
 	if err != nil {
 		return "", false, err
 	}
+	if volume.Kind == model.VolumeEphemeral {
+		// emptyDir belongs to one Pod, not to its replicated template. Every
+		// container in that sandbox still receives the same source.
+		spec.ID = ephemeralVolumeID(application, volume.Name, sandboxID)
+	}
 	if _, err := e.cfg.Volumes.Create(ctx, spec, "prepare-"+spec.ID); err != nil {
 		return "", false, err
 	}
@@ -651,30 +732,32 @@ func (e *Executor) detachVolumes(ctx context.Context, application, sandboxID str
 	if e.cfg.Volumes == nil {
 		return nil
 	}
-	e.mu.Lock()
-	app, ok := e.desired[application]
-	e.mu.Unlock()
-	if !ok {
-		return nil
+	// Consult owned persisted volumes rather than the new desired template:
+	// an update may remove a volume that the previous sandbox still leased.
+	volumes, err := e.cfg.Volumes.List()
+	if err != nil {
+		return err
 	}
-	for _, name := range referencedVolumesForApp(app) {
-		_ = e.cfg.Volumes.Detach(ctx, volumeID(application, name), sandboxID)
+	for _, volume := range volumes {
+		if volume.Owner.Application != application {
+			continue
+		}
+		if err := e.cfg.Volumes.Detach(ctx, volume.ID, sandboxID); err != nil {
+			return err
+		}
+		if volume.Kind == storage.KindEphemeral && volume.ID == ephemeralVolumeID(application, volume.Name, sandboxID) {
+			if err := e.cfg.Volumes.Delete(ctx, volume.ID); err != nil {
+				return err
+			}
+		}
 	}
 	return nil
 }
 
-func referencedVolumesForApp(app model.Application) []string {
-	seen := map[string]bool{}
-	var names []string
-	for _, workload := range app.Workloads {
-		for _, name := range referencedVolumes(workload) {
-			if !seen[name] {
-				seen[name] = true
-				names = append(names, name)
-			}
-		}
-	}
-	return names
+// Quoted components avoid collisions between application, volume and sandbox
+// names; the digest is an identity, not a secret fingerprint.
+func ephemeralVolumeID(application, name, sandboxID string) string {
+	return fmt.Sprintf("ephemeral-%x", sha256.Sum256([]byte(fmt.Sprintf("%q:%q:%q", application, name, sandboxID))))
 }
 
 func findWorkload(app model.Application, id string) *model.Workload {
@@ -821,8 +904,18 @@ func (s SandboxController) Ensure(ctx context.Context, application string, d pla
 	return s.E.Ensure(ctx, application, d)
 }
 
-// Drain is a no-op until endpoints are attached.
-func (s SandboxController) Drain(context.Context, string, plan.Descriptor) error { return nil }
+// Drain excludes the sandbox from endpoint discovery before teardown.
+func (s SandboxController) Drain(ctx context.Context, app string, d plan.Descriptor) error {
+	return s.E.Drain(ctx, app, d)
+}
+
+// UpdateEndpoints publishes the current application network snapshot.
+func (s SandboxController) UpdateEndpoints(ctx context.Context, app string) error {
+	return s.E.UpdateEndpoints(ctx, app)
+}
+func (s SandboxController) ShutdownNetwork(ctx context.Context, app string) error {
+	return s.E.ShutdownNetwork(ctx, app)
+}
 
 // Stop stops a sandbox.
 func (s SandboxController) Stop(ctx context.Context, application string, d plan.Descriptor) error {

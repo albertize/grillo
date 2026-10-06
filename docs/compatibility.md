@@ -1,9 +1,17 @@
 # Compatibility matrix
 
 This file summarizes what each frontend maps faithfully, degrades, or rejects.
-It is maintained alongside the in-code registries
-(`internal/frontend/compose/support.go`, `internal/frontend/kubernetes/support.go`).
-Until real runtime integration proves a behavior, treat it as experimental.
+The validator registries now generate [Markdown](compatibility-registry.md)
+and [JSON](compatibility-registry.json) inventories; ordinary tests reject drift.
+Regenerate with `go run ./scripts/compatibility -output docs`. Those inventories
+classify **compilation**, not stable runtime behavior or an exhaustive field
+inventory. Fixture links identify regression suites, not per-field hardware proof.
+This narrative records runtime evidence and restrictions separately. Until real
+runtime integration proves a behavior, treat it as experimental.
+
+**T22 is complete.** Its full direct-runtime scenario C and actual CLI/daemon
+chart lifecycle pass after T12 repair and the explicit T16 capability policy. See the
+[T22 gate report](experiments/t22-helm-gate.md).
 
 ## Compose (F2 subset)
 
@@ -13,7 +21,7 @@ Until real runtime integration proves a behavior, treat it as experimental.
 | `${VAR}` interpolation | Supported | default/required/alternative forms; `$$` escape |
 | `ports`, `expose` | Supported | long/short syntax; TCP |
 | `volumes` (named, ephemeral, bind) | Supported | project-relative binds resolve against the Compose file |
-| `healthcheck` | Supported | mapped to a liveness probe; `NONE` disables |
+| `healthcheck` | Runtime semantics differ | compiler accepts it as a liveness probe; runtime restart-on-unhealthy is not faithful Compose health behavior; `NONE` disables |
 | `depends_on` | Degraded | startup ordering only, never readiness |
 | `restart`, resource limits, `deploy.replicas` | Supported | |
 | named `networks` | Supported (one topology) | multiple distinct topologies are rejected (`compose.multi_network`) |
@@ -26,9 +34,9 @@ Until real runtime integration proves a behavior, treat it as experimental.
 | --- | --- | --- |
 | `Pod`, `Deployment` | Supported | multi-container, init containers, sidecars |
 | `Deployment.spec.strategy` | Degraded | `RollingUpdate` (the default) is not implemented; Grillo uses Recreate and requires `--allow-degraded=kubernetes.rollout_strategy` |
-| `Service` (ClusterIP, headless) | Supported | TCP; readiness endpoints |
+| `Service` (ClusterIP, headless) | Runtime and CLI-proven | Normal VIPs, ready headless Pod addresses/SRV, named targetPort and replica balancing pass real KVM; TCP only |
 | `Service` NodePort/LoadBalancer/ExternalName | Rejected | never silently mapped to ClusterIP |
-| `Ingress` (`Exact`, `Prefix`) | Supported | `ImplementationSpecific` is rejected |
+| `Ingress` (`Exact`, `Prefix`) | Runtime and CLI-proven | Published localhost fallback and real Service routing; segment-aware paths; `ImplementationSpecific` and TLS are rejected |
 | `ConfigMap` (`data`, `binaryData`) | Supported | env and `envFrom` references |
 | `Secret` (`data`, `stringData`, `Opaque`) | Supported | values never enter the public IR or plan diff |
 | `PersistentVolumeClaim` | Supported | `ReadWriteOnce`, Filesystem only |
@@ -57,8 +65,25 @@ separation, redacted failures and rejection before daemon startup. `plan` never
 stores secrets; offline plans use an `unresolved-offline` version marker rather
 than content-derived fingerprints and do not describe live secret-update diffs.
 `up` persists random-versioned private references only after validation. Apply
-wiring is tested against the API test double; **T22's real Helm workload gate
-has not been run**, so this is not an end-to-end Helm runtime support claim.
+wiring is tested against the API test double. **T22 is complete**:
+`make test-helm` now runs both the real single-Deployment demo and full scenario C.
+The latter proves three VMs, init/sidecar localhost, ConfigMap/Secret env,
+identical apply, consumer-only config/secret replacement and retained PVC data.
+Its extended VIP, targetPort, Ingress, readiness, four-name DNS, replica balance,
+headless SRV and host TCP publication checks now pass; see the
+[report](experiments/t22-helm-gate.md). The full CLI/daemon chart gate also passes using a locally built native image.
+Images use a preexisting OCI rootfs fixture, not live registry pulls.
+
+CLI, executor and daemon share an explicit implementation whitelist. Routes and
+host ports require bridged configuration; privileged, StatefulSet/Job and unknown
+features remain unavailable. No `FullCapabilities` bypass is used. A
+structurally valid but capability-blocked offline plan can print resource/action
+counts while keeping a nonzero exit, text `BLOCKED` and JSON `applicable: false`.
+JSON preserves structured support diagnostics and consequences; frontend or
+structural/security errors do not become actionable plans. Unsupported `up` remains blocked before daemon startup and secret persistence.
+Offline applicability is implementation compatibility, not host feasibility.
+This proves the bounded Helm subset, not arbitrary chart compatibility or F3's
+still-pending complete web-console/product gates.
 
 OCI charts require exact SemVer via `--version`. Missing cache entries require
 explicit `--fetch-chart`; cached inputs never fetch or refresh automatically.

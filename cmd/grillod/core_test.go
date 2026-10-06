@@ -80,7 +80,11 @@ func TestApplySerializesDesiredPublicationAndEffects(t *testing.T) {
 }
 
 func TestNativeAPIRejectsUnsupportedSecurityBeforeEffects(t *testing.T) {
-	c := &core{}
+	e, err := executor.New(executor.Config{Backend: noopBackend{}, Images: &recordingImages{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := &core{exec: e}
 	app := reviewApp("image")
 	app.Workloads[0].Template.SecurityProfile.Privileged = true
 	if _, err := c.Apply(context.Background(), app); err == nil {

@@ -23,6 +23,7 @@ const (
 	ActionPrepareVolume   ActionKind = "PrepareVolume"
 	ActionCreateSandbox   ActionKind = "CreateSandbox"
 	ActionUpdateEndpoints ActionKind = "UpdateEndpoints"
+	ActionShutdownNetwork ActionKind = "ShutdownNetwork"
 	ActionDrain           ActionKind = "Drain"
 	ActionStopSandbox     ActionKind = "StopSandbox"
 	ActionDeleteSandbox   ActionKind = "DeleteSandbox"
@@ -91,11 +92,12 @@ type ObservedSandbox struct {
 
 // Observed is the last known runtime state for one application.
 type Observed struct {
-	Revision   string
-	RoutesHash string
-	Stopped    bool
-	Sandboxes  map[string]ObservedSandbox
-	Volumes    map[string]bool
+	Revision       string
+	RoutesHash     string
+	Stopped        bool
+	NetworkPending bool // cleanup intent persisted before a possible network effect
+	Sandboxes      map[string]ObservedSandbox
+	Volumes        map[string]bool
 }
 
 // DesiredSandboxes returns the sandboxes a desired application requires.
@@ -143,6 +145,9 @@ func Build(desired model.Application, observed Observed) (Plan, error) {
 		for _, id := range ids {
 			descriptor := ObservedDescriptor(id, observed.Sandboxes[id])
 			result.Actions = append(result.Actions, stopActions(descriptor)...)
+		}
+		if observed.NetworkPending || observed.RoutesHash != "" {
+			result.Actions = append(result.Actions, Action{Kind: ActionShutdownNetwork, Resource: "application/" + name, Reason: "application is stopped", Impact: ImpactNone})
 		}
 		return result, nil
 	}

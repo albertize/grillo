@@ -5,6 +5,7 @@
 package network
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"net"
@@ -51,9 +52,6 @@ func (e Endpoint) Target(portName string) string {
 	}
 	if port, ok := e.Ports[portName]; ok {
 		return net.JoinHostPort(e.IP, fmt.Sprintf("%d", port))
-	}
-	if _, err := fmt.Sscanf(portName, "%d", new(int)); err == nil {
-		return net.JoinHostPort(e.IP, portName)
 	}
 	return ""
 }
@@ -105,6 +103,20 @@ func (r *ServiceRegistry) Upsert(service Service) (string, error) {
 	}
 	r.vips[key] = lease.IP
 	return lease.IP, nil
+}
+
+// Remove releases a Service VIP after the caller has closed its listeners.
+func (r *ServiceRegistry) Remove(namespace, name string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	key := serviceKey(namespace, name)
+	if err := r.vipPool.Release(key); err != nil {
+		return err
+	}
+	delete(r.services, key)
+	delete(r.endpoints, key)
+	delete(r.vips, key)
+	return nil
 }
 
 // VIP returns a Service's virtual IP.
@@ -184,17 +196,50 @@ type ServiceProxy struct {
 	listener  net.Listener
 	balancer  *Balancer
 	closed    chan struct{}
+	ctx       context.Context
+	cancel    context.CancelFunc
+	slots     chan struct{}
+	dial      func(context.Context) (net.Conn, error)
 	closeOnce sync.Once
 	wg        sync.WaitGroup
 }
 
+// ServiceProxyOption configures a bounded TCP proxy.
+type ServiceProxyOption func(*ServiceProxy)
+
+// WithServiceConnectionPool shares one connection budget across an application's
+// Service listeners, rather than allowing the budget to multiply per port.
+func WithServiceConnectionPool(pool chan struct{}) ServiceProxyOption {
+	return func(p *ServiceProxy) {
+		if pool != nil && cap(pool) > 0 {
+			p.slots = pool
+		}
+	}
+}
+
+// WithServiceDial replaces endpoint selection with a restricted adapter dialer.
+// It is used for host loopback publishing through an application Unix relay.
+func WithServiceDial(dial func(context.Context) (net.Conn, error)) ServiceProxyOption {
+	return func(p *ServiceProxy) { p.dial = dial }
+}
+
 // NewServiceProxy listens on listenAddr and forwards to the balancer.
-func NewServiceProxy(listenAddr string, balancer *Balancer) (*ServiceProxy, error) {
+func NewServiceProxy(listenAddr string, balancer *Balancer, options ...ServiceProxyOption) (*ServiceProxy, error) {
 	listener, err := net.Listen("tcp", listenAddr)
 	if err != nil {
 		return nil, err
 	}
-	p := &ServiceProxy{listener: listener, balancer: balancer, closed: make(chan struct{})}
+	ctx, cancel := context.WithCancel(context.Background())
+	p := &ServiceProxy{listener: listener, balancer: balancer, closed: make(chan struct{}), ctx: ctx, cancel: cancel, slots: make(chan struct{}, 128)}
+	for _, option := range options {
+		option(p)
+	}
+	if p.balancer == nil && p.dial == nil {
+		_ = listener.Close()
+		cancel()
+		return nil, fmt.Errorf("%w: proxy requires a dialer", ErrInvalid)
+	}
+	p.wg.Add(1)
 	go p.serve()
 	return p, nil
 }
@@ -207,6 +252,7 @@ func (p *ServiceProxy) Close() error {
 	var err error
 	p.closeOnce.Do(func() {
 		close(p.closed)
+		p.cancel()
 		err = p.listener.Close()
 	})
 	p.wg.Wait()
@@ -214,14 +260,22 @@ func (p *ServiceProxy) Close() error {
 }
 
 func (p *ServiceProxy) serve() {
+	defer p.wg.Done()
 	for {
 		conn, err := p.listener.Accept()
 		if err != nil {
 			return
 		}
+		select {
+		case p.slots <- struct{}{}:
+		default:
+			_ = conn.Close()
+			continue
+		}
 		p.wg.Add(1)
 		go func() {
 			defer p.wg.Done()
+			defer func() { <-p.slots }()
 			p.handle(conn)
 		}()
 	}
@@ -234,6 +288,8 @@ func (p *ServiceProxy) handle(client net.Conn) {
 		return
 	}
 	defer upstream.Close()
+	_ = client.SetDeadline(time.Now().Add(2 * time.Minute))
+	_ = upstream.SetDeadline(time.Now().Add(2 * time.Minute))
 	done := make(chan struct{}, 2)
 	copyConn := func(dst, src net.Conn) {
 		_, _ = io.Copy(dst, src)
@@ -244,23 +300,40 @@ func (p *ServiceProxy) handle(client net.Conn) {
 	}
 	go copyConn(upstream, client)
 	go copyConn(client, upstream)
-	select {
-	case <-done:
-	case <-p.closed:
-		_ = client.SetDeadline(time.Now())
-		_ = upstream.SetDeadline(time.Now())
+	// Preserve half-close semantics, but account for both pumps during
+	// shutdown. The absolute stream deadline also bounds idle peers.
+	for remaining := 2; remaining > 0; {
+		select {
+		case <-done:
+			remaining--
+		case <-p.closed:
+			_ = client.Close()
+			_ = upstream.Close()
+			for ; remaining > 0; remaining-- {
+				<-done
+			}
+		}
 	}
 }
 
 func (p *ServiceProxy) dialUpstream() net.Conn {
 	dialer := net.Dialer{Timeout: 5 * time.Second}
 	// Try as many endpoints as the balancer reports before giving up.
+	ctx, cancel := context.WithTimeout(p.ctx, 5*time.Second)
+	defer cancel()
+	if p.dial != nil {
+		conn, err := p.dial(ctx)
+		if err != nil {
+			return nil
+		}
+		return conn
+	}
 	for attempt := 0; attempt < 8; attempt++ {
 		target, ok := p.balancer.Next()
 		if !ok {
 			return nil
 		}
-		conn, err := dialer.Dial("tcp", target)
+		conn, err := dialer.DialContext(ctx, "tcp", target)
 		if err == nil {
 			return conn
 		}

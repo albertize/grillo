@@ -1,0 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+apiVersion: v2
+name: scenario-c
+version: 0.1.0
+description: T22 hardware acceptance fixture, not a supported Helm application

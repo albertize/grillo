@@ -6,7 +6,7 @@ GOVULNCHECK_VERSION := v1.8.0
 
 # Check formatting without modifying source files.
 fmt:
-	@files=$$(gofmt -l cmd internal guest experiments/boot) || exit 1; \
+	@files=$$(gofmt -l cmd internal guest experiments/boot scripts) || exit 1; \
 		test -z "$$files" || { printf '%s\n' "$$files"; exit 1; }
 
 vet:
@@ -130,13 +130,18 @@ test-f2: t07-guest
 test-k8s: t07-guest
 	go test -tags kvm -count=1 -v -timeout 300s -run TestKVMKubernetesMultiContainer ./internal/executor/
 
+# T22 full scenario C hardware gate. Missing datapaths must fail, not skip.
+test-helm: t07-guest
+	go test -tags kvm -count=1 -v -timeout 360s -run 'TestKVMHelmApplication|TestKVMHelmScenarioC' ./internal/executor/
+	go test -tags kvm -count=1 -v -timeout 300s -run TestKVMDaemonRemediation ./cmd/grillod/
+
 # T18b native builder: real RUN execution inside a sandboxed guest.
 # Missing /dev/kvm or guest artifacts is a documented SKIP.
 test-builder-kvm: t07-guest
 	go test -tags kvm -count=1 -v -timeout 240s -run 'TestKVMBuildGuestRun|TestKVMBuildNativeBuilderRun|TestKVMBuildNativeMultiStage|TestKVMBuildGuestNetwork' ./internal/build/
 
 # Full T02/T03 real hardware evidence. No downloads or preexisting volume deletion.
-.PHONY: f0-guest test-f0 t07-guest test-t07 test-t08 test-t10 test-netns test-executor test-netreg test-bridged test-builder test-builder-kvm test-f2 test-k8s
+.PHONY: f0-guest test-f0 t07-guest test-t07 test-t08 test-t10 test-netns test-executor test-netreg test-bridged test-builder test-builder-kvm test-f2 test-k8s test-helm
 f0-guest:
 	bash experiments/boot/qemu/build-kernel.sh
 	bash experiments/boot/qemu/build-f0-guest.sh

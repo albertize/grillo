@@ -104,3 +104,18 @@ refusal, and staging cleanup. The installer fixture tests run as a non-root user
 root environments test root refusal and explicitly skip those fixtures. Tests
 never download artifacts, install packages, execute the fixture programs, or
 prove hardware integration. `make check` includes these tests.
+
+## Compatibility registry generation
+
+Run from the repository root:
+
+```sh
+go run ./scripts/compatibility -output docs
+go test ./scripts/compatibility
+```
+
+This writes the intended version-controlled JSON/Markdown compiler registry
+inventories. It performs no rendering, downloads or runtime operations. Ordinary
+CI rejects divergence from validator maps, missing fixture links and
+nondeterministic output. These inventories are not per-field runtime evidence;
+see [compatibility](../docs/compatibility.md) for actual gates and limitations.

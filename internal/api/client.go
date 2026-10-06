@@ -313,6 +313,15 @@ func (c *Client) Status(ctx context.Context, application string) ([]ContainerSta
 	return out.Containers, err
 }
 
+// Routes returns the daemon's actual published loopback fallback endpoints.
+func (c *Client) Routes(ctx context.Context, application string) ([]RouteStatus, error) {
+	var out struct {
+		Routes []RouteStatus `json:"routes"`
+	}
+	err := c.do(ctx, http.MethodGet, "/v1/applications/"+url.PathEscape(application), nil, &out)
+	return out.Routes, err
+}
+
 // Exec runs a command in a container and returns captured output.
 func (c *Client) Exec(ctx context.Context, application, container string, args []string) (int, string, string, error) {
 	request := map[string]any{"application": application, "container": container, "args": args}
