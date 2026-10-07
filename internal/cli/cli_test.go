@@ -16,6 +16,7 @@ import (
 
 	"github.com/albertize/grillo/internal/api"
 	"github.com/albertize/grillo/internal/build"
+	"github.com/albertize/grillo/internal/guestproto"
 	"github.com/albertize/grillo/internal/image"
 	"github.com/albertize/grillo/internal/model"
 	"github.com/albertize/grillo/internal/observe"
@@ -57,6 +58,9 @@ func (f *fakeClient) ExecStream(_ context.Context, _, _ string, args []string, s
 	f.execArgs = args
 	_, _ = io.WriteString(stdout, "out:"+strings.Join(args, " "))
 	return 3, nil
+}
+func (f *fakeClient) ExecAttached(ctx context.Context, request api.AttachRequest, _ <-chan guestproto.Frame, stdout, stderr io.Writer) (int, error) {
+	return f.ExecStream(ctx, request.Application, request.Container, request.Args, stdout, stderr)
 }
 func (f *fakeClient) Events(context.Context, uint64) (io.ReadCloser, error) {
 	return io.NopCloser(strings.NewReader("")), nil
@@ -189,7 +193,7 @@ func TestExecRunsAndRestoresTerminal(t *testing.T) {
 	terminal := &fakeTerminal{tty: true}
 	client := &fakeClient{}
 	app, stdout, _ := newTestApp(t, client, terminal)
-	code := app.Run(context.Background(), []string{"exec", "pod/backend-0", "api", "--", "sh", "-c", "echo hi"})
+	code := app.Run(context.Background(), []string{"exec", "-t", "pod/backend-0", "api", "--", "sh", "-c", "echo hi"})
 	if code != 3 {
 		t.Fatalf("exec exit = %d, want the container exit code 3", code)
 	}

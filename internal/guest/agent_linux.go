@@ -25,6 +25,7 @@ import (
 type Agent struct {
 	Runtime Runtime
 	WorkDir string
+	logs    *ContainerLogs
 
 	mu         sync.Mutex
 	sandbox    guestproto.SandboxSpec
@@ -46,7 +47,12 @@ type containerState struct {
 
 // NewAgent returns an agent whose bundles live under workDir.
 func NewAgent(rt Runtime, workDir string) *Agent {
+	logs := &ContainerLogs{}
+	if runc, ok := rt.(*Runc); ok {
+		runc.Logs = logs
+	}
 	return &Agent{
+		logs:       logs,
 		Runtime:    rt,
 		WorkDir:    workDir,
 		containers: make(map[string]*containerState),
@@ -58,6 +64,14 @@ func (a *Agent) Handle(ctx context.Context, req guestproto.Message, stream *gues
 	switch req.Type {
 	case guestproto.TypeStatus:
 		return a.status(ctx)
+	case guestproto.TypeMetrics:
+		return a.metrics(ctx)
+	case guestproto.TypeLogs:
+		var request guestproto.LogsRequest
+		if err := guestproto.UnmarshalPayload(req.Payload, &request); err != nil {
+			return nil, guestproto.Errorf(guestproto.CodeBadRequest, "invalid logs request")
+		}
+		return a.logs.Read(request.After), nil
 	case guestproto.TypeStart:
 		return a.start(ctx, req)
 	case guestproto.TypeStop:
@@ -96,7 +110,11 @@ func (a *Agent) start(ctx context.Context, req guestproto.Message) (any, *guestp
 	if err := MountShares(a.sandbox.Shares); err != nil {
 		return nil, guestproto.Errorf(guestproto.CodeInternal, "%v", err)
 	}
-	if err := SetupNetwork(a.sandbox.Network); err != nil {
+	var networkReaper *Reaper
+	if runtime, ok := a.Runtime.(*Runc); ok {
+		networkReaper = runtime.Reaper
+	}
+	if err := setupNetwork(ctx, a.sandbox.Network, networkReaper); err != nil {
 		return nil, guestproto.Errorf(guestproto.CodeInternal, "%v", err)
 	}
 	if err := a.startDNS(a.sandbox.DNS); err != nil {
@@ -130,14 +148,14 @@ func (a *Agent) start(ctx context.Context, req guestproto.Message) (any, *guestp
 			continue
 		}
 		state := a.containers[c.Name]
-		status, stdout, stderr, err := a.Runtime.Run(ctx, c.Name, state.bundle)
+		status, err := a.Runtime.RunStreaming(ctx, c.Name, state.bundle, a.logs.Writer(c.Name, "stdout"), a.logs.Writer(c.Name, "stderr"))
 		if err != nil {
 			return nil, guestproto.Errorf(guestproto.CodeInternal, "init container %s: %v", c.Name, err)
 		}
 		state.status = "exited"
 		state.exit = status
 		if status.ExitCode != 0 {
-			return nil, guestproto.Errorf(guestproto.CodeInternal, "init container %s failed with exit code %d: %s%s", c.Name, status.ExitCode, stdout, stderr)
+			return nil, guestproto.Errorf(guestproto.CodeInternal, "init container %s failed with exit code %d", c.Name, status.ExitCode)
 		}
 	}
 
@@ -331,6 +349,26 @@ func (a *Agent) exec(ctx context.Context, req guestproto.Message, stream *guestp
 	}
 	if len(er.Args) == 0 {
 		return nil, guestproto.Errorf(guestproto.CodeBadRequest, "exec requires a command")
+	}
+	if er.TTY || er.Stdin {
+		a.mu.Lock()
+		state := a.containers[er.Container]
+		valid := state != nil && !state.spec.Init && state.status == "running"
+		a.mu.Unlock()
+		if !valid {
+			return nil, guestproto.Errorf(guestproto.CodeNotFound, "running container required")
+		}
+		runtime, ok := a.Runtime.(interface {
+			ExecAttached(context.Context, guestproto.ExecRequest, *guestproto.Stream) (ExitStatus, error)
+		})
+		if !ok || stream == nil {
+			return nil, guestproto.Errorf(guestproto.CodeUnsupported, "interactive exec unavailable")
+		}
+		status, err := runtime.ExecAttached(ctx, er, stream)
+		if err != nil {
+			return nil, guestproto.Errorf(guestproto.CodeInternal, "interactive exec failed")
+		}
+		return guestproto.ExecResult{ExitCode: status.ExitCode}, nil
 	}
 	status, stdout, stderr, err := a.Runtime.Exec(ctx, er.Container, er.Args)
 	if err != nil {

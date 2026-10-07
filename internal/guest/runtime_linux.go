@@ -13,6 +13,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strconv"
+	"sync"
 	"syscall"
 )
 
@@ -47,9 +48,12 @@ type Runtime interface {
 // Runc is the runc-backed Runtime. It routes every child through the Reaper so
 // PID 1 reaps them exactly once.
 type Runc struct {
-	Binary string
-	Root   string
-	Reaper *Reaper
+	Binary     string
+	Root       string
+	Reaper     *Reaper
+	Logs       *ContainerLogs
+	logMu      sync.Mutex
+	logReaders map[string][]*os.File
 }
 
 func (r *Runc) command(args ...string) *exec.Cmd {
@@ -64,12 +68,47 @@ func (r *Runc) Run(ctx context.Context, name, bundle string) (ExitStatus, []byte
 // RunStreaming implements Runtime.
 func (r *Runc) RunStreaming(ctx context.Context, name, bundle string, stdout, stderr io.Writer) (ExitStatus, error) {
 	cmd := r.command("run", "--no-pivot", "--bundle", bundle, name)
-	cmd.Stdout = stdout
-	cmd.Stderr = stderr
+	// Reaper owns wait4, so never give os/exec a non-file Writer (it would
+	// create copy goroutines that require cmd.Wait). Own the pipes explicitly.
+	outR, outW, err := os.Pipe()
+	if err != nil {
+		return ExitStatus{}, err
+	}
+	defer outR.Close()
+	defer outW.Close()
+	errR, errW, err := os.Pipe()
+	if err != nil {
+		return ExitStatus{}, err
+	}
+	defer errR.Close()
+	defer errW.Close()
+	if stdout == nil {
+		stdout = io.Discard
+	}
+	if stderr == nil {
+		stderr = io.Discard
+	}
+	done := make(chan error, 2)
+	go func() { defer outR.Close(); _, err := io.Copy(stdout, outR); done <- err }()
+	go func() { defer errR.Close(); _, err := io.Copy(stderr, errR); done <- err }()
+	cmd.Stdout, cmd.Stderr = outW, errW
 	if err := r.Reaper.Start(cmd); err != nil {
 		return ExitStatus{}, err
 	}
-	return r.wait(ctx, cmd.Process.Pid)
+	_ = outW.Close()
+	_ = errW.Close()
+	status, err := r.wait(ctx, cmd.Process.Pid)
+	for i := 0; i < 2; i++ {
+		select {
+		case copyErr := <-done:
+			if copyErr != nil && err == nil {
+				err = fmt.Errorf("guest: container output stream failed")
+			}
+		case <-ctx.Done():
+			return status, ctx.Err()
+		}
+	}
+	return status, err
 }
 
 // StartDetached implements Runtime.
@@ -81,14 +120,61 @@ func (r *Runc) StartDetached(ctx context.Context, name, bundle string) error {
 	defer devNull.Close()
 	cmd := r.command("run", "-d", "--no-pivot", "--bundle", bundle, name)
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = devNull, devNull, devNull
-	status, _, stderr, err := r.capture(ctx, cmd)
-	if err != nil {
+	var writers []*os.File
+	if r.Logs != nil {
+		r.closeLogReaders(name)
+		var readers []*os.File
+		for _, stream := range []string{"stdout", "stderr"} {
+			reader, writer, err := os.Pipe()
+			if err != nil {
+				for _, f := range append(readers, writers...) {
+					_ = f.Close()
+				}
+				return err
+			}
+			readers = append(readers, reader)
+			writers = append(writers, writer)
+			go func(reader *os.File, stream string) {
+				defer reader.Close()
+				_, _ = io.Copy(r.Logs.Writer(name, stream), reader)
+			}(reader, stream)
+		}
+		r.logMu.Lock()
+		if r.logReaders == nil {
+			r.logReaders = map[string][]*os.File{}
+		}
+		r.logReaders[name] = readers
+		r.logMu.Unlock()
+		cmd.Stdout, cmd.Stderr = writers[0], writers[1]
+	}
+	defer func() {
+		for _, writer := range writers {
+			_ = writer.Close()
+		}
+	}()
+	if err := r.Reaper.Start(cmd); err != nil {
+		r.closeLogReaders(name)
 		return err
 	}
-	if status.ExitCode != 0 {
-		return fmt.Errorf("guest: runc run -d %s exited %d: %s", name, status.ExitCode, stderr)
+	status, err := r.wait(ctx, cmd.Process.Pid)
+	if err != nil || status.ExitCode != 0 {
+		r.closeLogReaders(name)
+		if err != nil {
+			return err
+		}
+		return fmt.Errorf("guest: runc run -d %s exited %d", name, status.ExitCode)
 	}
 	return nil
+}
+
+func (r *Runc) closeLogReaders(name string) {
+	r.logMu.Lock()
+	readers := r.logReaders[name]
+	delete(r.logReaders, name)
+	r.logMu.Unlock()
+	for _, reader := range readers {
+		_ = reader.Close()
+	}
 }
 
 // Exec implements Runtime.
@@ -117,6 +203,7 @@ func (r *Runc) Kill(ctx context.Context, name string, sig syscall.Signal) error 
 
 // Delete implements Runtime.
 func (r *Runc) Delete(ctx context.Context, name string, force bool) error {
+	defer r.closeLogReaders(name)
 	args := []string{"delete"}
 	if force {
 		args = append(args, "--force")

@@ -93,7 +93,14 @@ guest specifications. Closing it cancels its requests, not applications.
 
 The [console guide](ui.md) explains bootstrap/session handling, CSP, metadata-only
 configuration, inferred topology and non-TTY exec. The UI cannot manufacture
-missing guest stdout, original compiler diagnostics or detailed usage metrics.
+original compiler diagnostics or unavailable usage. Actual guest `/proc` and
+container cgroup counters now carry collection time/provenance; they are not
+host attestation. Interactive CLI exec uses a dedicated authenticated channel;
+browser exec remains non-TTY. Production boot inputs use verified private snapshots
+and fresh credential overlays ([ADR 0009](adr/0009-verified-boot-and-private-key-overlay.md)). Container stdout/stderr
+is drained into a bounded guest-wide ring and polled into the daemon spool;
+retention gaps are explicit and do not block workloads. See the
+[log delivery evidence](experiments/t24-guest-logs.md) for limits.
 
 ## Where to look
 

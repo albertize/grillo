@@ -367,6 +367,7 @@ func (c *Client) ExecStream(ctx context.Context, application, container string, 
 	scanner.Buffer(make([]byte, 0, 64*1024), 1<<20)
 	event := ""
 	code := 0
+	gotExit := false
 	for scanner.Scan() {
 		line := scanner.Text()
 		switch {
@@ -378,20 +379,33 @@ func (c *Client) ExecStream(ctx context.Context, application, container string, 
 			case "stdout", "stderr":
 				raw, err := base64.StdEncoding.DecodeString(data)
 				if err != nil {
-					continue
+					return code, fmt.Errorf("api: malformed exec output")
 				}
-				if event == "stdout" {
-					_, _ = stdout.Write(raw)
-				} else {
-					_, _ = stderr.Write(raw)
+				writer := stdout
+				if event == "stderr" {
+					writer = stderr
+				}
+				if writer != nil {
+					if _, err := writer.Write(raw); err != nil {
+						return code, err
+					}
 				}
 			case "exit":
-				_, _ = fmt.Sscanf(data, "%d", &code)
+				if _, err := fmt.Sscanf(data, "%d", &code); err != nil {
+					return 0, fmt.Errorf("api: malformed exec exit")
+				}
+				gotExit = true
 			case "error":
 				raw, _ := base64.StdEncoding.DecodeString(data)
 				return code, errors.New(string(raw))
 			}
 		}
+	}
+	if err := scanner.Err(); err != nil {
+		return code, err
+	}
+	if !gotExit {
+		return code, fmt.Errorf("api: exec stream ended without an exit result")
 	}
 	return code, nil
 }

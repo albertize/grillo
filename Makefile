@@ -53,6 +53,18 @@ audit:
 	$(GO) list -m all
 	$(GO) mod tidy -diff
 
+# Bounded smoke by default; opt into a longer local campaign with
+# make fuzz FUZZTIME=10m. Separate processes select exactly one target each.
+FUZZTIME ?= 5s
+FUZZWORKERS ?= 2
+.PHONY: fuzz
+fuzz:
+	$(GO) test ./internal/guestproto -run '^$$' -fuzz '^FuzzReadFrame$$' -fuzztime=$(FUZZTIME) -parallel=$(FUZZWORKERS)
+	$(GO) test ./internal/guestproto -run '^$$' -fuzz '^FuzzReadMessage$$' -fuzztime=$(FUZZTIME) -parallel=$(FUZZWORKERS)
+	$(GO) test ./internal/frontend/kubernetes -run '^$$' -fuzz '^FuzzCompile$$' -fuzztime=$(FUZZTIME) -parallel=$(FUZZWORKERS)
+	$(GO) test ./internal/network -run '^$$' -fuzz '^FuzzDNSRespond$$' -fuzztime=$(FUZZTIME) -parallel=$(FUZZWORKERS)
+	$(GO) test ./internal/oci -run '^$$' -fuzz '^FuzzUnpackLayer$$' -fuzztime=$(FUZZTIME) -parallel=$(FUZZWORKERS)
+
 # Explicit opt-in: downloads and executes this pinned official Go audit tool.
 vulncheck:
 	$(GO) run golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION) ./...

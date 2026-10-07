@@ -80,7 +80,11 @@ Offline applicability is implementation compatibility, not host feasibility.
 The bounded subset is not arbitrary chart compatibility or completion of the
 product hardening gate. The [console report](experiments/t23-console.md) separates
 browser fixtures from native CLI/daemon/KVM evidence; UI delivery does not expand
-workload semantics or add missing guest stdout ingestion.
+workload semantics. T24 also delivers [interactive CLI stdin/TTY/resize, real
+guest/cgroup counters and verified boot snapshots](experiments/t24-interactive-metrics-artifacts.md),
+without expanding source-manifest compatibility. Browser full TTY remains absent;
+T24/F3 remains blocked. T24 now separately verifies [bounded guest stdout/stderr
+ingestion](experiments/t24-guest-logs.md); it does not complete the F3 gate.
 
 OCI charts require exact SemVer via `--version`. Missing cache entries require
 explicit `--fetch-chart`; cached inputs never fetch or refresh automatically.

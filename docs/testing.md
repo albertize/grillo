@@ -44,7 +44,7 @@ WebSocket; they do not install a driver or download a browser.
 | Target | Evidence |
 | --- | --- |
 | `make test-ui-browser` | Real Firefox with deterministic API fixtures: UI, CSP, HTML safety, filters, SSE and desktop/mobile navigation; no hardware claim |
-| `make test-ui` | Actual CLI bridge/daemon, rebuilt guest, native Helm chart, real container exec/cancellation and unchanged VMM identity after UI closure |
+| `make test-ui` | Actual CLI bridge/daemon, rebuilt guest, native Helm chart, guest stdout/stderr via API/CLI/Firefox with safe HTML/filtering, real exec/cancellation and unchanged VMM identity after UI closure |
 | `make test-executor` | Real apply, container exec, teardown and liveness restart |
 | `make test-f2` | Compose DNS, managed storage, idempotent apply/down and recovery |
 | `make test-k8s` | Compiled multi-container Kubernetes Pod |
@@ -77,7 +77,21 @@ make vulncheck             # explicit execution/download of pinned Go audit tool
 ```
 
 Neither replaces a security review, publisher-authenticity verification or the
-unfinished T24 product gate. Longer fuzz/load/benchmark campaigns and clean-host
+unfinished T24 product gate. Run bounded parser/protocol smoke separately:
+
+```sh
+make fuzz                    # five targets, 5 seconds each, two workers
+make fuzz FUZZTIME=60s        # modest local campaign
+make fuzz FUZZTIME=10m        # opt-in longer campaign; not yet recorded as run
+```
+
+The CI workflow includes the smoke, not KVM. Targets cover guest framing/messages,
+Kubernetes YAML, DNS responses and tar/gzip extraction. Harness input/output
+bounds do not prove complete parser resource safety. Failures must remain visible;
+retain failing Go corpora as regression fixtures after reviewing sensitive data.
+See [current CLI/metrics/boot-artifact evidence](experiments/t24-interactive-metrics-artifacts.md),
+[T24 campaign results and blockers](experiments/t24-hardening.md) and the
+[threat model](security.md). Longer fuzz/load/benchmark campaigns and clean-host
 verification remain required by the [delivery plan](../IMPLEMENTATION_PLAN.md).
 
 For documentation changes, check relative links and anchors, balanced fences,

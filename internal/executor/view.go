@@ -10,6 +10,7 @@ import (
 	"sort"
 	"time"
 
+	"github.com/albertize/grillo/internal/guestproto"
 	"github.com/albertize/grillo/internal/model"
 	"github.com/albertize/grillo/internal/observe"
 	"github.com/albertize/grillo/internal/sandbox"
@@ -39,6 +40,9 @@ func (e *Executor) View(ctx context.Context, application string) (observe.Applic
 	}
 	sort.Slice(runtimes, func(i, j int) bool { return runtimes[i].id < runtimes[j].id })
 	for _, rt := range runtimes {
+		if rt.logFailed {
+			out.Diagnostics = append(out.Diagnostics, observe.DiagnosticView{Code: "guest_logs_unavailable", Resource: rt.id, Message: "Guest log collection failed; retained output may be incomplete."})
+		}
 		if err := ctx.Err(); err != nil {
 			return out, err
 		}
@@ -59,10 +63,32 @@ func (e *Executor) View(ctx context.Context, application string) (observe.Applic
 			out.Diagnostics = append(out.Diagnostics, observe.DiagnosticView{Code: "sandbox_unavailable", Resource: rt.id, Message: "Sandbox observation unavailable."})
 		}
 		if rt.guest != nil {
+			usage := map[string]guestproto.ContainerMetrics{}
+			if rt.guest.Info().Supports(guestproto.CapMetrics) {
+				metrics, err := rt.guest.Metrics(ctx)
+				if err == nil {
+					for _, sample := range metrics.Containers {
+						if !rt.containers[sample.Name] {
+							err = fmt.Errorf("unknown metrics container")
+							break
+						}
+						usage[sample.Name] = sample
+					}
+				}
+				if err == nil {
+					view.Guest = &observe.GuestUsageView{Time: time.Now().UTC(), Source: "guest /proc/meminfo and /proc/stat", MemoryTotalBytes: metrics.MemoryTotalBytes, MemoryAvailableBytes: metrics.MemoryAvailableBytes, CPUBusyTicks: metrics.CPUBusyTicks, CPUIdleTicks: metrics.CPUIdleTicks}
+				} else {
+					usage = map[string]guestproto.ContainerMetrics{}
+					out.Diagnostics = append(out.Diagnostics, observe.DiagnosticView{Code: "guest_metrics_unavailable", Resource: rt.id, Message: "Guest usage sample unavailable."})
+				}
+			}
 			status, err := rt.guest.Status(ctx)
 			if err == nil {
 				for _, c := range status.Containers {
 					cv := observe.ContainerObservation{Name: c.Name, State: c.State, ExitCode: c.ExitCode}
+					if sample, ok := usage[c.Name]; ok && (sample.MemoryBytes != nil || sample.CPUUsec != nil) {
+						cv.Usage = &observe.ContainerUsageView{Time: time.Now().UTC(), Source: "guest cgroup v2 memory.current and cpu.stat", MemoryBytes: sample.MemoryBytes, CPUUsec: sample.CPUUsec}
+					}
 					if rt.runner != nil {
 						if probe, ok := rt.runner.Status(c.Name); ok {
 							cv.Ready, cv.Live, cv.StartupDone = &probe.Ready, &probe.Live, &probe.StartupDone

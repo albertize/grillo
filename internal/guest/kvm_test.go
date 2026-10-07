@@ -34,6 +34,8 @@ func TestKVMAgentScenarioA(t *testing.T) {
 	defer cancel()
 
 	spec := scenarioASpec()
+	spec.Containers[0].Args = []string{"/bin/sh", "-c", "echo init-log; echo ready > /shared/ready"}
+	spec.Containers[1].Args = []string{"/bin/sh", "-c", "echo app-stdout-log; echo app-stderr-log >&2; exec /bin/httpd -f -p 8080 -h /www"}
 	start, err := client.Start(ctx, guestproto.StartRequest{Sandbox: &spec})
 	if err != nil {
 		t.Fatalf("start: %v", err)
@@ -70,6 +72,31 @@ func TestKVMAgentScenarioA(t *testing.T) {
 		t.Fatalf("containers share a root filesystem: sidecar saw %q", out)
 	}
 
+	// Container output, not exec output, reaches the bounded guest log ring.
+	retained := map[string]string{}
+	cursor := uint64(0)
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		logs, err := client.Logs(ctx, cursor)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if logs.Gap {
+			t.Fatal("unexpected log loss in small fixture")
+		}
+		for _, chunk := range logs.Chunks {
+			retained[chunk.Container+"/"+chunk.Stream] += string(chunk.Data)
+		}
+		cursor = logs.Next
+		if strings.Contains(retained["setup/stdout"], "init-log") && strings.Contains(retained["app/stdout"], "app-stdout-log") && strings.Contains(retained["app/stderr"], "app-stderr-log") {
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	if !strings.Contains(retained["setup/stdout"], "init-log") || !strings.Contains(retained["app/stdout"], "app-stdout-log") || !strings.Contains(retained["app/stderr"], "app-stderr-log") {
+		t.Fatalf("missing actual workload output: %+v", retained)
+	}
+
 	// 4. Stop and confirm the containers are gone.
 	if stop, err := client.Stop(ctx, guestproto.StopRequest{}); err != nil || !stop.Stopped {
 		t.Fatalf("stop = %+v err=%v", stop, err)
@@ -84,6 +111,65 @@ func TestKVMAgentScenarioA(t *testing.T) {
 		}
 	}
 	requireNoZombies(t, ctx, client)
+}
+
+func TestKVMAgentMetrics(t *testing.T) {
+	client := bootAgentVM(t, 44)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	spec := scenarioASpec()
+	if _, err := client.Start(ctx, guestproto.StartRequest{Sandbox: &spec}); err != nil {
+		t.Fatal(err)
+	}
+	metrics, err := client.Metrics(ctx)
+	if err != nil || metrics.MemoryTotalBytes == nil || metrics.MemoryAvailableBytes == nil || metrics.CPUBusyTicks == nil || metrics.CPUIdleTicks == nil || *metrics.MemoryTotalBytes == 0 {
+		t.Fatalf("missing guest counters: %+v %v", metrics, err)
+	}
+	found := false
+	for _, c := range metrics.Containers {
+		if c.Name == "app" {
+			if c.MemoryBytes == nil || c.CPUUsec == nil || *c.MemoryBytes == 0 {
+				t.Fatalf("missing cgroup counters: %+v", c)
+			}
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("container metrics absent")
+	}
+	_, _ = client.Stop(ctx, guestproto.StopRequest{})
+}
+
+func TestKVMAgentInteractive(t *testing.T) {
+	client := bootAgentVM(t, 43)
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	spec := scenarioASpec()
+	if _, err := client.Start(ctx, guestproto.StartRequest{Sandbox: &spec}); err != nil {
+		t.Fatal(err)
+	}
+	for _, tty := range []bool{false, true} {
+		input := make(chan guestproto.Frame, 4)
+		args := []string{"/bin/sh", "-c", "read line; echo OUT:$line; echo ERR:$line >&2; exit 7"}
+		if tty {
+			args = []string{"/bin/sh", "-c", "test -t 0 || exit 9; read line; echo OUT:$line; echo ERR:$line >&2; stty size; exit 7"}
+			input <- guestproto.SizeFrame(42, 101)
+		}
+		input <- guestproto.Frame{Stream: guestproto.StreamStdin, Data: []byte("interactive-marker\n")}
+		var stdout, stderr bytes.Buffer
+		result, err := client.ExecAttached(ctx, guestproto.ExecRequest{Container: "app", Args: args, Stdin: true, TTY: tty}, input, &stdout, &stderr)
+		if err != nil || result.ExitCode != 7 || !strings.Contains(stdout.String(), "OUT:interactive-marker") {
+			t.Fatalf("tty=%v result=%+v error=%v stdout=%q stderr=%q", tty, result, err, stdout.String(), stderr.String())
+		}
+		if tty {
+			if stderr.Len() != 0 || !strings.Contains(stdout.String(), "42 101") || !strings.Contains(stdout.String(), "ERR:interactive-marker") {
+				t.Fatalf("TTY merge/resize failed: %q %q", stdout.String(), stderr.String())
+			}
+		} else if !strings.Contains(stderr.String(), "ERR:interactive-marker") {
+			t.Fatal("non-TTY stderr missing")
+		}
+	}
+	_, _ = client.Stop(ctx, guestproto.StopRequest{})
 }
 
 // TestKVMAgentInitFailure proves a failing init container blocks application

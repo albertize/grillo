@@ -14,6 +14,7 @@ ADRs explain consequential decisions and preserve the reasoning behind them. Use
 | [0006](0006-native-build-system.md) | Native build system with an optional Podman accelerator | Proposed |
 | [0007](0007-controlled-helm-renderer.md) | Controlled official Helm renderer | Proposed |
 | [0008](0008-patternfly-react-console.md) | PatternFly React console (user-requested implementation) | Proposed |
+| [0009](0009-verified-boot-and-private-key-overlay.md) | Verified boot snapshots and private per-boot key overlay | Proposed |
 
 The implementation plan still contains **provisional choices**, not evidence that a
 backend has passed its feasibility gate. An ADR without required hardware

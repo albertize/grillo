@@ -77,6 +77,7 @@ Commands:
   up <manifest|chart>      apply an application (starts the daemon if needed)
   down [--volumes] <app>   stop an application
   plan <manifest|chart>    print actions without applying (OCI fetch is opt-in)
+  metrics <application>   sampled guest/container/VMM counters (text or JSON)
   logs <resource> [-f]     show or follow logs
   events [-f]              show or follow the event stream
   exec <pod> [container] -- <command>
@@ -159,6 +160,8 @@ func (a *App) Run(ctx context.Context, args []string) int {
 		return a.cmdLogs(ctx, args[1:])
 	case "events":
 		return a.cmdEvents(ctx, args[1:])
+	case "metrics":
+		return a.cmdMetrics(ctx, args[1:])
 	case "exec":
 		return a.cmdExec(ctx, args[1:], false)
 	case "shell":
@@ -464,6 +467,8 @@ func (a *App) cmdExec(ctx context.Context, args []string, shell bool) int {
 		name = "shell"
 	}
 	fs := flag.NewFlagSet(name, flag.ContinueOnError)
+	stdin := fs.Bool("i", shell, "forward stdin")
+	tty := fs.Bool("t", shell && a.Terminal.IsTerminal(), "allocate a guest terminal and forward stdin")
 	fs.SetOutput(a.Stderr)
 	flags, positionals, afterDD, err := SplitForFlagSet(args, fs)
 	if err != nil {
@@ -498,14 +503,24 @@ func (a *App) cmdExec(ctx context.Context, args []string, shell bool) int {
 	}
 	// Put the local terminal in raw mode and always restore it, even if the
 	// session fails, so an interrupted CLI never leaves a broken terminal.
-	if a.Terminal.IsTerminal() {
+	if *tty && a.Terminal.IsTerminal() {
 		restore, err := a.Terminal.MakeRaw()
 		if err != nil {
 			return fail(a.Stderr, err)
 		}
 		defer restore()
 	}
-	exitCode, err := a.ClientFactory(a.SocketPath).ExecStream(ctx, application, container, command, a.Stdout, a.Stderr)
+	client := a.ClientFactory(a.SocketPath)
+	var exitCode int
+	if *stdin || *tty {
+		attached, ok := client.(attachedClient)
+		if !ok {
+			return fail(a.Stderr, fmt.Errorf("interactive API unavailable"))
+		}
+		exitCode, err = a.attach(ctx, attached, api.AttachRequest{Application: application, Container: container, Args: command, TTY: *tty})
+	} else {
+		exitCode, err = client.ExecStream(ctx, application, container, command, a.Stdout, a.Stderr)
+	}
 	if err != nil {
 		return fail(a.Stderr, err)
 	}

@@ -6,6 +6,7 @@ package build
 
 import (
 	"context"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
@@ -24,6 +25,7 @@ type GuestBoot struct {
 	Initramfs    string
 	KernelArgs   string
 	GuestKey     []byte
+	FreshKeys    bool
 	VsockCIDBase uint32
 	VsockPort    uint32
 	MemoryMiB    int
@@ -47,10 +49,17 @@ func (g *GuestBoot) Boot(ctx context.Context, rootfsDir string) (SandboxClient, 
 	if g.Backend == nil {
 		return nil, nil, fmt.Errorf("build: guest boot requires a backend")
 	}
+	if g.FreshKeys {
+		if _, ok := g.Backend.(interface {
+			BootConnection(sandbox.Handle) (uint32, uint32, []byte, error)
+		}); !ok {
+			return nil, nil, fmt.Errorf("build: backend cannot provide boot credentials")
+		}
+	}
 	if g.Kernel == "" || g.Initramfs == "" {
 		return nil, nil, fmt.Errorf("build: guest boot requires a kernel and initramfs")
 	}
-	if len(g.GuestKey) < 16 {
+	if !g.FreshKeys && len(g.GuestKey) < 16 {
 		return nil, nil, fmt.Errorf("build: guest boot requires a guest key")
 	}
 	tag := g.ShareTag
@@ -90,6 +99,15 @@ func (g *GuestBoot) Boot(ctx context.Context, rootfsDir string) (SandboxClient, 
 		VsockPort:   g.VsockPort,
 		GuestKey:    g.GuestKey,
 	}
+	if g.FreshKeys {
+		if g.Dial != nil {
+			return nil, nil, fmt.Errorf("build: custom dial cannot use fresh runtime keys")
+		}
+		spec.GuestKey = make([]byte, 32)
+		if _, err := rand.Read(spec.GuestKey); err != nil {
+			return nil, nil, err
+		}
+	}
 	guestSpec := &guestproto.SandboxSpec{
 		ID:     id,
 		Build:  true,
@@ -120,9 +138,24 @@ func (g *GuestBoot) Boot(ctx context.Context, rootfsDir string) (SandboxClient, 
 		_ = cleanup()
 		return nil, nil, err
 	}
+	if g.FreshKeys {
+		provider, ok := g.Backend.(interface {
+			BootConnection(sandbox.Handle) (uint32, uint32, []byte, error)
+		})
+		if !ok {
+			_ = cleanup()
+			return nil, nil, fmt.Errorf("build: backend cannot provide boot credentials")
+		}
+		var err error
+		spec.VsockCID, spec.VsockPort, spec.GuestKey, err = provider.BootConnection(sandbox.Handle{ID: id})
+		if err != nil {
+			_ = cleanup()
+			return nil, nil, err
+		}
+	}
 	dial := g.Dial
 	if dial == nil {
-		key := g.GuestKey
+		key := spec.GuestKey
 		dial = func(ctx context.Context, cid, port uint32) (SandboxClient, error) {
 			conn, err := guestproto.DialVsock(ctx, cid, port)
 			if err != nil {
@@ -131,7 +164,7 @@ func (g *GuestBoot) Boot(ctx context.Context, rootfsDir string) (SandboxClient, 
 			return guestproto.NewClient(ctx, conn, guestproto.HandshakeConfig{Key: key, Agent: "builder"})
 		}
 	}
-	client, err := dial(ctx, cid, g.VsockPort)
+	client, err := dial(ctx, spec.VsockCID, spec.VsockPort)
 	if err != nil {
 		_ = cleanup()
 		return nil, nil, err

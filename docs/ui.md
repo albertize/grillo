@@ -43,8 +43,9 @@ explicit and styled consistently. Third-party notices are linked in the sidebar.
   than inventing them.
 - Logs: retained daemon spool records, exact resource/container filters,
   stdout/stderr filtering, explicit polling, cursor-based pagination. Empty
-  results report that ingestion may be unavailable; the console does not add a
-  missing guest log producer. Visible text retains at most 256 KiB.
+  results do not prove silence; check diagnostics for collection failures.
+  Guest retention gaps bypass container/stream filters so loss stays visible.
+  Visible text retains at most 256 KiB.
 - Events: global daemon stream with resource-prefix filtering, automatic
   EventSource reconnect, forwarded `Last-Event-ID`, duplicate suppression and
   snapshot/log resync on `events.gap`. Stored events are bounded to 200 records.
@@ -55,8 +56,8 @@ explicit and styled consistently. Third-party notices are linked in the sidebar.
   using a parent-checked pidfd without interrupting the shared probe/status
   channel. Arguments are never evaluated by a host shell. Output is captured on
   completion. CLI `grillo shell <application-ID> <container>` invokes guest
-  `/bin/sh`, but does not provide full interactive stdin/TTY; minimal images may
-  lack a shell.
+  `/bin/sh` with real stdin/TTY/resize when local stdin is a terminal. Browser
+  exec remains non-TTY; minimal images may lack a shell.
 
 The console can faithfully show intentionally printed secret values in workload
 logs/exec output; it cannot promise to hide an application's deliberate output.
@@ -126,10 +127,14 @@ Manual smoke steps:
 
 ## Explicit MVP limits
 
-Full browser and CLI interactive TTY/stdin/resize are deferred. Guest kernel version, actual guest and
-container memory/CPU, PSS, cache usage and VMM CPU percentage are unavailable
-rather than invented. The UI does not implement guest stdout collection, event
-production or compiler-diagnostic persistence absent from the daemon; it reads
-those existing API surfaces and labels missing data. TLS, dev CA management,
+Full browser TTY is deferred; CLI stdin/TTY/resize is implemented. Actual guest
+`/proc` memory/CPU ticks and container cgroup memory/cumulative CPU microseconds
+are displayed with collection times and sources, separately from VMM RSS and
+guest allocation. Missing values are unavailable, never zeroed; guest reports
+are not host attestation. Guest kernel version, PSS, cache usage and VMM CPU
+percentage remain unavailable rather than invented. Guest stdout/stderr collection is implemented by the
+agent/executor/daemon, not the UI; the console consumes that bounded spool.
+Event production and compiler-diagnostic persistence still depend on the daemon;
+the UI reads existing API surfaces and labels missing data. TLS, dev CA management,
 public exposure and secret reveal are not part of this console. Same-user host
 processes are outside its authentication boundary.

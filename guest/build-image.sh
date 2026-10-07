@@ -20,15 +20,16 @@ done
 [[ -d $t02/rootfs ]] || { echo "build-image: run 'make oci-guest' first (missing rootfs)" >&2; exit 1; }
 [[ -f $kernel ]] || { echo "build-image: missing guest kernel $kernel" >&2; exit 1; }
 
+umask 077
 mkdir -p -- "$out/bin"
-umask 022
 
-# A per-boot key. For the local experiment it is generated once and baked into
-# the initramfs (the host controls the image). A production backend must deliver
-# a fresh key per boot over a private channel, never on the command line.
+# A legacy fixture key for direct component gates. Production runtime boots
+# override it with a fresh key in an operation-private verified initramfs overlay;
+# neither key is placed on the command line or in ordinary diagnostics.
 if [[ ! -s $out/key ]]; then
     head -c 32 /dev/urandom | base64 > "$out/key"
 fi
+chmod 0600 -- "$out/key"
 
 # Build the agent once and reuse it in the image and the manifest.
 (
@@ -63,7 +64,9 @@ rm -f -- "$root/rootfs-app/www/index.html"
 printf 'grillo-agent-localhost-ok\n' > "$root/rootfs-app/www/index.html"
 
 echo "build-image: packing $out/initramfs-agent.cpio.gz" >&2
-( cd -- "$root" && find . -print0 | cpio --null -o --format=newc --quiet ) | gzip -9 > "$out/initramfs-agent.cpio.gz"
+( cd -- "$root" && find . -print0 | cpio --null -o --format=newc --quiet ) | gzip -9 > "$stage/initramfs-agent.cpio.gz"
+chmod 0600 -- "$stage/initramfs-agent.cpio.gz"
+mv -- "$stage/initramfs-agent.cpio.gz" "$out/initramfs-agent.cpio.gz"
 
 (
     cd -- "$repo"

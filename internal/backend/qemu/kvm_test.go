@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -71,6 +72,9 @@ func TestKVMCreateStartStopDelete(t *testing.T) {
 	defer cancel()
 
 	seenPIDs := map[int]bool{}
+	// Phase measurements exclude repeated idempotency calls and inspection.
+	// Warm local artifacts only: no pull, containers, or application readiness.
+	phases := map[string][]time.Duration{}
 	start := time.Now()
 	for i := 0; i < cycles; i++ {
 		spec := sandbox.Spec{
@@ -81,13 +85,17 @@ func TestKVMCreateStartStopDelete(t *testing.T) {
 			VsockPort:  1024,
 			GuestKey:   key,
 		}
+		phaseStart := time.Now()
 		handle, err := backend.Create(ctx, spec, sandbox.OperationID(fmt.Sprintf("cycle-%d", i)))
 		if err != nil {
 			t.Fatalf("cycle %d create: %v", i, err)
 		}
+		phases["create"] = append(phases["create"], time.Since(phaseStart))
+		phaseStart = time.Now()
 		if err := backend.Start(ctx, handle); err != nil {
 			t.Fatalf("cycle %d start: %v", i, err)
 		}
+		phases["start-to-authenticated-agent"] = append(phases["start-to-authenticated-agent"], time.Since(phaseStart))
 		obs, err := backend.Inspect(ctx, handle)
 		if err != nil {
 			t.Fatalf("cycle %d inspect: %v", i, err)
@@ -103,18 +111,27 @@ func TestKVMCreateStartStopDelete(t *testing.T) {
 		if err := backend.Start(ctx, handle); err != nil {
 			t.Fatalf("cycle %d repeated start: %v", i, err)
 		}
+		phaseStart = time.Now()
 		if err := backend.Stop(ctx, handle, 5*time.Second); err != nil {
 			t.Fatalf("cycle %d stop: %v", i, err)
 		}
 		if err := backend.Delete(ctx, handle); err != nil {
 			t.Fatalf("cycle %d delete: %v", i, err)
 		}
+		phases["stop-and-delete"] = append(phases["stop-and-delete"], time.Since(phaseStart))
 		obs, _ = backend.Inspect(ctx, handle)
 		if obs.State != sandbox.StateAbsent {
 			t.Fatalf("cycle %d state after delete = %s", i, obs.State)
 		}
 	}
 	t.Logf("%d cycles in %s (%.0f ms/cycle)", cycles, time.Since(start).Round(time.Millisecond), float64(time.Since(start).Milliseconds())/float64(cycles))
+
+	for _, name := range []string{"create", "start-to-authenticated-agent", "stop-and-delete"} {
+		values := phases[name]
+		slices.Sort(values)
+		// Nearest-rank percentiles; every recorded sample completed successfully.
+		t.Logf("warm phase %s: samples=%d median=%s p95=%s", name, len(values), values[(len(values)-1)/2].Round(time.Microsecond), values[(95*len(values)+99)/100-1].Round(time.Microsecond))
+	}
 
 	// No VMM process may survive.
 	for pid := range seenPIDs {

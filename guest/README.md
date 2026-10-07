@@ -42,15 +42,20 @@ make test-t07       # real KVM/QEMU scenario A against the built image
 
 `make t07-guest` builds the static agent, packs it as `/init` with `/runc`, one
 busybox rootfs per container (`/rootfs-setup`, `/rootfs-app`, `/rootfs-sidecar`),
-a `/shared` directory, and a per-boot key at `/etc/grillo/key`, then writes the
+a `/shared` directory, and a private legacy fixture key at `/etc/grillo/key`, then writes the
 artifact manifest. `make test-t07` boots the image with QEMU `microvm` and
 `vhost-vsock` and drives scenario A through the T06 client. A missing `/dev/kvm`
 or qemu is a documented SKIP, never a pass.
 
-The key is baked in for the local experiment because the host controls the
-image. A production backend must deliver a fresh key per boot over a private
-channel (for example a virtio device or fw_cfg), never on the kernel command
-line or in logs.
+Direct component gates use the baked fixture key; fixture key/images are 0600.
+The daemon's runtime and native-build QEMU paths instead require a trusted
+manifest, verify kernel/initramfs into private snapshots before launch and append
+a private gzip/newc overlay replacing `/etc/grillo/key` with 32 fresh random bytes
+on each new boot. Idempotent live starts retain their credentials. The daemon
+ignores legacy `--key-file`; no boot key appears in arguments, logs or public DTOs.
+See [ADR 0009](../docs/adr/0009-verified-boot-and-private-key-overlay.md) and the
+[T24 evidence](../docs/experiments/t24-interactive-metrics-artifacts.md). Inventories
+are local integrity expectations, not publisher authentication or release SBOMs.
 
 ## Artifact manifest
 

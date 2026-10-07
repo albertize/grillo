@@ -25,3 +25,4 @@ jobs:
       - run: make ui-deps
       - run: make check
       - run: make vulncheck
+      - run: make fuzz

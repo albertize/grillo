@@ -14,34 +14,38 @@ import (
 type MessageType string
 
 const (
-	TypeHello        MessageType = "hello"
-	TypeHelloAck     MessageType = "hello_ack"
-	TypeAuth         MessageType = "auth"
-	TypeAuthOK       MessageType = "auth_ok"
-	TypeError        MessageType = "error"
-	TypePing         MessageType = "ping"
-	TypePong         MessageType = "pong"
-	TypeCancel       MessageType = "cancel"
-	TypeStart        MessageType = "start"
-	TypeStarted      MessageType = "started"
-	TypeStop         MessageType = "stop"
-	TypeStopped      MessageType = "stopped"
-	TypeStatus       MessageType = "status"
-	TypeStatusResult MessageType = "status_result"
-	TypeProbe        MessageType = "probe"
-	TypeProbeResult  MessageType = "probe_result"
-	TypeExec         MessageType = "exec"
-	TypeExecResult   MessageType = "exec_result"
-	TypeRestart      MessageType = "restart"
-	TypeRestarted    MessageType = "restarted"
-	TypeRun          MessageType = "run"
-	TypeRunResult    MessageType = "run_result"
+	TypeHello         MessageType = "hello"
+	TypeHelloAck      MessageType = "hello_ack"
+	TypeAuth          MessageType = "auth"
+	TypeAuthOK        MessageType = "auth_ok"
+	TypeError         MessageType = "error"
+	TypePing          MessageType = "ping"
+	TypePong          MessageType = "pong"
+	TypeCancel        MessageType = "cancel"
+	TypeStart         MessageType = "start"
+	TypeStarted       MessageType = "started"
+	TypeStop          MessageType = "stop"
+	TypeStopped       MessageType = "stopped"
+	TypeStatus        MessageType = "status"
+	TypeStatusResult  MessageType = "status_result"
+	TypeProbe         MessageType = "probe"
+	TypeProbeResult   MessageType = "probe_result"
+	TypeExec          MessageType = "exec"
+	TypeExecResult    MessageType = "exec_result"
+	TypeRestart       MessageType = "restart"
+	TypeRestarted     MessageType = "restarted"
+	TypeRun           MessageType = "run"
+	TypeRunResult     MessageType = "run_result"
+	TypeLogs          MessageType = "logs"
+	TypeLogsResult    MessageType = "logs_result"
+	TypeMetrics       MessageType = "metrics"
+	TypeMetricsResult MessageType = "metrics_result"
 )
 
 func (t MessageType) isResponse() bool {
 	switch t {
 	case TypeHelloAck, TypeAuth, TypeAuthOK, TypeError, TypePong,
-		TypeStarted, TypeStopped, TypeStatusResult, TypeProbeResult, TypeExecResult, TypeRestarted, TypeRunResult:
+		TypeStarted, TypeStopped, TypeStatusResult, TypeProbeResult, TypeExecResult, TypeRestarted, TypeRunResult, TypeLogsResult, TypeMetricsResult:
 		return true
 	default:
 		return false
@@ -198,6 +202,8 @@ type ExecRequest struct {
 	TTY       bool     `json:"tty,omitempty"`
 	Stdin     bool     `json:"stdin,omitempty"`
 	TimeoutMS int64    `json:"timeoutMs,omitempty"`
+	Rows      uint16   `json:"rows,omitempty"`
+	Cols      uint16   `json:"cols,omitempty"`
 }
 
 // ExecResult is the terminal result of an exec.
@@ -230,6 +236,44 @@ type RestartRequest struct {
 // RestartResult acknowledges a restart.
 type RestartResult struct {
 	State string `json:"state"`
+}
+
+// Metrics are cumulative counters or instantaneous memory gauges, never
+// fabricated zeroes for unavailable observations. Linux USER_HZ ticks are
+// reported explicitly; container CPU is cgroup v2 usage_usec.
+type ContainerMetrics struct {
+	Name        string  `json:"name"`
+	MemoryBytes *uint64 `json:"memoryBytes,omitempty"`
+	CPUUsec     *uint64 `json:"cpuUsec,omitempty"`
+}
+type MetricsResult struct {
+	MemoryTotalBytes     *uint64            `json:"memoryTotalBytes,omitempty"`
+	MemoryAvailableBytes *uint64            `json:"memoryAvailableBytes,omitempty"`
+	CPUBusyTicks         *uint64            `json:"cpuBusyTicks,omitempty"`
+	CPUIdleTicks         *uint64            `json:"cpuIdleTicks,omitempty"`
+	Containers           []ContainerMetrics `json:"containers,omitempty"`
+}
+
+// Logs uses a guest-wide cursor, independent of the persistent host spool.
+// Raw bytes preserve output including invalid UTF-8 and incomplete lines.
+const MaxLogChunkBytes = 4096
+const MaxLogBatchChunks = 8
+
+type LogsRequest struct {
+	After uint64 `json:"after,omitempty"`
+}
+
+type LogChunk struct {
+	Sequence  uint64 `json:"seq"`
+	Container string `json:"container"`
+	Stream    string `json:"stream"`
+	Data      []byte `json:"data"`
+}
+
+type LogsResult struct {
+	Chunks []LogChunk `json:"chunks,omitempty"`
+	Next   uint64     `json:"next"`
+	Gap    bool       `json:"gap,omitempty"`
 }
 
 // CancelRequest cancels a pending request by ID.

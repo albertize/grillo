@@ -96,8 +96,11 @@ needed. The [Compose example](examples/f2-compose/README.md) explains persistenc
 
 The initial target does not include macOS/Windows runtime hosts, GPU, multi-node
 execution, operators/CRDs, StatefulSet/Job, full browser TTY or TLS/CA setup.
-Guest stdout ingestion and detailed guest/container usage are not yet available;
-the console labels missing data instead of inventing it. On the tested Fedora
+Container stdout/stderr reaches a bounded retained spool; heavy output can be
+lost with an explicit guest-retention gap. CLI stdin/TTY/resize, real guest/cgroup
+counters and verified private boot snapshots are implemented; see
+[T24 evidence and remaining gates](docs/experiments/t24-interactive-metrics-artifacts.md).
+The console labels missing metrics instead of inventing them. On the tested Fedora
 policy, SELinux Enforcing blocks pasta helpers; Grillo does not change policy.
 
 Hardware isolation is not absolute security. KVM, the VMM, guest, helpers,

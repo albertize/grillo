@@ -12,6 +12,7 @@ import (
 	"io"
 	"net"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -19,15 +20,16 @@ import (
 const defaultRequestTimeout = 30 * time.Second
 
 // Client is a handshaken host-side endpoint. Operations are serialized: one
-// request is in flight per connection. Concurrent callers block on the mutex.
+// request is in flight per connection. Queued callers retain their deadlines.
 type Client struct {
 	conn  Conn
 	codec *Codec
 	info  HandshakeInfo
 
-	mu     sync.Mutex
+	calls  chan struct{}
+	wmu    sync.Mutex
 	next   uint64
-	closed bool
+	closed atomic.Bool
 }
 
 // NewClient performs the initiating handshake over conn. On failure it closes
@@ -39,7 +41,7 @@ func NewClient(ctx context.Context, conn Conn, cfg HandshakeConfig) (*Client, er
 		_ = conn.Close()
 		return nil, err
 	}
-	return &Client{conn: conn, codec: codec, info: info}, nil
+	return &Client{conn: conn, codec: codec, info: info, calls: make(chan struct{}, 1)}, nil
 }
 
 // Info reports the negotiated handshake result.
@@ -47,9 +49,9 @@ func (c *Client) Info() HandshakeInfo { return c.info }
 
 // Close closes the connection.
 func (c *Client) Close() error {
-	c.mu.Lock()
-	c.closed = true
-	c.mu.Unlock()
+	if c.closed.Swap(true) {
+		return nil
+	}
 	return c.conn.Close()
 }
 
@@ -68,6 +70,60 @@ func (c *Client) Status(ctx context.Context) (StatusResult, error) {
 	var out StatusResult
 	if err := UnmarshalPayload(m.Payload, &out); err != nil {
 		return StatusResult{}, err
+	}
+	return out, nil
+}
+
+func (c *Client) Metrics(ctx context.Context) (MetricsResult, error) {
+	m, err := c.call(ctx, TypeMetrics, nil, nil)
+	if err != nil {
+		return MetricsResult{}, err
+	}
+	var out MetricsResult
+	if err := UnmarshalPayload(m.Payload, &out); err != nil {
+		return MetricsResult{}, err
+	}
+	if len(out.Containers) > 128 || out.MemoryAvailableBytes != nil && (out.MemoryTotalBytes == nil || *out.MemoryAvailableBytes > *out.MemoryTotalBytes) {
+		return MetricsResult{}, fmt.Errorf("guestproto: invalid metrics")
+	}
+	seen := map[string]bool{}
+	for _, container := range out.Containers {
+		if container.Name == "" || len(container.Name) > 128 || seen[container.Name] {
+			return MetricsResult{}, fmt.Errorf("guestproto: invalid container metrics")
+		}
+		seen[container.Name] = true
+	}
+	return out, nil
+}
+
+// Logs retrieves a bounded batch of retained container output.
+func (c *Client) Logs(ctx context.Context, after uint64) (LogsResult, error) {
+	m, err := c.call(ctx, TypeLogs, LogsRequest{After: after}, nil)
+	if err != nil {
+		return LogsResult{}, err
+	}
+	var out LogsResult
+	if err := UnmarshalPayload(m.Payload, &out); err != nil {
+		return LogsResult{}, err
+	}
+	if len(out.Chunks) > MaxLogBatchChunks {
+		return LogsResult{}, fmt.Errorf("guestproto: excessive log batch")
+	}
+	if out.Gap && len(out.Chunks) == 0 {
+		return LogsResult{}, fmt.Errorf("guestproto: empty log gap")
+	}
+	last := after
+	for i, chunk := range out.Chunks {
+		if chunk.Sequence != last+1 && !(i == 0 && out.Gap) {
+			return LogsResult{}, fmt.Errorf("guestproto: unreported log gap")
+		}
+		if chunk.Sequence <= last || len(chunk.Data) > MaxLogChunkBytes || chunk.Container == "" || len(chunk.Container) > 128 || (chunk.Stream != "stdout" && chunk.Stream != "stderr") {
+			return LogsResult{}, fmt.Errorf("guestproto: invalid log chunk")
+		}
+		last = chunk.Sequence
+	}
+	if out.Next != last {
+		return LogsResult{}, fmt.Errorf("guestproto: invalid log cursor")
 	}
 	return out, nil
 }
@@ -134,6 +190,11 @@ func (c *Client) Cancel(ctx context.Context, target string) error {
 // the guest sends the terminal exec_result or a deadline expires. stdout and
 // stderr may be nil to discard.
 func (c *Client) Exec(ctx context.Context, req ExecRequest, stdout, stderr io.Writer) (ExecResult, error) {
+	return c.ExecAttached(ctx, req, nil, stdout, stderr)
+}
+
+// ExecAttached runs a bounded full-duplex session on a dedicated connection.
+func (c *Client) ExecAttached(ctx context.Context, req ExecRequest, input <-chan Frame, stdout, stderr io.Writer) (ExecResult, error) {
 	if req.Session == 0 {
 		req.Session = newSessionID()
 	}
@@ -155,7 +216,7 @@ func (c *Client) Exec(ctx context.Context, req ExecRequest, stdout, stderr io.Wr
 		}
 		return nil
 	}
-	m, err := c.call(ctx, TypeExec, req, onFrame)
+	m, err := c.callInput(ctx, TypeExec, req, onFrame, input, req.Session)
 	if err != nil {
 		return ExecResult{}, err
 	}
@@ -203,9 +264,35 @@ func (c *Client) Run(ctx context.Context, req RunRequest, stdout, stderr io.Writ
 // call sends a request and reads frames until the matching response arrives.
 // Stream data frames are passed to onFrame.
 func (c *Client) call(ctx context.Context, typ MessageType, payload any, onFrame func(Frame) error) (Message, error) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if c.closed {
+	return c.callInput(ctx, typ, payload, onFrame, nil, 0)
+}
+
+func (c *Client) writeFrame(fr Frame) error {
+	c.wmu.Lock()
+	defer c.wmu.Unlock()
+	_ = c.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+	return c.codec.WriteFrame(fr)
+}
+func (c *Client) writeMessage(m Message) error {
+	c.wmu.Lock()
+	defer c.wmu.Unlock()
+	_ = c.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+	return c.codec.WriteMessage(m)
+}
+
+func (c *Client) callInput(ctx context.Context, typ MessageType, payload any, onFrame func(Frame) error, input <-chan Frame, session uint32) (Message, error) {
+	if _, ok := ctx.Deadline(); !ok {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, defaultRequestTimeout)
+		defer cancel()
+	}
+	select {
+	case c.calls <- struct{}{}:
+		defer func() { <-c.calls }()
+	case <-ctx.Done():
+		return Message{}, ctx.Err()
+	}
+	if c.closed.Load() {
 		return Message{}, fmt.Errorf("guestproto: client closed")
 	}
 	c.next++
@@ -224,8 +311,35 @@ func (c *Client) call(ctx context.Context, typ MessageType, payload any, onFrame
 		return Message{}, err
 	}
 	defer stop()
-	if err := c.codec.WriteMessage(req); err != nil {
+	if err := c.writeMessage(req); err != nil {
 		return Message{}, fmt.Errorf("guestproto: send %s: %w", typ, deadlineError(ctx, err))
+	}
+	done := make(chan struct{})
+	defer close(done)
+	if input != nil {
+		go func() {
+			for {
+				select {
+				case <-done:
+					return
+				case <-ctx.Done():
+					return
+				case fr, ok := <-input:
+					if !ok {
+						return
+					}
+					fr.Kind, fr.Session = FrameData, session
+					if (fr.Stream != StreamStdin && fr.Stream != StreamResize) || len(fr.Data) > MaxDataBytes || fr.Stream == StreamResize && len(fr.Data) != 4 {
+						_ = c.conn.Close()
+						return
+					}
+					if err := c.writeFrame(fr); err != nil {
+						_ = c.conn.Close()
+						return
+					}
+				}
+			}
+		}()
 	}
 	for {
 		fr, err := c.codec.ReadFrame()
@@ -234,7 +348,7 @@ func (c *Client) call(ctx context.Context, typ MessageType, payload any, onFrame
 		}
 		switch fr.Kind {
 		case FramePing:
-			if err := c.codec.WriteFrame(Frame{Kind: FramePong}); err != nil {
+			if err := c.writeFrame(Frame{Kind: FramePong}); err != nil {
 				return Message{}, err
 			}
 		case FramePong:
@@ -252,7 +366,7 @@ func (c *Client) call(ctx context.Context, typ MessageType, payload any, onFrame
 				return Message{}, fmt.Errorf("%w: decode control frame: %v", ErrCorrupt, err)
 			}
 			if m.Type == TypePing {
-				if err := c.codec.WriteMessage(Message{ID: m.ID, Type: TypePong}); err != nil {
+				if err := c.writeMessage(Message{ID: m.ID, Type: TypePong}); err != nil {
 					return Message{}, err
 				}
 				continue
@@ -293,7 +407,11 @@ func newSessionID() uint32 {
 	if _, err := rand.Read(buf[:]); err != nil {
 		return 1
 	}
-	return binary.BigEndian.Uint32(buf[:])
+	id := binary.BigEndian.Uint32(buf[:])
+	if id == 0 {
+		id = 1
+	}
+	return id
 }
 
 // encodeExit encodes an exit code for a StreamExit frame.

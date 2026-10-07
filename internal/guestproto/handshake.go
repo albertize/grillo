@@ -50,6 +50,8 @@ const (
 	CapStdin          Capability = "stdin"
 	CapProbe          Capability = "probe"
 	CapFiles          Capability = "files"
+	CapLogs           Capability = "logs"
+	CapMetrics        Capability = "metrics"
 	CapApplicationDNS Capability = "application-dns"
 )
 

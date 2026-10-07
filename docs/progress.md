@@ -8,12 +8,18 @@ React/PatternFly console. Host orchestration runs as the user; there is no
 Kubernetes control plane or silent host-container fallback.
 
 T00–T23 (including T18b) have recorded completion evidence. F0/F2 passed their
-real gates; **F3/product hardening is not complete**. T24 is next. There is no
+real gates; **F3/product hardening is not complete**. T24 is BLOCKED after the
+local hardening campaign; missing §28 contracts and external-host evidence are
+listed in the [current T24 report](experiments/t24-interactive-metrics-artifacts.md). There is no
 packaged release or supported runtime version. Hosted CI has not been executed
 in the recorded delivery sessions.
 
-Known limits include guest stdout ingestion, persisted original compiler line
-diagnostics, detailed guest/container usage, interactive browser/CLI TTY,
+Container stdout/stderr now reaches the bounded guest ring and host spool, with
+explicit guest-retention gaps; [real pipeline evidence](experiments/t24-guest-logs.md).
+CLI stdin/TTY/resize, actual guest/cgroup counters and verified private boot
+snapshots/fresh keys now have [local evidence](experiments/t24-interactive-metrics-artifacts.md).
+Known limits include persisted original compiler line
+diagnostics, PSS/cache/CPU percentages, interactive browser TTY,
 StatefulSet/Job, rolling updates and TLS/CA. Host-originated virtiofs notifications
 require polling; the tested Fedora SELinux Enforcing policy blocks pasta.
 Concurrent isolated daemons must coordinate host-wide guest CID ranges.
@@ -48,7 +54,7 @@ See [compatibility](compatibility.md) and [console limits](ui.md#explicit-mvp-li
 | T21 | Helm rendering and OCI charts | DONE | Real Helm package/template, local/OCI equivalence, explicit HTTPS fetch, verified atomic cache, stable offline plans, archive/corruption/concurrency/dependency restrictions; `docs/experiments/t21-helm-renderer.md` |
 | T22 | Helm gate and compatibility reporting | DONE | Full direct-runtime scenario C plus actual CLI/daemon chart gate PASS; unsupported provisioning blocked; compiler registry/counts and consumer/PVC semantics verified |
 | T23 | Web console and secure bridge | DONE | React/PatternFly frontend (ADR 0008), metadata-only views, bounded logs/SSE/non-TTY exec; actual Firefox desktop/mobile and native CLI/daemon/KVM lifetime/cancellation gates PASS; original data limits remain explicit |
-| T24 | F3 MVP gate and hardening | TODO | T23 |
+| T24 | F3 MVP gate and hardening | BLOCKED | Local logs, [CLI TTY/metrics/verified boot](experiments/t24-interactive-metrics-artifacts.md) pass; clean external host, release installation, complete budgets/quota/load/provenance and hosted CI remain |
 | T25 | StatefulSet and Job | TODO | T24 |
 | T26 | Extended Tier 1/Tier 2 parity and TLS | TODO | T25 |
 | T27 | Measured optimization and packaging | TODO | T24; T26 for complete F4 |
@@ -72,29 +78,38 @@ subsequent edit or that the whole product is release-ready.
 - [Completed runtime review](history/runtime-review.md): R1–R8 and verification.
 - [Architecture decisions](adr/README.md): review status is unchanged by delivery.
 
-## Latest maintenance
+## Latest delivery
 
-- **Task:** T23 — documentation consolidation after console delivery.
-- **Status:** DONE (documentation only; T24 remains TODO).
-- **Dependencies verified:** T23 delivery records, existing API/CLI/Make targets;
-  user approval for documentation cleanup. No runtime task is being implemented.
-- **Files and contracts changed:** Reader-oriented README/getting-started,
-  architecture/testing guides; concise current progress with archived history;
-  consolidated T23 evidence; current contributor/security/agent guidance.
-  Design contracts, task acceptance criteria, ADR status, generated inventories
-  and third-party legal notices remain authoritative and unchanged in meaning.
-- **Decisions/ADRs:** Editorial organization only; no architecture change.
-- **Tests run:** `python3 /tmp/grillo-check-markdown.py` PASS (all 44 project
-  Markdown files: local links/anchors and balanced fences); `git diff --check`
-  PASS; actual `bin/grillo --help`/`version` and offline Compose/Helm example
-  plans PASS; `make check` PASS (frontend checks, Go fmt/vet/unit/race, scripts,
-  builds and module verification). Generated compatibility inventories were
-  not edited. Verification used the existing Linux/amd64 development host.
-- **Tests NOT run and why:** New KVM/browser/load/security campaigns are not
-  required for prose-only changes; dated delivery evidence is preserved, not rerun.
-- **Integration/benchmark evidence:** Existing reports linked above; no new claim.
-- **Known limitations:** Product limits remain; cleanup does not complete T24.
-- **Next task:** T24 — F3 gate and hardening.
+- **Task:** T24 — interactive CLI, real metrics and verified boot artifacts.
+- **Status:** BLOCKED overall; all three local contracts have real delivery evidence.
+- **Dependencies verified:** T07/T08/T15/T16/T18/T19/T22/T23, prior T24 log delivery and
+  user authorization to implement all three without a second host.
+- **Files and contracts changed:** Bounded stdin/resize protocol and Unix upgrade;
+  foreground runc PTY/CLI raw restoration, cancellation-aware output; guest/cgroup
+  metrics/API/CLI/UI; pinned manifest/private verified snapshots/fresh boot keys;
+  sole-reaper network command wait; native terminal/metrics/Firefox/build and
+  negative/race regressions. See [report](experiments/t24-interactive-metrics-artifacts.md).
+- **Decisions/ADRs:** [ADR 0009](adr/0009-verified-boot-and-private-key-overlay.md)
+  Proposed, implemented experimentally; no new dependency or ADR acceptance.
+- **Tests run:** `make check`, uncached focused races, `make vulncheck`,
+  `make test-t07 test-helm test-ui test-ui-browser test-builder-kvm test-f2
+  test-executor` PASS without SKIP. Actual host PTY verifies CLI stdin/SIGWINCH,
+  mode restoration on exit/SIGINT; real guest cgroups reach Firefox. Unit/fake
+  tests separately prove mutation/launch-order/key contracts. Earlier failed
+  gates and corrections are preserved in the report. Markdown links/fences,
+  shell/JavaScript syntax and diff checks PASS; no QEMU/grillod/pasta leftovers.
+- **Tests NOT run and why:** Hosted CI and clean external host unavailable;
+  no new sustained load/fuzz/full-budget or redistribution/license campaign.
+- **Integration/benchmark evidence:** Existing Fedora fc44/KVM host, SELinux
+  already Permissive; rebuilt guest/CLI/daemon/frontend. No new benchmark claim;
+  new copy/hash startup costs still need full-budget measurements.
+- **Known limitations:** Full browser TTY, PSS/cache/CPU percentages, original
+  diagnostics persistence and log shutdown/host-retention gaps remain absent.
+  Local manifests are integrity expectations, not publisher authentication or
+  signed releases. Clean-host/release installation/quota/load/provenance gates
+  remain open; owning-UID/compromised-guest guarantees are not expanded.
+- **Next task:** T24 full-budget/quota/load and release provenance/installability
+  review; arrange the external-host gate separately. Do not advance to T25.
 
 ## Updating progress
 

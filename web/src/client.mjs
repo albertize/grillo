@@ -55,7 +55,7 @@ export function appendLogs(text, since, records, stream) {
   for (const record of records || []) {
     if (!Number.isSafeInteger(record.seq) || record.seq <= cursor) continue;
     cursor = record.seq;
-    if (stream && record.stream !== stream) continue;
+    if (stream && record.stream !== stream && !record.gap) continue;
     next = tailText(next + `${record.time || ''} ${record.resource}/${record.container || ''} [${record.stream}] ${record.line}\n`);
     count++;
   }

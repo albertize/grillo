@@ -6,6 +6,7 @@ package qemu
 
 import (
 	"context"
+	"crypto/rand"
 	"errors"
 	"fmt"
 	"os"
@@ -14,6 +15,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/albertize/grillo/internal/guest"
 	"github.com/albertize/grillo/internal/guestproto"
 	linux "github.com/albertize/grillo/internal/platform/linux"
 	"github.com/albertize/grillo/internal/sandbox"
@@ -21,7 +23,8 @@ import (
 
 // Backend is the QEMU microvm implementation of sandbox.Backend.
 type Backend struct {
-	cfg Config
+	cfg       Config
+	artifacts map[string]guest.Artifact
 
 	mu          sync.Mutex
 	sandboxes   map[string]*sandboxEntry
@@ -52,6 +55,25 @@ func Open(cfg Config) (*Backend, error) {
 		sandboxes:   make(map[string]*sandboxEntry),
 		byOperation: make(map[sandbox.OperationID]string),
 		nextCID:     cfg.CIDBase,
+	}
+	if cfg.ArtifactManifest != "" {
+		manifest, err := guest.ReadManifest(cfg.ArtifactManifest)
+		if err != nil {
+			return nil, fmt.Errorf("qemu: invalid artifact manifest: %w", err)
+		}
+		b.artifacts = map[string]guest.Artifact{}
+		for _, a := range manifest.Artifacts {
+			b.artifacts[a.Name] = a
+		}
+		if _, ok := b.artifacts["kernel"]; !ok {
+			return nil, fmt.Errorf("qemu: manifest lacks kernel")
+		}
+		if _, ok := b.artifacts["initramfs"]; !ok {
+			return nil, fmt.Errorf("qemu: manifest lacks initramfs")
+		}
+	}
+	if cfg.BootKeyOverlay && b.artifacts == nil {
+		return nil, fmt.Errorf("qemu: verified artifact manifest is required")
 	}
 	if cfg.DialGuest == nil {
 		b.cfg.DialGuest = b.dialGuest
@@ -152,6 +174,20 @@ func (b *Backend) allocCIDLocked() (uint32, error) {
 	return 0, errors.New("qemu: exhausted vsock CIDs")
 }
 
+// BootConnection returns private control credentials to local consumers after
+// Start. It is never a public API projection; repeating Create does not change
+// a live VM's credentials or address.
+func (b *Backend) BootConnection(handle sandbox.Handle) (uint32, uint32, []byte, error) {
+	entry, err := b.entry(handle.ID)
+	if err != nil {
+		return 0, 0, nil, err
+	}
+	entry.mu.Lock()
+	defer entry.mu.Unlock()
+	spec := entry.persisted.Spec
+	return spec.VsockCID, spec.VsockPort, append([]byte(nil), spec.GuestKey...), nil
+}
+
 // Start boots the sandbox if it is not already running. It is idempotent.
 func (b *Backend) Start(ctx context.Context, handle sandbox.Handle) error {
 	entry, err := b.entry(handle.ID)
@@ -165,6 +201,22 @@ func (b *Backend) Start(ctx context.Context, handle sandbox.Handle) error {
 	}
 	spec := entry.persisted.Spec
 	dir := entry.dir
+	if b.cfg.BootKeyOverlay {
+		spec.GuestKey = make([]byte, 32)
+		if _, err := rand.Read(spec.GuestKey); err != nil {
+			return fmt.Errorf("qemu: generate boot credential: %w", err)
+		}
+		entry.persisted.Spec.GuestKey = append([]byte(nil), spec.GuestKey...)
+		if err := saveSandbox(dir, entry.persisted); err != nil {
+			return err
+		}
+	}
+	// Verification and operation-private snapshots precede every helper/VMM
+	// effect. The manifest is pinned when Open runs, not re-trusted per boot.
+	spec, err = b.prepareBoot(ctx, spec, dir)
+	if err != nil {
+		return err
+	}
 
 	vmmLog, err := os.OpenFile(vmmLogPath(dir), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
 	if err != nil {

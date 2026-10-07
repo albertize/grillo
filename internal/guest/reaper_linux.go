@@ -31,7 +31,8 @@ type ExitStatus struct {
 // routing all waits through one loop avoids the race between os/exec's Wait and
 // wait4(-1) stealing each other's children. Processes started through the
 // reaper are reaped by it, not by exec.Cmd.Wait, so their stdout/stderr must be
-// files (not pipes) and callers must use Wait.
+// *os.File values (not os/exec-managed Writer copy pipes) and callers must use
+// Wait. Runtime may own explicit os.Pipe files and their drain goroutines.
 type Reaper struct {
 	mu       sync.Mutex
 	waiters  map[int]chan ExitStatus

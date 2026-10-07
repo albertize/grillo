@@ -66,7 +66,7 @@ native workload/build backend; it is not selected as a runtime fallback. This
 bootstrap is not yet a self-contained release installation path.
 
 Outputs stay under ignored `experiments/artifacts/`. The default daemon expects
-`experiments/artifacts/qemu/bzImage` and the initramfs/key in
+`experiments/artifacts/qemu/bzImage` and the initramfs/manifest in
 `experiments/artifacts/t07/`. Keep the working directory at the repository root
 when using those defaults. See [guest inputs and manifest](../guest/README.md).
 Do not redistribute guest artifacts without reviewing their component licenses.
@@ -104,15 +104,29 @@ use the `sandbox-ID/container` target shown by inspection or the console.
 ```sh
 ./bin/grillo ps
 ./bin/grillo exec f2 worker -- /bin/sh -c 'printf "guest command\n"'
+./bin/grillo exec -i f2 worker -- /bin/cat
+./bin/grillo shell f2 worker
+./bin/grillo metrics f2 --output=json
 ./bin/grillo logs <resource-ID> --container <container-name> -f
 ./bin/grillo events -f
 ```
 
 Commands after exec's `--` run in the guest container, not a host shell. The log
-command reads the retained spool; it can be empty because guest stdout ingestion
-is not yet wired. Exec captures output on completion. `shell` invokes guest
-`/bin/sh`, but a full interactive stdin/TTY session is not implemented and
-minimal/distroless images may lack the shell. Do not treat it as a terminal.
+command reads retained container stdout/stderr from the daemon spool. Use the
+sandbox resource ID shown by inspection for exact filtering. Records are bounded
+text chunks; guest retention gaps are reported explicitly. Output intentionally
+printed by an application is not secret-redacted. Ordinary exec captures output
+on completion; `exec -i` forwards stdin, `exec -t` also allocates a terminal and
+forwards resize, and `shell` invokes guest `/bin/sh` interactively when local
+stdin is a terminal. Local terminal modes are restored on exit/interruption;
+closing the session cancels exec, not the workload. Minimal/distroless images may
+lack a shell. Metrics expose real cumulative counters, not CPU percentages.
+
+Runtime/native-build boots verify kernel/initramfs against `--artifact-manifest`
+(default `experiments/artifacts/t07/manifest.json`) into private snapshots and
+supply a fresh boot key. Corrupt or missing inputs block launch. `--key-file` is
+legacy and ignored by the daemon. Local inventory checks do not authenticate a
+publisher or make this a release installation path.
 
 For charts, follow the [Helm examples](../examples/helm/README.md). An applicable
 offline plan means implementation compatibility, not proof of host feasibility.

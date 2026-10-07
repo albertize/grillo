@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"sync"
+	"time"
 )
 
 // Handler serves guest-side requests. Returning a typed error produces an error
@@ -41,6 +42,7 @@ type Server struct {
 	mu  sync.Mutex
 
 	cancels map[string]context.CancelFunc
+	inputs  map[uint32]chan Frame
 	wg      sync.WaitGroup
 	closed  bool
 }
@@ -65,6 +67,7 @@ func NewServer(ctx context.Context, conn Conn, cfg HandshakeConfig, handler Hand
 		info:    info,
 		handler: handler,
 		cancels: make(map[string]context.CancelFunc),
+		inputs:  make(map[uint32]chan Frame),
 	}, nil
 }
 
@@ -97,8 +100,25 @@ func (s *Server) Serve(ctx context.Context) error {
 			if err := s.writeFrame(Frame{Kind: FramePong}); err != nil {
 				return err
 			}
-		case FramePong, FrameData:
-			// Heartbeat reply or client stdin, which T06 does not route yet.
+		case FramePong:
+		case FrameData:
+			if fr.Stream != StreamStdin && fr.Stream != StreamResize {
+				return fmt.Errorf("%w: invalid input stream", ErrCorrupt)
+			}
+			if fr.Stream == StreamResize && len(fr.Data) != 4 {
+				return fmt.Errorf("%w: resize length", ErrCorrupt)
+			}
+			s.mu.Lock()
+			input := s.inputs[fr.Session]
+			s.mu.Unlock()
+			if input == nil {
+				return fmt.Errorf("%w: unknown input session", ErrCorrupt)
+			}
+			select {
+			case input <- fr:
+			default:
+				return fmt.Errorf("guestproto: input queue full")
+			}
 		case FrameControl:
 			var m Message
 			if err := json.Unmarshal(fr.Data, &m); err != nil {
@@ -128,7 +148,24 @@ func (s *Server) dispatch(ctx context.Context, m Message) error {
 		return nil
 	}
 	reqCtx, cancel := requestContext(ctx, m)
-	s.putCancel(m.ID, cancel)
+	s.mu.Lock()
+	if len(s.cancels) >= 4 || s.cancels[m.ID] != nil || m.ID == "" {
+		s.mu.Unlock()
+		cancel()
+		return s.writeMessage(Message{ID: m.ID, Type: TypeError, Error: Errorf(CodeBusy, "request limit or duplicate ID")})
+	}
+	s.cancels[m.ID] = cancel
+	session := sessionOf(m)
+	if session != 0 {
+		if s.inputs[session] != nil {
+			delete(s.cancels, m.ID)
+			s.mu.Unlock()
+			cancel()
+			return fmt.Errorf("%w: duplicate session", ErrCorrupt)
+		}
+		s.inputs[session] = make(chan Frame, 16)
+	}
+	s.mu.Unlock()
 	s.wg.Add(1)
 	go s.handle(reqCtx, cancel, m)
 	return nil
@@ -155,7 +192,12 @@ func (s *Server) handle(ctx context.Context, cancel context.CancelFunc, req Mess
 	defer s.wg.Done()
 	defer cancel()
 	defer s.delCancel(req.ID)
-	stream := &Stream{server: s, session: sessionOf(req)}
+	session := sessionOf(req)
+	s.mu.Lock()
+	input := s.inputs[session]
+	s.mu.Unlock()
+	defer func() { s.mu.Lock(); delete(s.inputs, session); s.mu.Unlock() }()
+	stream := &Stream{server: s, session: session, input: input}
 	reply, perr := s.handler.Handle(ctx, req, stream)
 	msg := Message{ID: req.ID}
 	if perr != nil {
@@ -214,12 +256,14 @@ func (s *Server) cancelAll() {
 func (s *Server) writeFrame(fr Frame) error {
 	s.wmu.Lock()
 	defer s.wmu.Unlock()
+	_ = s.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
 	return s.codec.WriteFrame(fr)
 }
 
 func (s *Server) writeMessage(m Message) error {
 	s.wmu.Lock()
 	defer s.wmu.Unlock()
+	_ = s.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
 	return s.codec.WriteMessage(m)
 }
 
@@ -227,7 +271,11 @@ func (s *Server) writeMessage(m Message) error {
 type Stream struct {
 	server  *Server
 	session uint32
+	input   <-chan Frame
 }
+
+// Input supplies bounded stdin/resize frames. An empty stdin frame is EOF.
+func (st *Stream) Input() <-chan Frame { return st.input }
 
 // Session reports the stream's session ID.
 func (st *Stream) Session() uint32 { return st.session }
@@ -273,6 +321,11 @@ func (st *Stream) Resize(rows, cols uint16) error {
 }
 
 func sessionOf(m Message) uint32 {
+	if m.Type == TypeRun {
+		var req RunRequest
+		_ = UnmarshalPayload(m.Payload, &req)
+		return req.Session
+	}
 	if m.Type != TypeExec {
 		return 0
 	}
@@ -297,6 +350,10 @@ func responseTypeFor(t MessageType) MessageType {
 		return TypeRestarted
 	case TypeRun:
 		return TypeRunResult
+	case TypeLogs:
+		return TypeLogsResult
+	case TypeMetrics:
+		return TypeMetricsResult
 	default:
 		return TypeError
 	}

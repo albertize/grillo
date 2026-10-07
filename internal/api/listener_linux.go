@@ -53,6 +53,7 @@ func (s *Server) Serve(ctx context.Context, socketPath string) error {
 	}
 	server := &http.Server{
 		Handler:           s.Handler(),
+		BaseContext:       func(net.Listener) context.Context { return ctx },
 		ReadHeaderTimeout: 5 * time.Second,
 		IdleTimeout:       60 * time.Second,
 	}

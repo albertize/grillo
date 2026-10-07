@@ -6,14 +6,18 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -21,6 +25,7 @@ import (
 	"github.com/albertize/grillo/internal/api"
 	"github.com/albertize/grillo/internal/build"
 	"github.com/albertize/grillo/internal/frontend/kubernetes"
+	"github.com/albertize/grillo/internal/guestproto"
 	"github.com/albertize/grillo/internal/ui"
 )
 
@@ -240,6 +245,118 @@ func runDaemonGate(t *testing.T, browser bool) {
 		if err != nil || code != 0 || strings.TrimSpace(out) != "cli-config" {
 			t.Fatalf("CLI-applied Service failed: code=%d err=%v", code, err)
 		}
+		t.Run("guest-stdout-stderr-to-api-cli", func(t *testing.T) {
+			// Write to the running container's own stdio, not the exec session
+			// capture. PID 1 here is the container process in its PID namespace.
+			code, _, _, err := client.Exec(ctx, "scenario-c", "storage", []string{"/bin/sh", "-c", "echo 'live-storage-stdout <img src=x onerror=window.pwned=true>' > /proc/1/fd/1; echo live-storage-stderr > /proc/1/fd/2"})
+			if err != nil || code != 0 {
+				t.Fatalf("write workload stdio: code=%d err=%v", code, err)
+			}
+			found := map[string]bool{}
+			resource := ""
+			deadline := time.Now().Add(10 * time.Second)
+			for time.Now().Before(deadline) {
+				records, err := client.ListLogs(ctx, 0, "", "storage")
+				if err != nil {
+					t.Fatal(err)
+				}
+				for _, record := range records {
+					if strings.Contains(record.Line, "live-storage-"+record.Stream) {
+						found[record.Stream] = true
+						resource = record.Resource
+					}
+				}
+				if found["stdout"] && found["stderr"] {
+					break
+				}
+				time.Sleep(50 * time.Millisecond)
+			}
+			if !found["stdout"] || !found["stderr"] {
+				t.Fatalf("missing persisted workload logs: %v", found)
+			}
+			output := runCLI("logs", resource, "--container", "storage")
+			if !strings.Contains(output, "live-storage-stdout") || !strings.Contains(output, "live-storage-stderr") {
+				t.Fatal("CLI did not consume the real log spool")
+			}
+		})
+		t.Run("interactive-cli-metrics-artifacts", func(t *testing.T) {
+			input := make(chan guestproto.Frame, 4)
+			input <- guestproto.SizeFrame(37, 99)
+			input <- guestproto.Frame{Stream: guestproto.StreamStdin, Data: []byte("api-tty-marker\n")}
+			var output, stderr bytes.Buffer
+			code, err := client.ExecAttached(ctx, api.AttachRequest{Application: "scenario-c", Container: "storage", TTY: true, Args: []string{"/bin/sh", "-c", "test -t 0 || exit 9; read line; echo $line; stty size; exit 7"}}, input, &output, &stderr)
+			if err != nil || code != 7 || !strings.Contains(output.String(), "api-tty-marker") || !strings.Contains(output.String(), "37 99") || stderr.Len() != 0 {
+				t.Fatalf("duplex API: code=%d err=%v output=%q stderr=%q", code, err, output.String(), stderr.String())
+			}
+			command := exec.CommandContext(ctx, cli, "exec", "-i", "-t", "scenario-c", "storage", "--", "/bin/sh", "-c", "test -t 0 || exit 9; read line; echo CLI:$line; exit 7")
+			command.Env = env
+			command.Dir = root
+			command.Stdin = strings.NewReader("cli-tty-marker\n")
+			out, err := command.CombinedOutput()
+			var exit *exec.ExitError
+			if !errors.As(err, &exit) || exit.ExitCode() != 7 || !strings.Contains(string(out), "CLI:cli-tty-marker") {
+				t.Fatalf("real CLI TTY: %v %q", err, out)
+			}
+			view, err := client.View(ctx, "scenario-c")
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, s := range view.Sandboxes {
+				if s.Guest == nil || s.Guest.MemoryTotalBytes == nil || s.Guest.CPUBusyTicks == nil {
+					t.Fatal("actual guest metrics absent")
+				}
+				for _, c := range s.Containers {
+					if c.State == "running" && (c.Usage == nil || c.Usage.MemoryBytes == nil || c.Usage.CPUUsec == nil) {
+						t.Fatalf("actual container metrics absent: %s", c.Name)
+					}
+				}
+			}
+			exerciseHostTerminal(t, ctx, cli, root, env)
+			if out := runCLI("metrics", "scenario-c", "--output=json"); !strings.Contains(out, "memoryTotalBytes") || !strings.Contains(out, "cpuUsec") {
+				t.Fatal("metrics CLI missing actual counters")
+			}
+			attachCtx, abort := context.WithCancel(ctx)
+			done := make(chan error, 1)
+			go func() {
+				_, err := client.ExecAttached(attachCtx, api.AttachRequest{Application: "scenario-c", Container: "storage", TTY: true, Args: []string{"/bin/sh", "-c", "echo $$ > /tmp/attach.pid; exec /bin/sleep 300"}}, make(chan guestproto.Frame), io.Discard, io.Discard)
+				done <- err
+			}()
+			deadline := time.Now().Add(5 * time.Second)
+			pid := ""
+			for time.Now().Before(deadline) {
+				code, out, _, err := client.Exec(ctx, "scenario-c", "storage", []string{"/bin/cat", "/tmp/attach.pid"})
+				if err == nil && code == 0 {
+					pid = strings.TrimSpace(out)
+					break
+				}
+				time.Sleep(50 * time.Millisecond)
+			}
+			abort()
+			select {
+			case err := <-done:
+				if err == nil {
+					t.Fatal("abort reported success")
+				}
+			case <-time.After(5 * time.Second):
+				t.Fatal("interactive cancellation hung")
+			}
+			if _, err := strconv.Atoi(pid); err != nil {
+				t.Fatal("exec PID not observed before abort")
+			}
+			deadline = time.Now().Add(5 * time.Second)
+			gone := false
+			for time.Now().Before(deadline) {
+				code, _, _, err := client.Exec(ctx, "scenario-c", "storage", []string{"/bin/kill", "-0", pid})
+				if err == nil && code != 0 {
+					gone = true
+					break
+				}
+				time.Sleep(50 * time.Millisecond)
+			}
+			if !gone {
+				t.Fatal("cancelled TTY exec process survived")
+			}
+		})
 		t.Run("ui-lifetime-and-exec", func(t *testing.T) {
 			before, err := client.View(ctx, "scenario-c")
 			if err != nil || len(before.Sandboxes) != 3 {

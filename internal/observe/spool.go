@@ -6,6 +6,8 @@ package observe
 
 import (
 	"context"
+	"fmt"
+	"sync"
 	"time"
 
 	"github.com/albertize/grillo/internal/state"
@@ -15,7 +17,7 @@ import (
 // spool.
 const MaxLogLineBytes = 64 << 10
 
-// LogRecord is one line of container output.
+// LogRecord is one bounded chunk/line of container output or a retention gap.
 type LogRecord struct {
 	Sequence  uint64    `json:"seq"`
 	Time      time.Time `json:"time"`
@@ -23,11 +25,14 @@ type LogRecord struct {
 	Container string    `json:"container,omitempty"`
 	Stream    string    `json:"stream,omitempty"` // stdout or stderr
 	Line      string    `json:"line"`
+	Gap       bool      `json:"gap,omitempty"`
 }
 
 // LogSpool is a bounded, rotated NDJSON log store with follow support.
 type LogSpool struct {
+	mu      sync.Mutex
 	journal *state.Journal
+	closed  bool
 }
 
 // OpenLogSpool opens (or creates) a log spool in dir.
@@ -41,6 +46,11 @@ func OpenLogSpool(dir string, maxBytes int64, maxRotated int) (*LogSpool, error)
 
 // Append stores a line, truncating it to MaxLogLineBytes.
 func (s *LogSpool) Append(record LogRecord) (LogRecord, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.closed {
+		return LogRecord{}, fmt.Errorf("observe: log spool closed")
+	}
 	line := record.Line
 	if len(line) > MaxLogLineBytes {
 		line = line[:MaxLogLineBytes]
@@ -49,7 +59,7 @@ func (s *LogSpool) Append(record LogRecord) (LogRecord, error) {
 		Kind:     "log",
 		Resource: record.Resource,
 		Message:  line,
-		Fields:   map[string]string{"container": record.Container, "stream": record.Stream},
+		Fields:   map[string]string{"container": record.Container, "stream": record.Stream, "gap": fmt.Sprint(record.Gap)},
 	})
 	if err != nil {
 		return LogRecord{}, err
@@ -63,6 +73,8 @@ func (s *LogSpool) Append(record LogRecord) (LogRecord, error) {
 // List returns retained records with sequence > since, optionally filtered by
 // resource and container, capped at limit.
 func (s *LogSpool) List(since uint64, limit int, resource, container string) ([]LogRecord, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	events, err := s.journal.Read()
 	if err != nil {
 		return nil, err
@@ -75,7 +87,7 @@ func (s *LogSpool) List(since uint64, limit int, resource, container string) ([]
 		if resource != "" && event.Resource != resource {
 			continue
 		}
-		if container != "" && event.Fields["container"] != container {
+		if container != "" && event.Fields["container"] != container && event.Fields["gap"] != "true" {
 			continue
 		}
 		out = append(out, LogRecord{
@@ -85,6 +97,7 @@ func (s *LogSpool) List(since uint64, limit int, resource, container string) ([]
 			Container: event.Fields["container"],
 			Stream:    event.Fields["stream"],
 			Line:      event.Message,
+			Gap:       event.Fields["gap"] == "true",
 		})
 		if limit > 0 && len(out) >= limit {
 			break
@@ -125,4 +138,12 @@ func (s *LogSpool) Follow(ctx context.Context, since uint64, resource, container
 }
 
 // Close flushes the spool.
-func (s *LogSpool) Close() error { return s.journal.Close() }
+func (s *LogSpool) Close() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.closed {
+		return nil
+	}
+	s.closed = true
+	return s.journal.Close()
+}

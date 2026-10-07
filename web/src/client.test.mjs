@@ -24,6 +24,8 @@ test('log filtering advances all cursor records and caps text', () => {
   const result = appendLogs('', 0, records, 'stderr');
   assert.equal(result.since, 2); assert.equal(result.count, 1);
   assert(!result.text.includes('<img')); assert(result.text.includes('error-marker'));
+  const gap = appendLogs('', 0, [{ seq: 1, stream: 'stderr', gap: true, line: 'output was lost' }], 'stdout');
+  assert.equal(gap.count, 1); assert(gap.text.includes('output was lost'));
   assert.equal(appendLogs(result.text, result.since, records, '').count, 0);
   assert.equal(appendLogs('', 0, [{ seq: 1, line: 'x'.repeat(MAX_TEXT * 2) }], '').text.length, MAX_TEXT);
   const unicode = appendLogs('', 0, [{ seq: 1, line: '😀'.repeat(MAX_TEXT) }], '').text;

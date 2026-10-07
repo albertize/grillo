@@ -163,7 +163,7 @@ func TestAgentStartOrder(t *testing.T) {
 	if result.State != "running" || len(result.Containers) != 3 {
 		t.Fatalf("start result = %+v", result)
 	}
-	want := []string{"run:setup", "start:api", "start:sidecar"}
+	want := []string{"runstream:setup", "start:api", "start:sidecar"}
 	if got := rt.callLog(); !reflect.DeepEqual(got, want) {
 		t.Fatalf("call order = %v, want %v", got, want)
 	}

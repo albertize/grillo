@@ -93,7 +93,10 @@ try {
   assert(await evaluate(`location.hash === ""`),"bootstrap fragment not removed");
   assert(await evaluate(`!!document.querySelector('.pf-v6-c-page[data-console="patternfly-react"]')`),"PatternFly React not mounted");
   assert(await evaluate(`document.getElementById("metrics").textContent.length > 0`),"missing metrics");
-  if (live) assert(await evaluate(`document.getElementById("metrics").textContent.includes("/proc")`),"no real VMM sample");
+  if (live) {
+    assert(await evaluate(`document.getElementById("metrics").textContent.includes("/proc")`),"no real VMM sample");
+    assert(await evaluate(`document.getElementById("metrics").textContent.includes("guest /proc/meminfo") && document.getElementById("metrics").textContent.includes("guest cgroup v2") && document.getElementById("metrics").textContent.includes("µs")`),"no real guest/container usage samples");
+  }
   for (const [section, ids] of [['workloads',['workloads','sandboxes']],['networking',['routes']],['storage',['volumes']],['configuration',['configs','secrets']],['diagnostics',['diagnostics']]]) {
     await navigate(section);
     for (const id of ids) assert(await evaluate(`document.getElementById(${JSON.stringify(id)}).textContent.length > 0`),"empty pane: "+id);
@@ -116,7 +119,13 @@ try {
     await wait(`document.getElementById("logs").textContent.includes("log-stderr-marker")`);
     assert(await evaluate(`!document.getElementById("logs").textContent.includes("<img")`),"stream filter ignored");
   } else {
-    await wait(`document.getElementById("logs-status").textContent.length > 0`);
+    await wait(`document.getElementById("logs").textContent.includes("live-storage-stdout") && document.getElementById("logs").textContent.includes("live-storage-stderr")`);
+    assert(await evaluate(`!window.pwned && !document.getElementById("logs").querySelector("img")`),"real guest HTML log executed");
+    await setValue('log-container', 'storage');
+    await setValue('log-stream', 'stderr');
+    await evaluate(`document.getElementById("logs-refresh").click()`);
+    await wait(`document.getElementById("logs").textContent.includes("live-storage-stderr")`);
+    assert(await evaluate(`!document.getElementById("logs").textContent.includes("live-storage-stdout")`),"real guest stream filter ignored");
   }
   await navigate('exec');
   if (live) await setValue('exec-args', JSON.stringify(["/bin/busybox","sh","-c","echo '<img src=x onerror=window.pwned=true>'; echo stderr-marker >&2; exit 7"]));
@@ -163,7 +172,7 @@ try {
   assert(await evaluate(`!!document.getElementById('sandboxes')`), 'mobile navigation failed');
   await command("browsingContext.close",{context});
   await command("session.end",{});
-  console.log(live ? "PASS: real Firefox PatternFly React with native daemon/KVM views, local fonts/CSP, container exec and cancellation without a leaked exec process; desktop/mobile navigation and closure" : "PASS: real Firefox PatternFly React bootstrap, desktop/mobile navigation, local fonts/CSP, views/topology, metadata-only responses, HTML log safety, exec, SSE gap/reconnect and filters");
+  console.log(live ? "PASS: real Firefox PatternFly React with native daemon/KVM views, local fonts/CSP, real guest logs/filtering/HTML safety, container exec and cancellation without a leaked exec process; desktop/mobile navigation and closure" : "PASS: real Firefox PatternFly React bootstrap, desktop/mobile navigation, local fonts/CSP, views/topology, metadata-only responses, HTML log safety, exec, SSE gap/reconnect and filters");
 } catch (error) {
   // Bootstrap credentials must not appear in test failure diagnostics.
   throw new Error(String(error.message).split(url).join("[console URL redacted]"));

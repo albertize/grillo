@@ -61,6 +61,7 @@ type SandboxView struct {
 	VCPU             int                    `json:"vcpu"`
 	GuestBudgetBytes int64                  `json:"guestBudgetBytes"`
 	VMM              *VMMView               `json:"vmm,omitempty"`
+	Guest            *GuestUsageView        `json:"guest,omitempty"`
 	Containers       []ContainerObservation `json:"containers"`
 }
 
@@ -73,14 +74,30 @@ type VMMView struct {
 	CPUTimeMS int64     `json:"cpuTimeMs"`
 }
 
+type GuestUsageView struct {
+	Time                 time.Time `json:"time"`
+	Source               string    `json:"source"`
+	MemoryTotalBytes     *uint64   `json:"memoryTotalBytes,omitempty"`
+	MemoryAvailableBytes *uint64   `json:"memoryAvailableBytes,omitempty"`
+	CPUBusyTicks         *uint64   `json:"cpuBusyTicks,omitempty"`
+	CPUIdleTicks         *uint64   `json:"cpuIdleTicks,omitempty"`
+}
+type ContainerUsageView struct {
+	Time        time.Time `json:"time"`
+	Source      string    `json:"source"`
+	MemoryBytes *uint64   `json:"memoryBytes,omitempty"`
+	CPUUsec     *uint64   `json:"cpuUsec,omitempty"`
+}
+
 type ContainerObservation struct {
-	Name          string     `json:"name"`
-	State         string     `json:"state"`
-	ExitCode      int        `json:"exitCode"`
-	Ready         *bool      `json:"ready,omitempty"`
-	Live          *bool      `json:"live,omitempty"`
-	StartupDone   *bool      `json:"startupDone,omitempty"`
-	LastProbeTime *time.Time `json:"lastProbeTime,omitempty"`
+	Name          string              `json:"name"`
+	Usage         *ContainerUsageView `json:"usage,omitempty"`
+	State         string              `json:"state"`
+	ExitCode      int                 `json:"exitCode"`
+	Ready         *bool               `json:"ready,omitempty"`
+	Live          *bool               `json:"live,omitempty"`
+	StartupDone   *bool               `json:"startupDone,omitempty"`
+	LastProbeTime *time.Time          `json:"lastProbeTime,omitempty"`
 }
 type ServiceView struct {
 	Name     string  `json:"name"`

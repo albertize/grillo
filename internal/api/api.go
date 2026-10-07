@@ -109,14 +109,15 @@ type Options struct {
 
 // Server serves the local API.
 type Server struct {
-	opts    Options
-	ops     *Operations
-	started time.Time
+	opts        Options
+	ops         *Operations
+	started     time.Time
+	attachSlots chan struct{}
 }
 
 // NewServer builds the API handler.
 func NewServer(opts Options) *Server {
-	return &Server{opts: opts, ops: NewOperations(), started: time.Now()}
+	return &Server{opts: opts, ops: NewOperations(), started: time.Now(), attachSlots: make(chan struct{}, 16)}
 }
 
 // Operations exposes the operation registry.
@@ -134,6 +135,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /v1/applications", s.handleApply)
 	mux.HandleFunc("POST /v1/applications/{id}/down", s.handleDown)
 	mux.HandleFunc("POST /v1/exec", s.handleExec)
+	mux.HandleFunc("POST /v1/exec-attach", s.handleAttach)
 	mux.HandleFunc("GET /v1/operations/{id}", s.handleOperation)
 	mux.HandleFunc("POST /v1/operations/{id}/cancel", s.handleCancel)
 	mux.HandleFunc("GET /v1/events", s.handleEvents)

@@ -28,14 +28,16 @@ const (
 
 // Config configures the backend.
 type Config struct {
-	QEMU        string
-	VirtioFSD   string
-	Kernel      string
-	Initramfs   string
-	WorkDir     string
-	CIDBase     uint32
-	BootTimeout time.Duration
-	Logger      func(format string, args ...any)
+	QEMU             string
+	VirtioFSD        string
+	Kernel           string
+	Initramfs        string
+	WorkDir          string
+	CIDBase          uint32
+	BootTimeout      time.Duration
+	Logger           func(format string, args ...any)
+	ArtifactManifest string // daemon requires an explicit trusted inventory
+	BootKeyOverlay   bool   // append Spec.GuestKey to the private verified initramfs
 	// DialGuest connects and handshakes with the guest agent. It defaults to the
 	// AF_VSOCK guestproto client. Tests may substitute it.
 	DialGuest func(ctx context.Context, spec sandbox.Spec) (GuestConn, error)

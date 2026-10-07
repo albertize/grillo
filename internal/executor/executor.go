@@ -9,6 +9,7 @@ package executor
 
 import (
 	"context"
+	"crypto/rand"
 	"crypto/sha256"
 	"errors"
 	"fmt"
@@ -50,11 +51,13 @@ type Config struct {
 	Initramfs    string
 	KernelArgs   string
 	GuestKey     []byte
+	FreshKeys    bool
 	VsockPort    uint32
 	VsockCIDBase uint32
 	MemoryMiB    int
 	VCPU         int
 	Images       ImageResolver
+	Logs         *observe.LogSpool
 	Dial         func(ctx context.Context, cid, port uint32) (*guestproto.Client, error)
 
 	// Secrets resolves Secret-backed environment variables. When nil, a
@@ -97,12 +100,15 @@ type sandboxRuntime struct {
 	cid        uint32
 	ip         string
 	guest      *guestproto.Client
+	guestKey   []byte
 	runner     *observe.Runner
 	cancel     context.CancelFunc
 	containers map[string]bool
 	workload   string
 	ready      bool
 	draining   bool
+	logState   *guestLogState
+	logFailed  bool // guarded by Executor.mu
 }
 
 // New returns an executor.
@@ -113,14 +119,14 @@ func New(cfg Config) (*Executor, error) {
 	if cfg.Images == nil {
 		return nil, errors.New("executor: image resolver is required")
 	}
-	if cfg.Dial == nil {
-		key := cfg.GuestKey
-		cfg.Dial = func(ctx context.Context, cid, port uint32) (*guestproto.Client, error) {
-			conn, err := guestproto.DialVsock(ctx, cid, port)
-			if err != nil {
-				return nil, err
-			}
-			return guestproto.NewClient(ctx, conn, guestproto.HandshakeConfig{Key: key, Agent: "executor"})
+	if cfg.FreshKeys {
+		if cfg.Dial != nil {
+			return nil, errors.New("executor: custom dial cannot use fresh runtime keys")
+		}
+		if _, ok := cfg.Backend.(interface {
+			BootConnection(sandbox.Handle) (uint32, uint32, []byte, error)
+		}); !ok {
+			return nil, errors.New("executor: backend cannot provide boot credentials")
 		}
 	}
 	if cfg.VsockCIDBase == 0 {
@@ -142,6 +148,17 @@ func New(cfg Config) (*Executor, error) {
 		networkErrors: map[string]error{},
 		published:     map[string]map[int]*publishedPort{},
 	}, nil
+}
+
+func (e *Executor) dialGuest(ctx context.Context, cid, port uint32, key []byte) (*guestproto.Client, error) {
+	if e.cfg.Dial != nil {
+		return e.cfg.Dial(ctx, cid, port)
+	}
+	conn, err := guestproto.DialVsock(ctx, cid, port)
+	if err != nil {
+		return nil, err
+	}
+	return guestproto.NewClient(ctx, conn, guestproto.HandshakeConfig{Key: key, Agent: "executor"})
 }
 
 // SetDesired records the desired application so Ensure can build its specs.
@@ -225,7 +242,20 @@ func (e *Executor) Ensure(ctx context.Context, application string, descriptor pl
 	if err := e.cfg.Backend.Start(ctx, sandbox.Handle{ID: spec.ID}); err != nil {
 		return err
 	}
-	client, err := e.cfg.Dial(ctx, spec.VsockCID, spec.VsockPort)
+	if e.cfg.FreshKeys {
+		provider, ok := e.cfg.Backend.(interface {
+			BootConnection(sandbox.Handle) (uint32, uint32, []byte, error)
+		})
+		if !ok {
+			return fmt.Errorf("executor: backend cannot provide boot credentials")
+		}
+		var err error
+		spec.VsockCID, spec.VsockPort, spec.GuestKey, err = provider.BootConnection(sandbox.Handle{ID: spec.ID})
+		if err != nil {
+			return err
+		}
+	}
+	client, err := e.dialGuest(ctx, spec.VsockCID, spec.VsockPort, spec.GuestKey)
 	if err != nil {
 		_ = e.cfg.Backend.Stop(ctx, sandbox.Handle{ID: spec.ID}, 0)
 		return fmt.Errorf("executor: connect guest: %w", err)
@@ -235,19 +265,28 @@ func (e *Executor) Ensure(ctx context.Context, application string, descriptor pl
 		_ = e.cfg.Backend.Stop(ctx, sandbox.Handle{ID: spec.ID}, 0)
 		return fmt.Errorf("executor: guest agent lacks application DNS support; rebuild the guest image")
 	}
-	startCtx := ctx
-	if _, err := client.Start(startCtx, guestproto.StartRequest{Sandbox: &guestSpec}); err != nil {
+	if e.cfg.Logs != nil && !supportsLogs(client) {
+		_ = client.Close()
+		_ = e.cfg.Backend.Stop(ctx, sandbox.Handle{ID: spec.ID}, 0)
+		return fmt.Errorf("executor: guest agent lacks log support; rebuild the guest image")
+	}
+	names := make(map[string]bool)
+	for _, c := range allContainers(*workload) {
+		names[c.Name] = true
+	}
+	rt := &sandboxRuntime{id: spec.ID, app: application, cid: spec.VsockCID, ip: ip, guest: client, guestKey: spec.GuestKey, containers: names, workload: workload.ID, logState: &guestLogState{}}
+	if _, err := client.Start(ctx, guestproto.StartRequest{Sandbox: &guestSpec}); err != nil {
+		// Preserve failing init output in the ordinary workload log channel,
+		// never splice it into public operation errors. Cleanup stays bounded.
+		logCtx, stop := context.WithTimeout(context.WithoutCancel(ctx), 2*time.Second)
+		e.drainLogs(logCtx, rt)
+		stop()
 		_ = client.Close()
 		_ = e.cfg.Backend.Stop(ctx, sandbox.Handle{ID: spec.ID}, 0)
 		return fmt.Errorf("executor: start containers: %w", err)
 	}
 	e.mu.Lock()
-	names := make(map[string]bool)
-	for _, c := range workload.Template.Containers {
-		names[c.Name] = true
-	}
-	e.runtimes[spec.ID] = &sandboxRuntime{id: spec.ID, app: application, cid: spec.VsockCID, ip: ip, guest: client, containers: names, workload: workload.ID}
-	rt := e.runtimes[spec.ID]
+	e.runtimes[spec.ID] = rt
 	e.mu.Unlock()
 	if err := e.startHealth(ctx, rt, *workload); err != nil {
 		return err
@@ -281,6 +320,10 @@ func (e *Executor) startHealth(initial context.Context, rt *sandboxRuntime, work
 	poll := func(ctx context.Context) (bool, error) {
 		runner.Tick(ctx)
 		status, err := rt.guest.Status(ctx)
+		var logErr error
+		if err == nil {
+			logErr = e.collectLogs(ctx, rt)
+		}
 		ready := err == nil
 		states := map[string]string{}
 		if err == nil {
@@ -305,6 +348,7 @@ func (e *Executor) startHealth(initial context.Context, rt *sandboxRuntime, work
 		}
 		changed := rt.ready != ready
 		rt.ready = ready
+		rt.logFailed = logErr != nil
 		return changed, err
 	}
 	ctx, stop := context.WithTimeout(initial, 15*time.Second)
@@ -365,7 +409,13 @@ func (e *Executor) Stop(ctx context.Context, application string, descriptor plan
 		if rt.cancel != nil {
 			rt.cancel()
 		}
+		logCtx, stopLogs := context.WithTimeout(ctx, 2*time.Second)
+		e.drainLogs(logCtx, rt)
+		stopLogs()
 		_, _ = rt.guest.Stop(ctx, guestproto.StopRequest{})
+		logCtx, stopLogs = context.WithTimeout(ctx, 2*time.Second)
+		e.drainLogs(logCtx, rt)
+		stopLogs()
 		_ = rt.guest.Close()
 	}
 	if err := e.cfg.Backend.Stop(ctx, sandbox.Handle{ID: sandboxID}, 0); err != nil {
@@ -449,6 +499,10 @@ func (e *Executor) Restart(ctx context.Context, application string) error {
 
 // Exec runs a command in a container of an application.
 func (e *Executor) Exec(ctx context.Context, application, container string, args []string, stdout, stderr io.Writer) (int, error) {
+	return e.ExecAttached(ctx, application, container, guestproto.ExecRequest{Args: args}, nil, stdout, stderr)
+}
+
+func (e *Executor) ExecAttached(ctx context.Context, application, container string, request guestproto.ExecRequest, input <-chan guestproto.Frame, stdout, stderr io.Writer) (int, error) {
 	// A bare name is allowed only when unique. sandbox-ID/container selects a
 	// specific replica without changing the API payload shape.
 	key, name, qualified := strings.Cut(container, "/")
@@ -458,10 +512,12 @@ func (e *Executor) Exec(ctx context.Context, application, container string, args
 	e.mu.Lock()
 	var matches []string
 	var cid uint32
+	var authKey []byte
 	for id, rt := range e.runtimes {
 		if rt.app == application && rt.guest != nil && rt.containers[name] && (!qualified || id == key) {
 			matches = append(matches, id)
 			cid = rt.cid
+			authKey = rt.guestKey
 		}
 	}
 	e.mu.Unlock()
@@ -475,12 +531,16 @@ func (e *Executor) Exec(ctx context.Context, application, container string, args
 	// Exec owns a dedicated authenticated connection. Cancellation closes it,
 	// canceling the guest request without leaving unread replies on the shared
 	// health/status channel or blocking probes behind a long-running command.
-	client, err := e.cfg.Dial(ctx, cid, e.cfg.VsockPort)
+	client, err := e.dialGuest(ctx, cid, e.cfg.VsockPort, authKey)
 	if err != nil {
 		return 0, fmt.Errorf("executor: exec channel unavailable: %w", err)
 	}
 	defer client.Close()
-	result, err := client.Exec(ctx, guestproto.ExecRequest{Container: name, Args: args}, stdout, stderr)
+	if request.Stdin && !client.Info().Supports(guestproto.CapStdin) || request.TTY && (!client.Info().Supports(guestproto.CapTTY) || !client.Info().Supports(guestproto.CapResize)) {
+		return 0, fmt.Errorf("executor: interactive guest capabilities unavailable; rebuild the guest")
+	}
+	request.Container = name
+	result, err := client.ExecAttached(ctx, request, input, stdout, stderr)
 	return result.ExitCode, err
 }
 
@@ -501,6 +561,12 @@ func (e *Executor) buildSpecs(ctx context.Context, application string, app model
 		VsockCID:   cid,
 		VsockPort:  e.cfg.VsockPort,
 		GuestKey:   e.cfg.GuestKey,
+	}
+	if e.cfg.FreshKeys {
+		spec.GuestKey = make([]byte, 32)
+		if _, err := rand.Read(spec.GuestKey); err != nil {
+			return sandbox.Spec{}, guestproto.SandboxSpec{}, fmt.Errorf("executor: generate boot key: %w", err)
+		}
 	}
 	guestIP := ""
 	if e.cfg.EnableNetwork {

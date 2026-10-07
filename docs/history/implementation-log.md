@@ -1605,3 +1605,74 @@ historical evidence only.
   need nonconflicting host-wide ranges. Additional locked frontend tooling and
   embedded asset size are deliberate build costs.
 - **Next task:** T24 — F3 and hardening, then T27 packaging/build integration.
+
+## T23 — Documentation consolidation after console delivery
+
+- **Status:** DONE (documentation only; T24 remained TODO).
+- **Dependencies verified:** T23 delivery records, existing API/CLI/Make targets;
+  user approval for documentation cleanup. No runtime task was implemented.
+- **Files and contracts changed:** Reader-oriented README/getting-started,
+  architecture/testing guides; concise progress with archived history;
+  consolidated T23 evidence; current contributor/security/agent guidance.
+  Design contracts, task acceptance criteria, ADR status, generated inventories
+  and third-party notices remained authoritative and unchanged in meaning.
+- **Decisions/ADRs:** Editorial organization only; no architecture change.
+- **Tests run:** `python3 /tmp/grillo-check-markdown.py` PASS (44 project Markdown
+  files: links/anchors and balanced fences); `git diff --check` PASS; actual
+  `bin/grillo --help`/`version` and offline Compose/Helm example plans PASS;
+  `make check` PASS on the existing Linux/amd64 development host.
+- **Tests NOT run and why:** New KVM/browser/load/security campaigns were not
+  required for prose-only changes; dated delivery evidence preserved, not rerun.
+- **Integration/benchmark evidence:** Existing [reports](../progress.md#evidence-and-history);
+  no new claim.
+- **Known limitations:** Product limits remained; cleanup did not complete T24.
+- **Next task:** T24 — F3 gate and hardening.
+
+## T24 — Local F3 hardening campaign (2026-10-07)
+
+- **Status:** BLOCKED; no MVP release or T25 authorization.
+- **Dependencies verified:** T23 plus fresh native UI/Firefox, Helm, Compose,
+  guest, networking, storage and recovery gates.
+- **Files and contracts changed:** YAML/DNS/OCI fuzz tests, `make fuzz`/CI smoke,
+  lifecycle percentile logging, threat model and [T24 inventory](../experiments/t24-hardening.md).
+  Runtime/API contracts and compatibility support states were unchanged.
+- **Decisions/ADRs:** No architecture change or ADR acceptance.
+- **Tests run:** `make check` twice PASS; vulncheck/npm audit PASS; five-target
+  fuzz smoke and 60s/target campaign PASS; fresh focused race PASS; guest,
+  storage, executor, F2, Kubernetes, Helm, UI/Firefox, build, bridged/netns gates
+  PASS without SKIP; 100 lifecycle cycles/F0 PASS; doctor/diff/Markdown PASS.
+  Exact commands/environment/results are preserved in the report.
+- **Tests NOT run and why:** Hosted CI and clean external Linux host unavailable;
+  ten-minute-per-target fuzz, sustained load, complete memory/network/cold-start
+  budgets and redistribution audit remained unverified.
+- **Integration/benchmark evidence:** Fedora fc44, SELinux already Permissive;
+  100 warm backend cycles and 30 F0 boot/filesystem samples with median/p95.
+  No complete application-start/performance guarantee.
+- **Known limitations:** At this campaign date, stdout/TTY/detailed usage,
+  verifiable installation, artifact enforcement/fresh-key delivery and full
+  security/license evidence remained. The subsequent stdout delivery is separate.
+- **Next task:** Stay on T24; implement missing MVP contracts and arrange the
+  external-host gate, not T25.
+
+## T24 — Bounded guest stdout/stderr ingestion (2026-10-07)
+
+- **Status:** BLOCKED overall; bounded log delivery has real local evidence.
+- **Dependencies verified:** T23/prior local T24 campaign; user authorization
+  to refine logs/TTY/metrics/artifacts without a second host.
+- **Files and contracts changed:** Guest ring/runc stdio/init streaming; additive
+  protocol cursor batches; executor/daemon ingestion and redacted diagnostics;
+  synchronized spool/gap metadata; API/CLI/Firefox regression and UI loss markers.
+  Full limits/commands/failures are in [the report](../experiments/t24-guest-logs.md).
+- **Decisions/ADRs:** No new dependency/backend/ADR acceptance.
+- **Tests run:** Final `make check`, uncached focused races, real guest/Helm/logs,
+  UI/Firefox/native builds/F2/executor/liveness gates PASS without SKIP; Markdown,
+  script/diff checks PASS. Initial init-order unit failure was corrected.
+- **Tests NOT run and why:** Hosted CI/external host unavailable; no fresh sustained
+  load/fuzz or full performance/security/license audit in this bounded delivery.
+- **Integration/benchmark evidence:** Fedora fc44, SELinux already Permissive;
+  rebuilt guest/CLI/daemon/frontend. No new benchmark claim.
+- **Known limitations at delivery:** Lossy ring/polling; incomplete shutdown/host
+  retention gaps. TTY, detailed metrics and artifact/fresh-key enforcement were
+  open then; the later three-contract delivery supersedes those local blockers.
+- **Next task at delivery:** Interactive CLI, metrics/artifacts and remaining T24
+  hardening; external-host gate stays open and T25 must not start.

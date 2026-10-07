@@ -99,6 +99,8 @@ Message types:
 | `status` / `status_result` | host → guest → host | guest/container state |
 | `probe` / `probe_result` | host → guest → host | health probe |
 | `exec` / `exec_result` | host → guest → host | run a command with streams |
+| `logs` / `logs_result` | host → guest → host | bounded retained container stdout/stderr batch |
+| `metrics` / `metrics_result` | host → guest → host | nullable guest/cgroup counters |
 
 `ping`, `pong`, `hello`, `hello_ack`, and `auth` may also use the ping/pong
 frame kinds for heartbeats; a control `ping` is answered with a control `pong`.
@@ -129,14 +131,16 @@ host                                   guest
   `client` or `server`. The role is included so the two proofs cannot be
   reflected.
 - Both sides compare in constant time.
-- The sandbox ID is part of the MAC input and is checked explicitly.
+- Sandbox context is MAC-bound; an explicitly configured nonempty ID must match.
+  The current daemon uses unique per-boot credentials and assigned vsock addresses,
+  not pre-boot nonempty sandbox labels.
 
 Version negotiation: the host offers a version; the guest accepts if the major
 versions match and replies with the lower minor version. A different major is a
 `version_mismatch` error. The negotiated version is fixed for the connection.
 
 Capabilities the guest may advertise: `exec`, `tty`, `resize`, `stdin`,
-`probe`, `files`, `application-dns`. A client must not send a message the guest did not advertise.
+`probe`, `files`, `application-dns`, `logs`, `metrics`. A client must not send a message the guest did not advertise.
 The additive `DNSConfig.server` IPv4 field selects the private application
 namespace resolver instead of a guest-local static resolver. Bridged executors
 require `application-dns` and reject old agents with a rebuild instruction.
@@ -149,6 +153,58 @@ require `application-dns` and reject old agents with a rebuild instruction.
   a `start` unless the guest reports no active workload.
 - The protocol carries no per-frame MAC; confidentiality and integrity rely on
   the private vsock channel.
+
+## Interactive exec and metrics
+
+`exec` includes `container`, argument-array `args`, optional `tty`, `stdin`,
+initial `rows`/`cols` and nonzero `session`. Incoming stdin/resize data frames
+route only to that active session; empty stdin means EOF, resize is exactly four
+bytes with nonzero dimensions. Input queues hold at most 16 frames per request;
+unknown sessions, malformed input or overflow terminate the connection and cancel
+requests. Writes have five-second deadlines. TTY output merges stderr into stdout;
+non-TTY keeps separation. Completion is `exec_result` with the actual exit code.
+Closing the dedicated host connection cancels exec; it does not stop the workload.
+Canonical TTY EOF uses EOT and is not guaranteed for applications in raw mode.
+
+`metrics` has no payload. `metrics_result` includes nullable `memoryTotalBytes`,
+`memoryAvailableBytes`, `cpuBusyTicks`, `cpuIdleTicks` and at most 128 `containers`
+with unique `name`, nullable `memoryBytes` and `cpuUsec`. Guest counters come from
+`/proc/meminfo` and `/proc/stat`; busy excludes idle/iowait/steal and does not
+double-count guest ticks. Ticks use USER_HZ, not guessed seconds or percentages.
+Container values come from PID-selected cgroup v2 `memory.current` and
+`cpu.stat usage_usec`. Missing/exited/unsupported data is absent, not zero.
+Sampling/parsers are bounded and cancellation-aware. Authenticated guest reports
+are not independent host attestation.
+
+Production QEMU boot paths verify private kernel/initramfs snapshots and replace
+the fixture key with a fresh private initramfs overlay on each new boot; see
+[ADR 0009](../docs/adr/0009-verified-boot-and-private-key-overlay.md).
+
+## Retained container logs
+
+`logs` payload is `{ "after": 0 }`, a guest-wide sequence cursor. A response has
+`chunks`, `next` and optional `gap`. Each chunk has increasing `seq`, declared
+`container`, `stream` (`stdout` or `stderr`) and base64 `data` (raw bytes).
+Chunks are at most 4096 bytes, batches at most eight chunks. `next` is the last
+chunk sequence, or the request cursor if the batch is empty. `gap` reports that
+records after the request cursor were evicted; a gap response must have data.
+The client validates batch/chunk bounds, streams, cursor progression and gap
+reporting; the executor checks container names against the sandbox declaration.
+
+The guest ring retains at most 256 chunks (1 MiB payload plus bounded metadata)
+across all containers. Init output uses the same ring; application stdio pipes
+are continuously drained without waiting for host/API consumers or writing
+unbounded guest log files. Restarts preserve the guest sequence; a new VM starts
+a new cursor. The daemon polls bounded batches, about once per second, and writes
+a separately sequenced/rotated host spool. Heavy output may overrun retention;
+a host gap record makes that loss visible. This is not lossless delivery, and
+crashes or final shutdown output may be lost before collection.
+
+Executors with a log spool require the `logs` capability and reject stale agents
+with a rebuild instruction. Capture failures appear as redacted view diagnostics,
+not readiness failure or raw tool output. Ordinary workload logs may contain any
+value the application deliberately prints, including credentials; no arbitrary
+stdout secret-redaction guarantee is made.
 
 ## Errors
 

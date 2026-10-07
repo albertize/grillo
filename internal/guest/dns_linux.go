@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"time"
 
 	"github.com/albertize/grillo/internal/guestproto"
 	"github.com/albertize/grillo/internal/network"
@@ -94,9 +95,35 @@ func writeResolver(server string, search []string) error {
 	return os.WriteFile(resolvConfPath, []byte(resolverConfig(server, search)), 0o644)
 }
 
+func runNetworkCommand(ctx context.Context, cmd *exec.Cmd, reaper *Reaper) error {
+	if reaper != nil {
+		status, _, _, err := (&Runc{Reaper: reaper}).capture(ctx, cmd)
+		if err != nil {
+			return err
+		}
+		if status.ExitCode != 0 {
+			return fmt.Errorf("network helper exited %d", status.ExitCode)
+		}
+		return nil
+	}
+	// Standalone callers have no PID 1 reaper; use the bounded context.
+	// exec.CommandContext sets the cancellation watcher; reconstruct argv.
+	bounded := exec.CommandContext(ctx, cmd.Path, cmd.Args[1:]...)
+	if err := bounded.Run(); err != nil {
+		return err
+	}
+	return nil
+}
+
 // SetupNetwork configures the sandbox interface from the spec. It uses busybox
 // `ip`, which the guest image provides.
 func SetupNetwork(cfg *guestproto.NetworkConfig) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	return setupNetwork(ctx, cfg, nil)
+}
+
+func setupNetwork(ctx context.Context, cfg *guestproto.NetworkConfig, reaper *Reaper) error {
 	if cfg == nil {
 		return nil
 	}
@@ -113,8 +140,8 @@ func SetupNetwork(cfg *guestproto.NetworkConfig) error {
 	}
 	for _, args := range commands {
 		cmd := exec.Command("/bin/busybox", append([]string{"ip"}, args...)...)
-		if out, err := cmd.CombinedOutput(); err != nil {
-			return fmt.Errorf("guest: configure network %s: %w: %s", strings.Join(args, " "), err, out)
+		if err := runNetworkCommand(ctx, cmd, reaper); err != nil {
+			return fmt.Errorf("guest: configure network %s: %w", strings.Join(args, " "), err)
 		}
 	}
 	return nil

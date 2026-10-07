@@ -25,6 +25,7 @@ stderr.
 | `GET /v1/applications/{id}` | container status and public route fallback endpoints |
 | `GET /v1/applications/{id}/view` | allowlisted application/resource/probe/VMM snapshot (T23) |
 | `POST /v1/exec` | run a command in a container and return captured output |
+| `POST /v1/exec-attach` | private Unix HTTP upgrade for interactive stdin/TTY/resize |
 | `POST /v1/applications` | submit a desired application; `202` + `operationId` |
 | `POST /v1/applications/{id}/down` | stop an application; `?volumes=true` deletes owned managed volumes |
 | `GET /v1/operations/{id}` | operation status |
@@ -64,6 +65,23 @@ route contains only `hostname`, `path`, `pathType` and the actual loopback HTTP
 includes this inventory. Fallback ports are allocated atomically by listening
 on `127.0.0.1:0`; `/etc/hosts` is never modified.
 
+## Interactive Unix attachment
+
+`POST /v1/exec-attach` requires `Upgrade: grillo-attach-v1` and a strict JSON
+body (at most 64 KiB): `application`, `container`, argument-array `args`, optional
+`tty`, `rows`, `cols`. Target resolution is the same as ordinary exec. The server
+replies `101 Switching Protocols`; subsequent bytes use guest-protocol framing,
+with session zero, stdin/resize input and stdout/stderr output. Empty stdin is
+EOF; resize contains big-endian u16 rows/columns, both nonzero. TTY merges stderr.
+Completion must be an `exec_result` control with explicit exit code; malformed
+frames, truncated streams and failed output writes are errors, not success.
+
+At most 16 API attachments are active; queues contain at most 16 frames, writes
+have five-second deadlines and sessions last at most one hour. Disconnect,
+request cancellation and daemon shutdown close the attachment and cancel the
+exec process, not its workload. Failure details are generic. This endpoint is
+not exposed by the browser bridge; browser exec remains bounded/non-TTY.
+
 ## Public console snapshot
 
 `GET /v1/applications/{id}/view` returns `observe.ApplicationView`: source
@@ -71,7 +89,14 @@ provenance, declared workloads/containers/mounts/ports, Services and inferred
 selector relationships, routes, volume classes, config/Secret metadata and
 actual sandbox/container/probe observations. VMM samples carry `/proc` RSS,
 cumulative CPU time and timestamp separately from guest allocation. Missing
-samples are omitted, not zeroed. Sampling has a ten-second operation deadline;
+samples are omitted, not zeroed. Optional sandbox `guest` carries nullable
+`memoryTotalBytes`, `memoryAvailableBytes`, `cpuBusyTicks`, `cpuIdleTicks`; container
+`usage` carries nullable `memoryBytes`, `cpuUsec`. Both include host collection
+`time` and guest-data `source`. USER_HZ ticks and cgroup CPU microseconds are
+cumulative counters, not percentages. Unavailable fields are omitted. VMM RSS,
+guest allocation and cgroup memory are not interchangeable or additive.
+`guest_metrics_unavailable` is a redacted sampling diagnostic, not readiness
+failure. Sampling has a ten-second operation deadline;
 errors return a generic `view_unavailable` without private backend details.
 
 This is an allowlist, not a redacted serialization of private IR/guest specs:
@@ -95,7 +120,13 @@ is `running`, `succeeded`, `failed`, or `canceled`.
 SSE `id:` field; a client resumes with `Last-Event-ID` (or `?since=`). If the
 requested sequence is no longer retained, the server emits a synthetic
 `events.gap` record so the client can resync. `GET /v1/logs` accepts `since`,
-`resource`, and `container`; with `follow=true` it streams.
+`resource`, and `container`; with `follow=true` it streams. Log records use
+persistent host `seq`, collection `time`, sandbox `resource`, `container`,
+`stream` and `line` (bounded text chunks, not necessarily complete lines).
+A guest-retention-loss record has `gap: true`; it bypasses container filters
+within the selected resource. Clients must keep loss records visible even when
+filtering stdout/stderr. Guest and host sequence numbers are independent.
+Output intentionally printed by an application is not secret-redacted.
 
 ## Daemon lifetime versus application lifetime
 

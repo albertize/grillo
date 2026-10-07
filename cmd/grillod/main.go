@@ -27,6 +27,7 @@ import (
 	"github.com/albertize/grillo/internal/backend/qemu"
 	"github.com/albertize/grillo/internal/build"
 	"github.com/albertize/grillo/internal/executor"
+	"github.com/albertize/grillo/internal/guestproto"
 	"github.com/albertize/grillo/internal/image"
 	"github.com/albertize/grillo/internal/model"
 	"github.com/albertize/grillo/internal/observe"
@@ -50,7 +51,8 @@ func main() {
 func run() error {
 	kernel := flag.String("kernel", "experiments/artifacts/qemu/bzImage", "guest kernel")
 	initramfs := flag.String("initramfs", "experiments/artifacts/t07/initramfs-agent.cpio.gz", "guest initramfs")
-	keyFile := flag.String("key-file", "experiments/artifacts/t07/key", "base64 per-boot guest key")
+	keyFile := flag.String("key-file", "experiments/artifacts/t07/key", "deprecated fixture option; ignored, runtime boot keys are generated fresh")
+	manifestPath := flag.String("artifact-manifest", "experiments/artifacts/t07/manifest.json", "trusted guest artifact manifest; verified before each boot")
 	qemuPath := flag.String("qemu", "", "qemu binary (default: PATH)")
 	virtiofsd := flag.String("virtiofsd", "", "virtiofsd binary (default: /usr/libexec/virtiofsd)")
 	vsockPort := flag.Uint("vsock-port", 1024, "guest vsock port")
@@ -76,10 +78,8 @@ func run() error {
 	}
 	defer store.Close()
 
-	guestKey, err := readKey(*keyFile)
-	if err != nil {
-		return err
-	}
+	_ = keyFile // Retained for existing development commands, never loaded.
+	var guestKey []byte
 
 	events, err := observe.OpenEvents(filepath.Join(layout.State, "events"), 0, 0)
 	if err != nil {
@@ -99,11 +99,13 @@ func run() error {
 		Launch: func(ctx context.Context, spec sandbox.Spec, args []string, logPath string) (sandbox.VMM, error) {
 			return workloadRuntime.LaunchSandbox(ctx, spec, args, logPath)
 		},
-		QEMU:      *qemuPath,
-		VirtioFSD: *virtiofsd,
-		Kernel:    *kernel,
-		Initramfs: *initramfs,
-		WorkDir:   filepath.Join(layout.Data, "backend"),
+		QEMU:             *qemuPath,
+		VirtioFSD:        *virtiofsd,
+		Kernel:           *kernel,
+		Initramfs:        *initramfs,
+		WorkDir:          filepath.Join(layout.Data, "backend"),
+		ArtifactManifest: *manifestPath,
+		BootKeyOverlay:   true,
 	})
 	if err != nil {
 		return err
@@ -142,6 +144,7 @@ func run() error {
 		Initramfs:    *initramfs,
 		KernelArgs:   "console=ttyS0 reboot=k panic=1 rdinit=/init",
 		GuestKey:     guestKey,
+		FreshKeys:    true,
 		VsockCIDBase: uint32(*buildCIDBase),
 		VsockPort:    uint32(*vsockPort),
 		MemoryMiB:    512,
@@ -163,12 +166,14 @@ func run() error {
 			}
 			defer buildNetwork.Close()
 			buildBackend, err := qemu.Open(qemu.Config{
-				QEMU:      *qemuPath,
-				VirtioFSD: *virtiofsd,
-				Kernel:    *kernel,
-				Initramfs: *initramfs,
-				WorkDir:   filepath.Join(layout.Data, "build-backend"),
-				Launch:    buildNetwork.Launch,
+				QEMU:             *qemuPath,
+				VirtioFSD:        *virtiofsd,
+				Kernel:           *kernel,
+				Initramfs:        *initramfs,
+				WorkDir:          filepath.Join(layout.Data, "build-backend"),
+				ArtifactManifest: *manifestPath,
+				BootKeyOverlay:   true,
+				Launch:           buildNetwork.Launch,
 			})
 			if err != nil {
 				return err
@@ -191,9 +196,11 @@ func run() error {
 		Initramfs:     *initramfs,
 		KernelArgs:    "console=ttyS0 reboot=k panic=1 rdinit=/init",
 		GuestKey:      guestKey,
+		FreshKeys:     true,
 		VsockPort:     uint32(*vsockPort),
 		VsockCIDBase:  uint32(*vsockCIDBase),
 		Images:        images,
+		Logs:          logs,
 		Secrets:       secretStore,
 		EnableNetwork: true,
 		QEMU:          qemuBinary,
@@ -397,6 +404,10 @@ func (c *core) Routes(ctx context.Context, application string) ([]api.RouteStatu
 		result = append(result, api.RouteStatus{Hostname: route.Hostname, Path: route.Path, PathType: route.PathType, Endpoint: route.Endpoint})
 	}
 	return result, nil
+}
+
+func (c *core) ExecAttached(ctx context.Context, application, container string, request guestproto.ExecRequest, input <-chan guestproto.Frame, stdout, stderr io.Writer) (int, error) {
+	return c.exec.ExecAttached(ctx, application, container, request, input, stdout, stderr)
 }
 
 func (c *core) ExecStream(ctx context.Context, application, container string, args []string, stdout, stderr io.Writer) (int, error) {

@@ -23,6 +23,13 @@ type realTerminal struct {
 func NewTerminal(fd int) Terminal { return realTerminal{fd: fd} }
 
 func (t realTerminal) IsTerminal() bool { return term.IsTerminal(t.fd) }
+func (t realTerminal) Size() (uint16, uint16) {
+	cols, rows, err := term.GetSize(t.fd)
+	if err != nil || rows < 1 || cols < 1 {
+		return 24, 80
+	}
+	return uint16(rows), uint16(cols)
+}
 
 func (t realTerminal) MakeRaw() (func(), error) {
 	state, err := term.MakeRaw(t.fd)
