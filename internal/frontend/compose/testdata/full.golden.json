@@ -108,7 +108,7 @@
               }
             },
             "probes": {
-              "liveness": {
+              "readiness": {
                 "kind": "exec",
                 "exec": {
                   "command": [

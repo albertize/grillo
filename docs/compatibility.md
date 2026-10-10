@@ -32,12 +32,20 @@ promise follows from these functional observations.
 | `${VAR}` interpolation | Supported | default/required/alternative forms; `$$` escape |
 | `ports`, `expose` | Supported | long/short syntax; TCP |
 | `volumes` (named, ephemeral, bind) | Supported | project-relative binds resolve against the Compose file |
-| `healthcheck` | Runtime semantics differ | compiler accepts it as a liveness probe; runtime restart-on-unhealthy is not faithful Compose health behavior; `NONE` disables |
-| `depends_on` | Degraded | startup ordering only, never readiness |
+| `healthcheck` | Degraded | health/readiness status, **no liveness restart**; unhealthy endpoints are removed (local behavior), `start_period` is an initial delay; `NONE` / `disable: true` disables; command strings and CMD/CMD-SHELL arrays; whole-second durations only, no `start_interval` or inherited image healthcheck |
+| `depends_on` | Supported subset | deterministic startup order; short syntax / `service_started`, and `service_healthy` with a declared healthcheck, all replicas; startup-only, cancelable two-minute gate. `service_completed_successfully`, `restart: true`, `required: false`, missing/zero-replica dependencies and cycles are rejected |
 | `restart`, resource limits, `deploy.replicas` | Supported | |
 | named `networks` | Supported (one topology) | multiple distinct topologies are rejected (`compose.multi_network`) |
 | `build` | Supported via the native builder | not yet run automatically from `up` |
 | `secrets`, `configs`, `profiles`, `extends`, `devices`, `privileged`, `network_mode: host` | Rejected | structured diagnostics |
+
+[Chrome/real-KVM evidence](experiments/t24-browser-terminal-compose-dependencies.md)
+proves unhealthy dependency gating, release on a successful probe, and no
+restart-on-unhealthy. `healthcheck` requires explicit `compose.degraded` consent
+for local endpoint/warm-up semantics. No full Compose lifecycle parity is claimed:
+dependency changes after startup do not restart or stop consumers. Successful
+primary-container completion is not reliably reported by the current guest status
+contract, so it is never approximated by a stopped state or a default zero code.
 
 ## Kubernetes (MVP)
 

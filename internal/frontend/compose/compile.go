@@ -105,6 +105,7 @@ func Compile(ctx context.Context, data []byte, opts Options) (Result, error) {
 			"the runtime gives one application one network; services with different network membership would be silently flattened",
 		))
 	}
+	result.Diagnostics = append(result.Diagnostics, model.ValidateDependencies(app)...)
 	result.Application = app
 	return result, nil
 }
@@ -251,9 +252,9 @@ func compileService(name string, node *yaml.Node, topVolumes map[string]model.Vo
 			container.Mounts = append(container.Mounts, mounts...)
 			volumes = append(volumes, vols...)
 		case "healthcheck":
-			container.Probes.Liveness = parseHealthcheck(valueNode, file, "services/"+name)
+			container.Probes.Readiness = parseHealthcheck(valueNode, diagnostics, file, "services/"+name)
 		case "depends_on":
-			workload.DependsOn = dependsOn(valueNode, diagnostics, file, "services/"+name)
+			workload.DependsOn, workload.DependencyConditions = dependsOn(valueNode, diagnostics, file, "services/"+name)
 		case "restart":
 			workload.RestartPolicy = restartPolicy(valueNode.Value)
 		case "user":
@@ -344,22 +345,61 @@ func hasBuild(service *yaml.Node) bool {
 	return ok
 }
 
-func dependsOn(node *yaml.Node, diagnostics *source.List, file, resource string) []string {
+func dependsOn(node *yaml.Node, diagnostics *source.List, file, resource string) ([]string, map[string]model.DependencyCondition) {
 	var names []string
+	conditions := map[string]model.DependencyCondition{}
+	reject := func(at *yaml.Node, message string) {
+		*diagnostics = append(*diagnostics, diagnostic(source.SeverityError, source.Unsupported, "compose.depends_on_condition", at, file, resource, "depends_on", message, "dependency behavior must be represented faithfully before apply"))
+	}
 	switch node.Kind {
 	case yaml.SequenceNode:
 		for _, item := range node.Content {
+			if item.Kind != yaml.ScalarNode || item.Tag != "!!str" || item.Value == "" {
+				reject(item, "depends_on entries must be service names")
+				continue
+			}
 			names = append(names, item.Value)
 		}
 	case yaml.MappingNode:
 		for i := 0; i < len(node.Content); i += 2 {
-			names = append(names, node.Content[i].Value)
-			if condition, ok := scalarValue(node.Content[i+1], "condition"); ok && condition != "service_started" {
-				*diagnostics = append(*diagnostics, diagnostic(source.SeverityWarning, source.Degraded, "compose.depends_on_condition", node.Content[i+1], file, resource, "depends_on", "condition "+condition+" is not guaranteed; only startup ordering is applied", ""))
+			name, value := node.Content[i].Value, node.Content[i+1]
+			names = append(names, name)
+			if value.Kind != yaml.MappingNode {
+				reject(value, "long depends_on entries must be mappings")
+				continue
+			}
+			for j := 0; j < len(value.Content); j += 2 {
+				key, field := value.Content[j].Value, value.Content[j+1]
+				switch key {
+				case "condition":
+					if field.Kind != yaml.ScalarNode {
+						reject(field, "dependency condition must be a string")
+						continue
+					}
+					switch model.DependencyCondition(field.Value) {
+					case model.DependencyStarted:
+					case model.DependencyHealthy:
+						conditions[name] = model.DependencyHealthy
+					default:
+						reject(field, "only service_started and service_healthy are supported; successful primary-container completion is not reliably reported yet")
+					}
+				case "restart", "required":
+					want := key == "required"
+					if field.Kind != yaml.ScalarNode || field.Tag != "!!bool" || boolValue(field) != want {
+						reject(field, "depends_on "+key+" only supports "+strconv.FormatBool(want))
+					}
+				default:
+					reject(field, "unsupported depends_on field "+key)
+				}
 			}
 		}
+	default:
+		reject(node, "depends_on must be a service list or mapping")
 	}
-	return names
+	if len(conditions) == 0 {
+		conditions = nil
+	}
+	return names, conditions
 }
 
 func restartPolicy(value string) model.RestartPolicy {
@@ -380,12 +420,76 @@ func boolValue(node *yaml.Node) bool {
 	return err == nil && value
 }
 
-func parseHealthcheck(node *yaml.Node, file, resource string) *model.Probe {
+func parseHealthcheck(node *yaml.Node, diagnostics *source.List, file, resource string) *model.Probe {
+	reject := func(at *yaml.Node, message string) {
+		*diagnostics = append(*diagnostics, diagnostic(source.SeverityError, source.Unsupported, "compose.healthcheck", at, file, resource, "healthcheck", message, "this healthcheck cannot be represented by the local probe runner"))
+	}
+	if node.Kind != yaml.MappingNode {
+		reject(node, "healthcheck must be a mapping")
+		return nil
+	}
+	for i := 0; i < len(node.Content); i += 2 {
+		key, value := node.Content[i].Value, node.Content[i+1]
+		switch key {
+		case "test":
+			if value.Kind != yaml.SequenceNode && (value.Kind != yaml.ScalarNode || value.Tag != "!!str") {
+				reject(value, "healthcheck test must be a command string or array")
+				return nil
+			}
+			if value.Kind == yaml.SequenceNode {
+				if len(value.Content) == 0 {
+					reject(value, "healthcheck command is empty")
+					return nil
+				}
+				for _, arg := range value.Content {
+					if arg.Kind != yaml.ScalarNode || arg.Tag != "!!str" {
+						reject(arg, "healthcheck command arguments must be strings")
+						return nil
+					}
+				}
+				mode := value.Content[0].Value
+				if mode != "CMD" && mode != "CMD-SHELL" && mode != "NONE" || mode == "NONE" && len(value.Content) != 1 || mode != "NONE" && len(value.Content) < 2 {
+					reject(value, "healthcheck array requires CMD, CMD-SHELL or a single NONE")
+					return nil
+				}
+			} else if value.Value == "" {
+				reject(value, "healthcheck command is empty")
+				return nil
+			}
+		case "disable":
+			if value.Tag != "!!bool" {
+				reject(value, "healthcheck disable must be boolean")
+				return nil
+			}
+		case "interval", "timeout", "start_period":
+			duration, err := parseDuration(value.Value)
+			if value.Kind != yaml.ScalarNode || err != nil || duration < 0 || duration%time.Second != 0 || duration/time.Second > 2147483647 || key != "start_period" && duration < time.Second {
+				reject(value, "healthcheck duration must be representable in whole seconds")
+				return nil
+			}
+		case "retries":
+			n, err := strconv.Atoi(value.Value)
+			if value.Kind != yaml.ScalarNode || err != nil || n < 1 || n > 1000 {
+				reject(value, "healthcheck retries must be between 1 and 1000")
+				return nil
+			}
+		default:
+			reject(value, "unsupported healthcheck field")
+			return nil
+		}
+	}
+	if disabled, ok := mapGet(node, "disable"); ok && boolValue(disabled) {
+		return nil
+	}
 	test, ok := mapGet(node, "test")
 	if !ok {
+		reject(node, "healthcheck test is required; image-inherited healthchecks are not implemented")
 		return nil
 	}
 	var args []string
+	if test.Kind == yaml.ScalarNode && test.Tag == "!!str" {
+		args = []string{"CMD-SHELL", test.Value}
+	}
 	disable := false
 	for _, item := range sequence(test) {
 		if item.Value == "NONE" {

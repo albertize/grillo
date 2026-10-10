@@ -25,8 +25,8 @@ var registry = map[string]supportEntry{
 	"services.*.expose":         {source.Supported, "metadata-only exposed ports"},
 	"services.*.volumes":        {source.Supported, "named, anonymous, and project-relative bind volumes"},
 	"services.*.networks":       {source.Supported, "logical network attachments"},
-	"services.*.healthcheck":    {source.Supported, "translated to a liveness probe; runtime restart-on-unhealthy differs from Compose health semantics"},
-	"services.*.depends_on":     {source.Degraded, "startup ordering only, not a readiness guarantee"},
+	"services.*.healthcheck":    {source.Degraded, "health status gates local Service endpoints; unhealthy does not trigger liveness restarts"},
+	"services.*.depends_on":     {source.Supported, "startup ordering and service_healthy gates; completion/restart propagation/optional dependencies are rejected"},
 	"services.*.restart":        {source.Supported, "restart policy"},
 	"services.*.deploy":         {source.Supported, "replicas and representable resource limits"},
 	"services.*.user":           {source.Supported, "container user"},
@@ -72,11 +72,15 @@ var registry = map[string]supportEntry{
 func SupportEntries() []source.RegisteredFeature {
 	entries := make([]source.RegisteredFeature, 0, len(registry))
 	for field, support := range registry {
+		fixtures := []string{"internal/frontend/compose/testdata/full.yaml", "internal/frontend/compose/compile_test.go"}
+		if field == "services.*.depends_on" || field == "services.*.healthcheck" {
+			fixtures = append(fixtures, "internal/frontend/compose/dependencies_test.go", "internal/executor/dependencies_kvm_test.go")
+		}
 		entries = append(entries, source.RegisteredFeature{
 			Format: "compose", Version: "Compose Specification (F2 subset)",
 			Scope: "field", Field: field, Milestone: "F2 (compiler)", State: support.State,
 			Default: "not specified by this registry", Consequence: support.Consequence,
-			Fixtures: []string{"internal/frontend/compose/testdata/full.yaml", "internal/frontend/compose/compile_test.go"},
+			Fixtures: fixtures,
 		})
 	}
 	return entries

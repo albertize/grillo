@@ -10,10 +10,10 @@ const root = dirname(fileURLToPath(import.meta.url));
 const output = resolve(root, '../internal/ui/assets/generated');
 const result = await build({
   absWorkingDir: root,
-  entryPoints: ['src/app.jsx'],
+  entryPoints: { app: 'src/app.jsx', 'theme-init': 'src/theme-init.mjs' },
   bundle: true,
   outdir: output,
-  entryNames: 'app',
+  entryNames: '[name]',
   assetNames: 'fonts/[name]-[hash]',
   format: 'esm',
   target: ['es2022'],
@@ -44,9 +44,17 @@ for (const [path, entry] of Object.entries(lock.packages).sort()) {
 for (const file of (await readdir(resolve(root, 'licenses'))).sort()) notices.push(await readFile(resolve(root, 'licenses', file), 'utf8'));
 const files = new Map(result.outputFiles.map(f => [f.path, f.contents]));
 files.set(resolve(output, 'licenses.txt'), Buffer.from(notices.join('\n')));
+// Explicit user-supplied branding assets only; never embed the whole media tree.
+const iconFiles = ['apple-touch-icon.png', 'favicon.ico', 'favicon.svg', 'g-foglia-32.png', 'g-foglia-64.png', 'icon-192.png', 'icon-512.png'];
+for (const name of iconFiles) files.set(resolve(output, 'icons', name), await readFile(resolve(root, '../media/g-icon', name)));
+files.set(resolve(output, 'site.webmanifest'), Buffer.from(JSON.stringify({
+  name: 'Grillo console', short_name: 'Grillo', start_url: '/', display: 'standalone',
+  theme_color: '#102b35', background_color: '#f0f4f4',
+  icons: [192, 512].map(size => ({ src: `/assets/generated/icons/icon-${size}.png`, sizes: `${size}x${size}`, type: 'image/png', purpose: 'any' })),
+}) + '\n'));
 // Fingerprint the lock and source inputs so Go tests can reject absent assets.
 const digest = createHash('sha256');
-for (const file of ['package.json', 'package-lock.json', 'build.mjs', '.npmrc', ...((await readdir(resolve(root, 'licenses'))).sort().map(n => 'licenses/' + n)), ...((await readdir(resolve(root, 'src'))).filter(n => !n.includes('.test.')).sort().map(n => 'src/' + n))]) {
+for (const file of ['package.json', 'package-lock.json', 'build.mjs', '.npmrc', ...((await readdir(resolve(root, 'licenses'))).sort().map(n => 'licenses/' + n)), ...((await readdir(resolve(root, 'src'))).filter(n => !n.includes('.test.')).sort().map(n => 'src/' + n)), '../internal/ui/assets/index.html', ...iconFiles.map(n => '../media/g-icon/' + n)]) {
   digest.update(file); digest.update(await readFile(resolve(root, file)));
 }
 files.set(resolve(output, 'manifest.json'), Buffer.from(JSON.stringify({ sourceHash: digest.digest('hex'), react: '19.3.0', patternfly: '6.6.1' }) + '\n'));

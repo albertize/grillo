@@ -21,7 +21,8 @@ import (
 	"github.com/albertize/grillo/internal/guestproto"
 )
 
-// AttachedExec is a CLI-only duplex surface, never forwarded by the web bridge.
+// AttachedExec is a private daemon duplex surface. CLI and the authenticated
+// browser-terminal adapter establish their own dedicated Unix connections.
 type AttachedExec interface {
 	ExecAttached(context.Context, string, string, guestproto.ExecRequest, <-chan guestproto.Frame, io.Writer, io.Writer) (int, error)
 }

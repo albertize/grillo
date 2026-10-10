@@ -15,6 +15,10 @@ ADRs explain consequential decisions and preserve the reasoning behind them. Use
 | [0007](0007-controlled-helm-renderer.md) | Controlled official Helm renderer | Proposed |
 | [0008](0008-patternfly-react-console.md) | PatternFly React console (user-requested implementation) | Proposed |
 | [0009](0009-verified-boot-and-private-key-overlay.md) | Verified boot snapshots and private per-boot key overlay | Proposed |
+| [0010](0010-pod-oriented-console.md) | Pod-oriented application console (user-requested OpenShift-like workflow) | Proposed |
+| [0011](0011-browser-terminal-adapter.md) | Authenticated browser Pod Terminal adapter | Proposed |
+| [0013](0013-xterm-browser-terminal.md) | xterm-compatible interactive browser terminal | Proposed |
+| [0012](0012-compose-startup-dependency-gates.md) | Compose startup dependency and health gates | Proposed |
 
 The implementation plan still contains **provisional choices**, not evidence that a
 backend has passed its feasibility gate. An ADR without required hardware

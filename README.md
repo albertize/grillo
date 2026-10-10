@@ -1,55 +1,97 @@
-![Grillo logo](media/Grillo-Logo.png)
+<h1 align="center">
+  <img src="media/grillo-banner.svg" alt="Grillo" width="1024">
+</h1>
 
-# Grillo
+<p align="center"><strong>Local Kubernetes semantics. No Kubernetes required.</strong></p>
 
-**Local Kubernetes semantics. No Kubernetes required.**
+<p align="center">
+  <a href="docs/getting-started.md">Getting started</a> ·
+  <a href="docs/ui.md">Web console</a> ·
+  <a href="docs/compatibility.md">Compatibility</a> ·
+  <a href="docs/progress.md">Project status</a>
+</p>
 
-Grillo runs local applications in hardware-isolated microVMs. Compose projects,
-Kubernetes manifests and Helm charts compile into one application model. One
+Grillo runs local applications in hardware-isolated microVMs. **Compose projects,
+Kubernetes manifests and Helm charts compile into one application model.** One
 Kubernetes Pod becomes one microVM; its containers share localhost.
 
 The goal is Compose-like ergonomics with production-shaped Pod composition,
-service discovery, configuration, storage and probes, without a Kubernetes
-control plane or privileged always-on daemon.
+service discovery, configuration, storage and probes—without a Kubernetes control
+plane, privileged always-on daemon or silent host-container fallback.
 
 ## Status
 
-Grillo has a working experimental runtime on **Linux/amd64 with KVM**. Compose,
-a Kubernetes subset, local/exact-version OCI Helm charts and the web console
-have real integration evidence. There is **no packaged release or supported
-runtime version**; product hardening and release preparation remain unfinished.
-Do not use it as a production security boundary.
+> **Experimental · Linux/amd64 · KVM required**
+>
+> The runtime has real integration evidence, but there is no packaged release or
+> supported runtime version. Product hardening and release preparation remain
+> unfinished. Do not use Grillo as a production security boundary.
 
-See [compatibility](docs/compatibility.md) for supported and degraded semantics,
-and [progress](docs/progress.md) for delivery status and dated evidence.
+[Compatibility](docs/compatibility.md) distinguishes supported, degraded and
+rejected semantics. [Progress](docs/progress.md) records actual checks and blockers,
+not roadmap promises.
+
+## What you can do
+
+- **Apply local applications** from Compose, a Kubernetes subset or local and
+  exact-version OCI Helm charts, without a cluster or kubeconfig.
+- **Inspect and debug Pods** through the CLI and console: logs, events, container
+  exec, an interactive terminal and actual guest/container metrics.
+- **Use application services, configuration and persistent data** with explicit
+  compatibility diagnostics rather than silent approximations.
+- **Keep workloads running independently of the interface.** Closing the CLI or
+  browser does not stop applications; the per-user daemon starts on demand.
+
+## Web console
+
+![Grillo console overview showing the f2 application, Pod readiness, resource inventory and Pod environment memory](media/console/grillo-console.png)
+
+*Overview of the included Compose example. Displayed values are a captured
+snapshot, not benchmark results or performance guarantees.*
+
+The console is Pod-oriented: browse workloads, inspect containers and open their
+logs or terminal. Topology shows **Services only**, with related Pods in the
+inspector. MicroVM details stay in advanced runtime information.
+
+- **Interactive terminal:** direct keyboard input, ANSI colors, alternate screens
+  and real PTY resize. [Real Chrome/KVM evidence](docs/experiments/t23-xterm-terminal.md)
+  includes editing and saving a file with `vi`; complete OpenShift parity is not claimed.
+- **System / Light / Dark:** select a theme manually or follow the browser's
+  color scheme automatically.
+- **Local by default:** embedded assets, loopback binding and a short-lived,
+  one-use bootstrap URL. No CDN or runtime Node service.
+
+See the [console guide](docs/ui.md) for authentication, workflows and limits.
 
 ## Start here
 
-Build from source using **Go 1.27.x**, exact selected patch **1.27.2**
-(`.go-version`), Node **24.18.0** / npm **11.16.0**, Python 3 for toolchain policy,
-and Make. No automatic Go upgrade to another release family:
-
-```sh
-make ui-deps          # explicit locked frontend dependency download
-make build
-./bin/grillo version
-./bin/grillo version --json # development build identity
-```
-
-For an explicit private Go-only setup without replacing system Go, see the
+Run from a source checkout as your normal user. Build prerequisites are
+**Go 1.27.2** (selected patch of Go 1.27.x in `.go-version`), **Node 24.18.0 /
+npm 11.16.0**, Python 3 and Make. No automatic Go release-family upgrade.
+For a private Go-only setup without replacing system Go, see the
 [script guide](scripts/README.md).
 
-Building the binaries is not enough to run workloads. You also need QEMU,
-virtiofsd, rootless networking tools and locally prepared guest artifacts.
-Follow [getting started](docs/getting-started.md) to set explicit development
-asset paths and run the read-only `doctor` before the first `up`.
-Node/npm are build tools, not runtime dependencies of the compiled binary.
-For a local fixture/key-free staged prefix and its standalone examples, see
-[experimental runtime layout](docs/runtime-layout.md). Actual moved/read-only
-Compose, Helm and UI gates now pass without checkout/build tools; this is not a
-supported or redistribution-cleared release.
+```sh
+make ui-deps          # explicit integrity-locked frontend download
+make build
+./bin/grillo version --json
+```
 
-Once the host and guest are ready, run the included Compose example:
+**Building binaries does not prepare a runnable host.** You also need KVM/vsock
+access, QEMU, virtiofsd, rootless networking tools and verified guest artifacts.
+Follow [getting started](docs/getting-started.md) to provision these explicitly
+and build the guest. Then, in Bash:
+
+```sh
+source scripts/prepare_env.sh
+./bin/grillo doctor --verbose
+```
+
+The script configures absolute development paths and PATH; it does not install
+or build prerequisites. `doctor` is read-only. Resolve reported blockers before
+running workloads. Node/npm are build tools, not compiled-runtime dependencies.
+
+Once the host and guest are ready:
 
 ```sh
 ./bin/grillo plan examples/f2-compose/compose.yaml
@@ -58,13 +100,16 @@ Once the host and guest are ready, run the included Compose example:
 ./bin/grillo ui --port 0
 ```
 
-Open the printed console URL locally. It contains a short-lived, one-use
-credential; do not share it. Closing the browser or CLI does not stop workloads.
+Open the printed console URL locally; **do not share its bootstrap credential**.
+See the [Compose example](examples/f2-compose/README.md) for its services and
+persistence. For a fixture/key-free staged prefix, standalone examples and actual
+moved/read-only runtime gates, see [runtime layout](docs/runtime-layout.md).
+Local staging is not a supported or redistribution-cleared release.
 
 ## Everyday use
 
-The examples below use repository-relative source paths. Runtime assets use
-absolute development overrides or installed-prefix discovery:
+These examples use repository-relative source paths; runtime artifacts use
+absolute development overrides or installed-prefix discovery.
 
 ```sh
 ./bin/grillo ps
@@ -74,12 +119,14 @@ absolute development overrides or installed-prefix discovery:
 ./bin/grillo down f2
 ```
 
-`down` preserves managed volumes. `down --volumes f2` explicitly removes owned
-managed data, never host bind paths. Reapplying the same source is idempotent;
-changed templates use Recreate, not Kubernetes rolling updates.
+`down` stops the application but preserves managed volumes. **`down --volumes f2`
+explicitly deletes owned managed data**, never host bind paths. Reapplying the
+same source is idempotent; changed templates use Recreate, not rolling updates.
 
-For Helm, explicitly provision **Helm v4.2.2** and set `GRILLO_HELM_BINARY`
-to its absolute executable path, then:
+### Helm
+
+Explicitly provision **Helm v4.2.2** and set `GRILLO_HELM_BINARY` to its absolute
+executable path before using development charts:
 
 ```sh
 ./bin/grillo plan examples/helm/demo --release demo
@@ -87,33 +134,31 @@ to its absolute executable path, then:
 ./bin/grillo down demo
 ```
 
-See [Helm examples and OCI charts](examples/helm/README.md) for values overrides,
-explicit fetch consent and renderer restrictions. No cluster or kubeconfig is
-needed. The [Compose example](examples/f2-compose/README.md) explains persistence.
+[Helm examples](examples/helm/README.md) cover values, OCI charts, explicit fetch
+consent and renderer restrictions.
 
 ## Design choices and limits
 
-- **Application intent first.** Frontends compile into a versioned IR; they
-  never control VMMs directly. CLI and UI use the same private local API.
-- **One Pod, one microVM.** QEMU `microvm`, virtiofsd, a Go guest agent and
-  guest-side runc provide the current execution path.
-- **Rootless host operation.** Ordinary operations use your account, without
-  automatic sudo. KVM and namespace access still require a suitable host.
-- **Explicit compatibility.** Unsupported fields block execution; accepted
-  downgrades require code-specific consent. Parsing YAML is not proof of parity.
-- **Explicit host sharing.** Bind mounts deliberately expose selected host
-  data. Host-originated virtiofs notifications are degraded; use polling.
-- **Small runtime.** Go is standard-library-first. The browser uses embedded
-  React/PatternFly assets, with no CDN or runtime Node service.
+- **One model, shared runtime:** frontends compile into a versioned IR and never
+  control VMMs directly. CLI and UI use the same private local API.
+- **One Pod, one microVM:** the current execution path uses QEMU `microvm`,
+  virtiofsd, a Go guest agent and guest-side runc.
+- **Rootless host operations:** no automatic sudo; KVM and namespace access
+  still require a suitable host. On the tested Fedora policy, SELinux Enforcing
+  blocks pasta helpers. Grillo does not change host security policy.
+- **Explicit compatibility:** unsupported fields block execution; accepted
+  downgrades require code-specific consent. Compose `depends_on` supports
+  started/healthy startup gates, not all dependency conditions or ongoing coupling.
+- **Deliberate sharing:** bind mounts expose selected host data. Host-originated
+  virtiofs notifications are degraded; use polling.
+- **Honest observations:** missing metrics are unavailable, not invented.
+  Container usage, guest environment accounting and VMM RSS remain separate.
+  Heavy log output can be lost with an explicit guest-retention gap.
 
-The initial target does not include macOS/Windows runtime hosts, GPU, multi-node
-execution, operators/CRDs, StatefulSet/Job, full browser TTY or TLS/CA setup.
-Container stdout/stderr reaches a bounded retained spool; heavy output can be
-lost with an explicit guest-retention gap. CLI stdin/TTY/resize, real guest/cgroup
-counters and verified private boot snapshots are implemented; see
-[T24 evidence and remaining gates](docs/experiments/t24-interactive-metrics-artifacts.md).
-The console labels missing metrics instead of inventing them. On the tested Fedora
-policy, SELinux Enforcing blocks pasta helpers; Grillo does not change policy.
+No macOS/Windows runtime hosts, GPU, multi-node execution, operators/CRDs,
+StatefulSet/Job or TLS/CA setup are claimed. See the
+[compatibility matrix](docs/compatibility.md) and
+[hardening evidence and remaining gates](docs/experiments/t24-interactive-metrics-artifacts.md).
 
 Hardware isolation is not absolute security. KVM, the VMM, guest, helpers,
 filesystem sharing and parsers remain security-critical. Startup and memory
@@ -121,28 +166,33 @@ objectives are not performance guarantees.
 
 ## Guides
 
-- [Getting started](docs/getting-started.md): host prerequisites, guest build,
-  first application and troubleshooting.
-- [Architecture](docs/architecture.md): runtime components, lifetime, storage
-  and networking boundaries.
-- [Web console](docs/ui.md): views, authentication, exec and unavailable data.
-- [Host evidence and support boundaries](docs/host-support.md): tested scopes,
-  prerequisites, artifact/notices limitations and safe reporting.
-- [Compatibility](docs/compatibility.md): Compose, Kubernetes and Helm semantics.
-- [Testing and development](docs/testing.md): routine checks and real gates.
-- [Local API](api/local-api.md) and [guest protocol](api/guest-protocol.md): contracts.
-- [Contributing](CONTRIBUTING.md) and [security policy](SECURITY.md).
+| Start with | For |
+| --- | --- |
+| [Getting started](docs/getting-started.md) | Host prerequisites, guest build, first application and troubleshooting |
+| [Web console](docs/ui.md) | Views, themes, authentication, logs and terminal |
+| [Compatibility](docs/compatibility.md) | Compose, Kubernetes and Helm semantics |
+| [Architecture](docs/architecture.md) | Runtime, lifetime, storage and networking boundaries |
+| [Host evidence](docs/host-support.md) | Tested scopes, support boundaries and safe reporting |
+| [Runtime layout](docs/runtime-layout.md) | Experimental runtime-only staging |
+| [Testing](docs/testing.md) | Routine checks and real integration gates |
+| [Local API](api/local-api.md) · [Guest protocol](api/guest-protocol.md) | Runtime contracts |
+| [Contributing](CONTRIBUTING.md) · [Security policy](SECURITY.md) | Contributions and vulnerability reporting |
 
 For design and delivery work, read the [specification](grillo-project-specification.md),
 [implementation plan](IMPLEMENTATION_PLAN.md), [ADRs](docs/adr/README.md) and
-[current progress](docs/progress.md). Historical reports are linked from progress,
-not prerequisites for everyday use.
+[current progress](docs/progress.md). Historical reports are evidence, not
+prerequisites for everyday use.
 
 ## Name and license
 
+<p align="center">
+  <img src="media/Whispering Cricket and Ship’s Wheel.png" alt="A cricket beside a smiling ship's wheel" height="280">
+</p>
+
 *Grillo* means “cricket” in Italian and evokes the Talking Cricket from Pinocchio:
-a small companion that points out incompatibilities. The name remains provisional
-pending naming and trademark review.
+a small companion that points out incompatibilities. The leaf-G icon identifies
+the console; the illustration keeps that companion in view. The name remains
+provisional pending naming and trademark review.
 
 Original contributions are [Apache-2.0](LICENSE). See [NOTICE](NOTICE) for
 attribution; external tools, guest components, fonts and icons retain their own

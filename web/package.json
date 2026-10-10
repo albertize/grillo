@@ -5,7 +5,9 @@
   "license": "Apache-2.0",
   "type": "module",
   "packageManager": "npm@11.16.0",
-  "engines": { "node": "24.x" },
+  "engines": {
+    "node": "24.x"
+  },
   "scripts": {
     "build": "node build.mjs",
     "check": "node build.mjs --check",
@@ -15,8 +17,12 @@
     "@patternfly/react-core": "6.6.1",
     "@patternfly/react-icons": "6.6.1",
     "@patternfly/react-table": "6.6.1",
+    "@xterm/addon-fit": "0.10.0",
+    "@xterm/xterm": "5.5.0",
     "react": "19.3.0",
     "react-dom": "19.3.0"
   },
-  "devDependencies": { "esbuild": "0.28.2" }
+  "devDependencies": {
+    "esbuild": "0.28.2"
+  }
 }

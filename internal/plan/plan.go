@@ -122,8 +122,59 @@ func DesiredSandboxes(app model.Application) ([]Descriptor, error) {
 			})
 		}
 	}
-	sort.Slice(descriptors, func(i, j int) bool { return descriptors[i].ID < descriptors[j].ID })
+	ranks, err := workloadStartupOrder(app)
+	if err != nil {
+		return nil, err
+	}
+	sort.Slice(descriptors, func(i, j int) bool {
+		if ranks[descriptors[i].Workload] != ranks[descriptors[j].Workload] {
+			return ranks[descriptors[i].Workload] < ranks[descriptors[j].Workload]
+		}
+		return descriptors[i].ID < descriptors[j].ID
+	})
 	return descriptors, nil
+}
+
+// Pure, deterministic dependency ordering; all dependency replicas precede a consumer.
+func workloadStartupOrder(app model.Application) (map[string]int, error) {
+	workloads := map[string]model.Workload{}
+	var ids []string
+	for _, workload := range app.Workloads {
+		workloads[workload.ID] = workload
+		ids = append(ids, workload.ID)
+	}
+	sort.Strings(ids)
+	colors, ranks := map[string]int{}, map[string]int{}
+	var visit func(string) error
+	visit = func(id string) error {
+		if colors[id] == 1 {
+			return fmt.Errorf("plan: cyclic startup dependency")
+		}
+		if colors[id] == 2 {
+			return nil
+		}
+		workload, ok := workloads[id]
+		if !ok {
+			return fmt.Errorf("plan: missing startup dependency")
+		}
+		colors[id] = 1
+		deps := append([]string(nil), workload.DependsOn...)
+		sort.Strings(deps)
+		for _, dep := range deps {
+			if err := visit(dep); err != nil {
+				return err
+			}
+		}
+		colors[id] = 2
+		ranks[id] = len(ranks)
+		return nil
+	}
+	for _, id := range ids {
+		if err := visit(id); err != nil {
+			return nil, err
+		}
+	}
+	return ranks, nil
 }
 
 // Build diffs desired against observed and returns an ordered action list.

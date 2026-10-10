@@ -106,12 +106,14 @@
       "scope": "field",
       "field": "services.*.depends_on",
       "milestone": "F2 (compiler)",
-      "state": "DEGRADED",
+      "state": "SUPPORTED",
       "default": "not specified by this registry",
-      "consequence": "startup ordering only, not a readiness guarantee",
+      "consequence": "startup ordering and service_healthy gates; completion/restart propagation/optional dependencies are rejected",
       "fixtures": [
         "internal/frontend/compose/testdata/full.yaml",
-        "internal/frontend/compose/compile_test.go"
+        "internal/frontend/compose/compile_test.go",
+        "internal/frontend/compose/dependencies_test.go",
+        "internal/executor/dependencies_kvm_test.go"
       ]
     },
     {
@@ -344,12 +346,14 @@
       "scope": "field",
       "field": "services.*.healthcheck",
       "milestone": "F2 (compiler)",
-      "state": "SUPPORTED",
+      "state": "DEGRADED",
       "default": "not specified by this registry",
-      "consequence": "translated to a liveness probe; runtime restart-on-unhealthy differs from Compose health semantics",
+      "consequence": "health status gates local Service endpoints; unhealthy does not trigger liveness restarts",
       "fixtures": [
         "internal/frontend/compose/testdata/full.yaml",
-        "internal/frontend/compose/compile_test.go"
+        "internal/frontend/compose/compile_test.go",
+        "internal/frontend/compose/dependencies_test.go",
+        "internal/executor/dependencies_kvm_test.go"
       ]
     },
     {

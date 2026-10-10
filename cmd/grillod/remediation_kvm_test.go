@@ -33,11 +33,14 @@ import (
 // executor fixture. All data, sockets, images and process logs are test-owned.
 func TestKVMDaemonRemediation(t *testing.T) { runDaemonGate(t, false) }
 
-// TestKVMDaemonUI adds a real Firefox surface to the actual native daemon gate.
+// TestKVMDaemonUI adds an isolated real browser to the actual daemon gate.
 func TestKVMDaemonUI(t *testing.T) {
-	for _, tool := range []string{"firefox", "node"} {
-		if _, err := exec.LookPath(tool); err != nil {
-			t.Skipf("browser prerequisite missing: %s", tool)
+	if _, err := exec.LookPath("node"); err != nil {
+		t.Skip("browser prerequisite missing: node")
+	}
+	if _, err := exec.LookPath("google-chrome"); err != nil {
+		if _, err := exec.LookPath("firefox"); err != nil {
+			t.Skip("browser prerequisite missing: Chrome or Firefox")
 		}
 	}
 	runDaemonGate(t, true)
@@ -421,7 +424,11 @@ func runDaemonGate(t *testing.T, browser bool) {
 					t.Fatal("CLI did not report assigned UI port")
 				}
 				cmd := exec.CommandContext(ctx, "node", filepath.Join(root, "scripts/ui-browser-smoke.mjs"))
-				cmd.Env = append(os.Environ(), "GRILLO_UI_TEST_URL="+uiURL, "GRILLO_UI_TEST_LIVE=1")
+				browserName := "firefox"
+				if _, err := exec.LookPath("google-chrome"); err == nil {
+					browserName = "chrome"
+				}
+				cmd.Env = append(os.Environ(), "GRILLO_UI_TEST_URL="+uiURL, "GRILLO_UI_TEST_LIVE=1", "GRILLO_UI_BROWSER="+browserName)
 				out, err := cmd.CombinedOutput()
 				if err != nil {
 					t.Fatalf("real browser/daemon gate: %v %s", err, out)

@@ -66,15 +66,25 @@ type Workload struct {
 
 	Replicas int32 `json:"replicas"`
 
-	// DependsOn is an experimental ordering hint understood only by the native
-	// JSON manifest. It is not a Kubernetes or Compose concept.
+	// DependsOn orders workload startup (including Compose service_started).
 	DependsOn []string `json:"dependsOn,omitempty"`
+	// DependencyConditions adds a readiness gate to selected startup dependencies.
+	// Absent conditions mean service_started; conditions never become liveness.
+	DependencyConditions map[string]DependencyCondition `json:"dependencyConditions,omitempty"`
 
 	Template         SandboxTemplate   `json:"template"`
 	RestartPolicy    RestartPolicy     `json:"restartPolicy,omitempty"`
 	UpdatePolicy     *UpdatePolicy     `json:"updatePolicy,omitempty"`
 	CompletionPolicy *CompletionPolicy `json:"completionPolicy,omitempty"`
 }
+
+// DependencyCondition is a startup-only gate, not a continuous lifecycle link.
+type DependencyCondition string
+
+const (
+	DependencyStarted DependencyCondition = "service_started"
+	DependencyHealthy DependencyCondition = "service_healthy"
+)
 
 // UpdatePolicy controls how replicas are replaced.
 type UpdatePolicy struct {

@@ -96,7 +96,12 @@ configuration, inferred topology and non-TTY exec. The UI cannot manufacture
 original compiler diagnostics or unavailable usage. Actual guest `/proc` and
 container cgroup counters now carry collection time/provenance; they are not
 host attestation. Interactive CLI exec uses a dedicated authenticated channel;
-browser exec remains non-TTY. Production boot inputs use verified private snapshots
+captured browser Exec remains non-TTY. Pod Terminal adapts that same private Unix
+attach client to authenticated output/input/resize/close HTTP requests, with bounded
+sessions and xterm-compatible rendering ([contract](../api/local-api.md#browser-terminal-adapter-loopback-bridge-only)).
+[ADR 0013](adr/0013-xterm-browser-terminal.md) records the locked emulator,
+style-only CSP nonce and disabled workload-driven host effects.
+Production boot inputs use verified private snapshots
 and fresh credential overlays ([ADR 0009](adr/0009-verified-boot-and-private-key-overlay.md)). Container stdout/stderr
 is drained into a bounded guest-wide ring and polled into the daemon spool;
 retention gaps are explicit and do not block workloads. See the

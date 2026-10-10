@@ -1,0 +1,75 @@
+/* SPDX-License-Identifier: Apache-2.0 */
+.gr-theme-picker { display: flex; align-items: center; gap: .5rem; }
+.gr-theme-picker label { color: #d4e3e6; font-size: 12px; }
+.gr-theme-picker .pf-v6-c-form-control { width: 7rem; }
+@media (max-width: 767px) {
+  .gr-theme-picker label { display: none; }
+  .gr-theme-picker .pf-v6-c-form-control { width: 5.5rem; }
+}
+@media (prefers-color-scheme: dark) {
+  html:not([data-theme]) { background: #171f25; color-scheme: dark; }
+}
+/* PatternFly handles its components through the root theme class. These rules
+   cover Grillo's custom panels, SVG and text without overriding light mode. */
+.pf-v6-theme-dark .gr-page {
+  --gr-ink: #e6eff2; --gr-muted: #b6cad0; --gr-line: #3b4e58; --gr-canvas: #171f25;
+  --pf-t--global--text--color--brand--default: #7de0bf;
+  --pf-t--global--text--color--brand--hover: #a8efd7;
+  --pf-t--global--text--color--brand--clicked: #a8efd7;
+  --pf-t--global--icon--color--brand--default: #7de0bf;
+  --pf-t--global--icon--color--brand--hover: #a8efd7;
+  --pf-t--global--icon--color--brand--clicked: #a8efd7;
+  --pf-t--global--text--color--link--default: #7de0bf;
+  --pf-t--global--text--color--link--hover: #a8efd7;
+  --pf-t--global--border--color--brand--default: #7de0bf;
+  --pf-t--global--border--color--brand--hover: #a8efd7;
+  --pf-v6-c-tabs__item--m-current__link--after--BorderColor: #7de0bf;
+}
+.pf-v6-theme-dark .gr-page .pf-v6-c-tabs { --pf-v6-c-tabs__item--m-current__link--after--BorderColor: #7de0bf; }
+.pf-v6-theme-dark .gr-page .pf-v6-c-page__main-section.pf-m-secondary { background: #171f25; }
+.pf-v6-theme-dark .gr-page .pf-v6-c-card,
+.pf-v6-theme-dark .gr-topology-shell,
+.pf-v6-theme-dark .gr-topology-detail { background: #222b32; border-color: #3b4e58; }
+.pf-v6-theme-dark .gr-page .pf-v6-c-card__header,
+.pf-v6-theme-dark .gr-page-heading,
+.pf-v6-theme-dark .gr-context-toolbar,
+.pf-v6-theme-dark .gr-advanced,
+.pf-v6-theme-dark .gr-inventory-row,
+.pf-v6-theme-dark .gr-route,
+.pf-v6-theme-dark .gr-activity,
+.pf-v6-theme-dark .gr-container-details,
+.pf-v6-theme-dark .gr-topology-toolbar,
+.pf-v6-theme-dark .gr-canvas-controls,
+.pf-v6-theme-dark .gr-detail-heading,
+.pf-v6-theme-dark .gr-resource-row,
+.pf-v6-theme-dark .gr-topology-caption { border-color: #3b4e58; }
+.pf-v6-theme-dark .gr-title-row h1,
+.pf-v6-theme-dark .gr-page .pf-v6-c-card__title,
+.pf-v6-theme-dark .gr-detail-list dt,
+.pf-v6-theme-dark .gr-summary-number { color: #e6eff2; }
+.pf-v6-theme-dark .gr-muted,
+.pf-v6-theme-dark .gr-page-eyebrow,
+.pf-v6-theme-dark .gr-subtitle,
+.pf-v6-theme-dark .gr-context-label,
+.pf-v6-theme-dark .gr-detail-list dd,
+.pf-v6-theme-dark .gr-inventory-row svg,
+.pf-v6-theme-dark .gr-canvas-controls span,
+.pf-v6-theme-dark .gr-topology-prompt p,
+.pf-v6-theme-dark .gr-topology-caption,
+.pf-v6-theme-dark .gr-topology-empty { color: #b6cad0; }
+.pf-v6-theme-dark .gr-topology-canvas { background: #171f25; }
+.pf-v6-theme-dark .gr-topology rect { fill: #222b32; stroke: #5f7a85; }
+.pf-v6-theme-dark .gr-graph-node:hover rect { fill: #263d40; stroke: #7de0bf; }
+.pf-v6-theme-dark .gr-graph-node:focus-visible rect,
+.pf-v6-theme-dark .gr-node-selected rect { fill: #204b45; stroke: #7de0bf; }
+.pf-v6-theme-dark .gr-node-ring { fill: #222b32; stroke: #7de0bf; }
+.pf-v6-theme-dark .gr-node-symbol,
+.pf-v6-theme-dark .gr-graph-name,
+.pf-v6-theme-dark .gr-gauge-value { fill: #e6eff2; }
+.pf-v6-theme-dark .gr-graph-heading,
+.pf-v6-theme-dark .gr-graph-detail,
+.pf-v6-theme-dark .gr-gauge-caption { fill: #b6cad0; }
+.pf-v6-theme-dark .gr-gauge-track { stroke: #3b4e58; }
+.pf-v6-theme-dark .gr-gauge-fill { stroke: #7de0bf; }
+.pf-v6-theme-dark .gr-ready { color: #7de0bf; }
+.pf-v6-theme-dark .gr-output { background: #10232d; color: #d5e7ec; }

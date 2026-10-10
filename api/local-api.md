@@ -80,7 +80,35 @@ At most 16 API attachments are active; queues contain at most 16 frames, writes
 have five-second deadlines and sessions last at most one hour. Disconnect,
 request cancellation and daemon shutdown close the attachment and cancel the
 exec process, not its workload. Failure details are generic. This endpoint is
-not exposed by the browser bridge; browser exec remains bounded/non-TTY.
+not directly exposed to HTTP browsers. The bridge uses the same private Unix
+client through its authenticated browser-terminal adapter below; ordinary
+browser `/v1/exec` remains bounded/non-TTY.
+
+### Browser terminal adapter (loopback bridge only)
+
+- `POST /v1/terminal`: strict JSON `{application,container,rows,cols}` (32 KiB).
+  Runs fixed guest `/bin/sh` with stdin and TTY. Rows are 1–300, columns 1–500.
+  Streams SSE `data:` JSON objects: `session` with a random ID, `output` with
+  base64 bytes, then `exit` with explicit `exitCode`, or a sanitized `error`.
+  An interrupted stream is never treated as exit success.
+- `POST /v1/terminal/{id}/input`: `{data}` for 1–8192 UTF-8 stdin bytes,
+  `{bytes}` for strict base64 encoding of 1–8192 raw stdin bytes (legacy mouse
+  input), or `{rows,cols}` for resize; mixed/unknown fields are rejected. The bounded 16-frame input queue
+  returns 429 instead of silently dropping input.
+- `POST /v1/terminal/{id}/close`: `{}` cancels the attached shell, idempotently.
+
+Every operation requires the private bridge cookie, exact same Origin and JSON
+content type. IDs scope a session but never replace authentication. At most four
+terminal/captured-exec sessions share bridge slots. Each terminal is bound to its
+output request, with a 30-minute deadline, 16 MiB aggregate output and five-second
+write deadlines. Output chunks are at most 8192 bytes. Disconnect, leaving the tab
+or bridge shutdown cancels the shell through the Unix/guest attach path, without
+stopping the Pod. There is no host shell, path API or secret reveal. Browser
+rendering uses xterm.js with bounded scrollback and parser-write backpressure.
+The fixed guest command sets `TERM=xterm-256color` and starts `/bin/sh -i`.
+OSC host title/link/clipboard and window effects are disabled. Dynamic terminal
+styles have fresh per-document style-only CSP nonces; inline scripts remain
+forbidden. See [ADR 0013](../docs/adr/0013-xterm-browser-terminal.md).
 
 ## Public console snapshot
 
@@ -103,7 +131,8 @@ This is an allowlist, not a redacted serialization of private IR/guest specs:
 no config/env values, probe commands/headers, Secret contents/versions or private
 host bind/guest paths are present. Original compiler diagnostics are not retained;
 that limitation is explicit. The [UI bridge](../docs/ui.md) consumes this same
-API and exposes bounded authenticated non-TTY exec and cursor-preserving events.
+API and exposes bounded authenticated non-TTY exec, interactive Pod Terminal
+and cursor-preserving events.
 Workload output deliberately printed by an application is not secret-redacted.
 
 ## Asynchronous operations

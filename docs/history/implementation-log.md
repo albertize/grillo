@@ -6,6 +6,231 @@ superseded summaries. They are not current support claims; use
 [current progress](../progress.md) and [compatibility](../compatibility.md).
 
 
+## Archived xterm-compatible browser terminal delivery
+
+- **Task:** T23/T24 — xterm-compatible interactive browser terminal.
+- **Status:** DONE for bounded emulator/PTY/vi workflow; T24/D0 overall BLOCKED.
+- **Dependencies verified:** Authenticated bridge and real guest PTY/resize/
+  cancellation, embedded pipeline and exact MIT xterm/fit pins.
+- **Files and contracts changed:** Terminal helpers/component, CSS, npm integrity
+  lock, bridge HTML style nonce, interactive guest shell/TERM and bounded binary
+  input; unit/security/browser tests and guides. No guest-protocol/IR changes.
+- **Decisions/ADRs:** [0013](../adr/0013-xterm-browser-terminal.md), xterm 5.5.0/
+  fit 0.10.0, scoped style-only nonce with no unsafe-inline, script permission
+  or global DOM patch; OSC host effects disabled.
+- **Tests run:** Clean-Helm `make check` PASS (18 frontend tests, build/fingerprint,
+  formatting, vet, Go/script/race/binaries/modules); fixture Chrome browser PASS;
+  actual Chrome/daemon/rebuilt guest/KVM `make test-ui` PASS, 37.65 seconds;
+  npm audit zero reported advisories; syntax/Markdown links/diff PASS.
+- **Tests NOT run:** Firefox unavailable; exhaustive terminal/Unicode/IME/
+  accessibility/mouse/throughput/long-idle and T24 campaigns outside scope.
+- **Evidence:** [Actual environment/results/failures](../experiments/t23-xterm-terminal.md):
+  PTY/TERM, rows and columns, colors/alternate screen/CJK display, actual vi
+  insert/native Escape/save/quit and saved contents, native Ctrl+C/resumed shell,
+  shell/child cleanup and unchanged Pod VMM PIDs. Not a benchmark sample.
+  Initial xterm 6 strict-resize/CSP trials rejected; first vi artificial-paste
+  timing failed and was corrected before successful reruns.
+- **Limitations/next task:** No reconnect/replay or full OpenShift/app/browser/
+  Unicode parity; binary mouse is transport unit evidence only. Old bridges
+  require restart; old daemons must reload replaced guest artifact manifests
+  without stopping Pods. Firefox/IME/accessibility/long-idle and future strict-CSP
+  upgrades, exit outcomes and T24/D0 hardening remain open; Compose gates unchanged.
+
+## Archived supplied icons and System/Light/Dark delivery
+
+- **Task:** T23/T24 — supplied console icons and System/Light/Dark theme.
+- **Status:** DONE for the bounded presentation change; T24/D0 overall BLOCKED.
+- **Dependencies verified:** Existing React/PatternFly embedded pipeline, T23
+  bridge/bootstrap/CSP and isolated browser harness; user-supplied icon files.
+- **Files and contracts changed:** `web/build.mjs`, theme helpers/picker/styles,
+  masthead, embedded HTML, static favicon alias/MIME, asset/browser tests and guides.
+  Explicit seven-file whitelist/fingerprints and per-origin non-secret preference
+  with safe storage denial. No runtime/IR changes.
+- **Decisions/ADRs:** Existing [ADR 0008](../adr/0008-patternfly-react-console.md);
+  no new dependency, inline code or offline/PWA guarantee in that delivery.
+- **Tests run:** Clean-Helm-environment `make check` PASS (18 frontend tests, Go/
+  script/race/build/module checks); real isolated Chrome desktop/mobile smoke PASS;
+  Node syntax, Markdown links and diff checks PASS. Focused-node dark-fill assertion
+  initially failed; corrected to preserve focus/hover semantics and reruns passed.
+- **Tests NOT run:** Firefox unavailable; KVM not rerun for presentation-only changes;
+  complete accessibility/contrast and T24 campaigns outside scope.
+- **Evidence:** [Branding/theme report](../experiments/t23-console-branding-theme.md),
+  with dark screenshots inspected under `/tmp`, live browser scheme changes,
+  explicit overrides, reload persistence and CSP/overflow checks. Not hardware
+  or benchmark evidence.
+- **Limitations/next task:** Preferences per bridge origin; no persistence with
+  blocked storage; restart old bridges for new assets. Broader Firefox/visual/
+  accessibility verification and existing runtime/security/clean-host gates open.
+
+## Archived browser Terminal and Compose startup gates delivery
+
+- **Task:** T23/T24 — browser Pod Terminal; T17/T19/T24 — Compose startup gates.
+- **Status:** DONE for the bounded stdin/PTY/resize surface and started/healthy
+  dependency contracts; T24/D0 overall remain BLOCKED. Completion/restart/optional
+  dependency semantics and full terminal emulation are not claimed.
+- **Dependencies verified:** Existing T15/T23 Unix/guest attach with cancellation;
+  public Pod targets; T17/T19 model/planner/executor and actual health observations.
+- **Files and contracts changed:** `internal/ui/terminal*.go`, bridge routes, browser
+  tests, `web/src/terminal.*`, Pod Terminal integration; typed IR dependency conditions,
+  pure validation/planner ordering, executor gates and Compose health parsing/tests.
+  Regenerated compatibility registry, guides/API docs, bounded real-KVM test target.
+- **Decisions/ADRs:** [0011](../adr/0011-browser-terminal-adapter.md) adapts the existing
+  private attach client through cookie/Origin/JSON-protected bounded HTTP streams;
+  [0012](../adr/0012-compose-startup-dependency-gates.md) replaces alphabetical planning
+  and restart-on-unhealthy with real startup gates and readiness health. No new
+  dependencies, downloads, privilege changes or host shell execution.
+- **Tests run:** Linux/amd64 / Go 1.27.2: clean-Helm-environment `make check` PASS;
+  `make test-ui-browser` Chrome PASS / Firefox SKIP (missing executable);
+  `make test-ui` real Chrome + rebuilt guest + actual daemon/KVM PASS;
+  `make test-compose-dependencies` real rebuilt-guest KVM PASS. Node syntax and diff
+  checks PASS. Initial Chrome preload observer, dependency validation, virtiofsd
+  socket path, registry consistency and stale-asset failures were corrected;
+  all are preserved in the [report](../experiments/t24-browser-terminal-compose-dependencies.md).
+- **Tests NOT run and why:** Firefox missing; extended advisory/fuzz/clean-host/hosted
+  and throughput/idle campaigns outside this bounded change. No full parity claim.
+- **Integration/benchmark evidence:** [Actual commands/environment/results](../experiments/t24-browser-terminal-compose-dependencies.md):
+  private second Chrome profile; real PTY/stdin/resize/Ctrl+C; shell/child cleanup
+  and Pod lifetime; unhealthy dependency blocks consumer, successful probe releases
+  it, dependency PID unchanged. Gate durations are not benchmark samples.
+- **Known limitations:** Bounded text-only VT subset, no full-screen/color/wide-character
+  emulation or reconnect/replay. Shell-less images fail explicitly. `depends_on`
+  supports started/healthy only; completed-successfully/update-restart/optional
+  dependencies are rejected. Health endpoint filtering and warm-up initial delay
+  require `compose.degraded` consent; whole-second durations, no image inheritance
+  or start_interval. Consumers are not continuously coupled after startup.
+- **Next task:** Implement reliable primary-container exit outcomes before completion
+  gates; then explicit-update restart/optional dependency contracts and richer terminal
+  emulation. Retain T24/D0 security/delivery/clean-host blockers. Earlier Pod-oriented
+  delivery is preserved below.
+
+## Archived T23/T24 initial Pod-oriented console delivery
+
+- **Task:** T23/T24 — Pod-oriented OpenShift-like console, first bounded slice.
+- **Status:** BLOCKED for actual browser verification and interactive Terminal;
+  navigation and Pod detail implementation available. T24/D0 remain BLOCKED.
+- **Dependencies verified:** T15/T22/T23 recorded delivery; existing public
+  workload/Pod projections, exact log resource IDs, bounded daemon events and
+  guest/container metrics. No runtime contracts or auth boundaries changed.
+- **Files and contracts changed:** `web/src/app.jsx`, `topology.jsx`, `style.css`,
+  presentation helpers/tests and browser smoke; console/frontend guides and
+  ADR index. Home/Workloads/Networking/Storage/Observe grouping, separate resource
+  pages, Pod filters/sorting and Details/Logs/Terminal/Events/Metrics workflow.
+  MicroVM/backend/allocation/accounting are secondary advanced information.
+- **Decisions/ADRs:** [ADR 0010](../adr/0010-pod-oriented-console.md) records the
+  user-supplied OpenShift 4.22 analysis as a design reference, not API parity.
+  Services-only topology remains; no fake cluster menus, YAML or mutations.
+- **Tests run:** Linux/amd64:
+  `env -u GRILLO_HELM_BINARY PATH=/usr/local/go/bin:$PATH make check` PASS
+  after correcting an initial frontend syntax failure (missing object comma).
+  Frontend 13 tests, deterministic asset verification, fmt/vet/unit/script/race,
+  builds and module audit PASS. `node --check scripts/ui-browser-smoke.mjs` PASS;
+  `git diff --check` PASS. `PATH=/usr/local/go/bin:$PATH make test-ui-browser`
+  attempted: SKIP because Firefox is missing, not a browser PASS.
+- **Tests NOT run and why:** Actual browser interactions/visual checks blocked
+  by missing Firefox. KVM/guest rebuild/advisory/hosted/clean-host campaigns are
+  outside this UI-only change. No hardware or browser Terminal evidence added.
+- **Integration/benchmark evidence:** None added; prior bounded delivery and its
+  failed inherited-Helm check are preserved below.
+- **Known limitations:** Terminal still offers exact-container CLI guidance, not
+  browser stdin/TTY/resize. No resource YAML/edit/scale/delete, Kubernetes owner
+  references, restart counts, node/creation metadata or metrics history. Pod events
+  are exact-ID matches from bounded daemon history, not invented controller events.
+  Pod environment/VMM memory is distinct from actual container usage.
+- **Next task:** Verify new list/detail/tabs/mobile workflow with Firefox; add
+  authenticated bounded browser Terminal transport and rendering as a separate
+  task. Retain all remaining T24/D0 gates.
+
+## Archived T23/T24 Services-only overview delivery
+
+- **Task:** T23/T24 — Services overview and per-Pod console navigation.
+- **Status:** BLOCKED for interactive browser TTY and browser verification;
+  bounded presentation implemented. Overall T24/D0 status is unchanged.
+- **Dependencies verified:** T15/T22/T23 recorded evidence; public Service selectors,
+  observed sandboxes and exact-resource log API in existing implementation.
+- **Files and contracts changed:** `web/src/topology.jsx`, `app.jsx`, presentation
+  model/tests and `scripts/ui-browser-smoke.mjs`; console/frontend guides. Topology
+  contains only Services without edges. Pod instances appear in the inspector;
+  Workloads lists Pods with scoped logs and explicit CLI TTY guidance.
+- **Decisions/ADRs:** Explicit user-requested presentation replaces the broader
+  topology described in specification §20/plan §11.3. No runtime/API/security
+  boundary changes or dependencies. Browser TTY is not replaced by non-TTY Exec.
+- **Tests run:** Linux/amd64: initial `PATH=/usr/local/go/bin:$PATH make check`
+  FAIL in `TestHelmCLIMissingToolAndUnsafeFiles` with inherited
+  `GRILLO_HELM_BINARY=/usr/bin/helm`. Rerun
+  `env -u GRILLO_HELM_BINARY PATH=/usr/local/go/bin:$PATH make check` PASS
+  (frontend, fmt, vet, unit/script, race, builds and module audit).
+  `make test-ui-browser` attempted: SKIP, Firefox missing; not a browser PASS.
+- **Tests NOT run and why:** Actual Firefox interactions blocked by missing
+  browser; KVM/guest rebuild/security campaigns outside this presentation-only
+  change. No new hardware or interactive browser TTY evidence claimed.
+- **Integration/benchmark evidence:** None added. Previous environment activation
+  delivery preserved below.
+- **Known limitations:** TTY action displays an exact shell-quoted CLI command;
+  interactive browser stdin/TTY/resize remains unavailable. Logs keep existing
+  retention limits; Service instance membership is inferred from selectors.
+- **Next task:** Verify updated browser smoke on Firefox; implement a separately
+  bounded/authenticated browser interactive transport and terminal surface for
+  actual browser TTY. Preserve remaining T24/D0 gates.
+
+## Archived T24 development environment activation delivery
+
+- **Task:** T24 — development environment activation script.
+- **Status:** BLOCKED overall (T24/D0); bounded script checks PASS.
+- **Dependencies verified:** T23 recorded evidence; existing development override
+  names and QEMU/T07 artifact paths in the getting-started guide.
+- **Files and contracts changed:** `scripts/prepare_env.sh`, offline regression
+  tests wired into `make test-scripts`, README and getting-started activation steps.
+  Source in Bash to export development paths and local-toolchain policy; preserve
+  nonempty overrides and avoid duplicate checkout PATH entries.
+- **Decisions/ADRs:** User requested a sourced script instead of `make env`.
+  No new dependencies, profile edits, tool downloads or runtime behavior changes.
+- **Tests run:** `bash -n scripts/prepare_env.sh` PASS;
+  `PYTHONDONTWRITEBYTECODE=1 python3 scripts/prepare_env_test.py` PASS (six tests:
+  defaults/repeat, literal overrides, Helm lookup, unusual checkout path, direct
+  execution rejection, missing source). `PATH=/usr/local/go/bin:$PATH make check`
+  PASS on the existing Linux/amd64 host: UI, formatting, vet, unit/script tests,
+  race, host/agent builds and module audit. `git diff --check` PASS.
+- **Tests NOT run and why:** KVM/browser/advisory/hosted/clean-host gates and guest
+  rebuilds are outside this environment-only change; no hardware evidence claimed.
+- **Integration/benchmark evidence:** Offline shell activation only. Previous
+  delivery retained in this history.
+- **Known limitations:** Bash only; no asset/tool validation or Go installation
+  selection. Missing Helm warns. Existing daemons keep their original environment;
+  the script does not restart them or update guest images.
+- **Next task:** Rerun advisory and rebuilt-guest integration gates on Go 1.27.2,
+  then hosted/clean-host verification; preserve remaining T24/D0 blockers.
+
+## Archived T24 Go 1.27.2 migration delivery
+
+- **Task:** T24 — migrate the pinned Go toolchain to 1.27.2.
+- **Status:** BLOCKED overall (T24/D0); bounded migration checks PASS.
+- **Dependencies verified:** T23 recorded evidence; existing exact-pin bootstrap,
+  CI and fail-closed compiler/GOROOT/advisory-override policy. Installed
+  `/usr/local/go/bin/go` reports upstream `go1.27.2 linux/amd64`.
+- **Files and contracts changed:** `.go-version`, `go.mod`, bootstrap version and
+  official Linux/amd64 digest, policy/regression tests and current setup guides.
+  CI already reads `.go-version`. Go 1.27 tidy groups existing module requirements;
+  dependency versions and `go.sum` are unchanged.
+- **Decisions/ADRs:** Explicit user-requested 1.27 migration supersedes the previous
+  family selection; exact installed patch 1.27.2, no new module or architecture.
+  No host profile edit, tool install, automatic download or identity substitution.
+- **Tests run:** With `PATH=/usr/local/go/bin:$PATH`, first `make check` FAIL at
+  `go mod tidy -diff` (require-block formatting); after normalization, second
+  `make check` PASS: UI, formatting, vet, unit/offline scripts, race, four binary
+  builds and module audit. Official HTTPS Go release metadata supplied the archive
+  digest; no archive downloaded. `./bin/grillo version` reports `dev`.
+- **Tests NOT run and why:** Advisory/fuzz/browser/KVM/hosted gates and runtime
+  guest-image rebuild are outside this bounded compiler migration. Historical
+  1.26.9 evidence is not a 1.27.2 integration or vulnerability clearance.
+- **Integration/benchmark evidence:** Local non-KVM checks only; no performance
+  claim. Previous delivery/evidence retained in [history](implementation-log.md).
+- **Known limitations:** Installed Go's bin directory is absent from the session's
+  default PATH; select it explicitly. Built agent binary is new, existing guest
+  images, running processes and prior payloads are not automatically updated.
+- **Next task:** Rerun advisory and real rebuilt-guest integration gates on the new
+  pin, then hosted/clean-host verification; preserve remaining T24/D0 blockers.
+
+
 ## Archived T24 Go 1.26 pin and fail-closed identity delivery
 
 Superseded by the user-requested Go 1.27.2 migration; T24/D0 remain BLOCKED.

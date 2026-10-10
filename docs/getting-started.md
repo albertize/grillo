@@ -72,15 +72,19 @@ explicit overrides, not daemon CWD defaults. From the repository root, configure
 absolute paths before starting the daemon:
 
 ```sh
-export GRILLO_DAEMON_BINARY="$PWD/bin/grillod"
-export GRILLO_NETNS_BINARY="$PWD/bin/grillo-netns"
-export GRILLO_GUEST_KERNEL="$PWD/experiments/artifacts/qemu/bzImage"
-export GRILLO_GUEST_INITRAMFS="$PWD/experiments/artifacts/t07/initramfs-agent.cpio.gz"
-export GRILLO_GUEST_MANIFEST="$PWD/experiments/artifacts/t07/manifest.json"
-export GRILLO_HELM_BINARY="$(command -v helm)" # provision exact v4.2.2 first
+source scripts/prepare_env.sh # Bash; provision Helm v4.2.2 first
 ./bin/grillo doctor --verbose
 ./bin/grillo doctor --json
 ```
+
+The script sets the development daemon/helper and guest paths, adds the checkout's
+`bin/` to PATH once, and sets `GOTOOLCHAIN=local`. Existing nonempty `GRILLO_*`
+overrides are preserved; Helm is selected from PATH only if no override is set.
+Missing Helm produces a warning, not a download. Paths are anchored to the script's
+checkout, not your current directory. Run it once per Bash session; do not execute
+it with `bash` or `./` because a child process cannot export into its parent.
+It does not build assets, install tools, select a Go installation, validate tool
+versions or change shell startup files. Run `doctor` to check prerequisites.
 
 These overrides are inherited by the on-demand daemon. An already-running daemon
 keeps its original configuration. Explicit daemon flags take precedence over its

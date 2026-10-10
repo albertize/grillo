@@ -78,8 +78,8 @@ func TestCompileFullFixture(t *testing.T) {
 	if container.Resources.Limits.CPU != 500 || container.Resources.Limits.Memory != 128<<20 {
 		t.Fatalf("limits = %+v", container.Resources.Limits)
 	}
-	if container.Probes.Liveness == nil || len(container.Probes.Liveness.Exec.Command) != 4 || container.Probes.Liveness.Exec.Command[0] != "wget" {
-		t.Fatalf("healthcheck = %+v", container.Probes.Liveness)
+	if container.Probes.Readiness == nil || container.Probes.Liveness != nil || len(container.Probes.Readiness.Exec.Command) != 4 || container.Probes.Readiness.Exec.Command[0] != "wget" {
+		t.Fatalf("healthcheck = %+v", container.Probes)
 	}
 	if len(container.Ports) == 0 || container.Ports[0].ContainerPort != 80 || container.Ports[0].HostPort != 8080 {
 		t.Fatalf("ports = %+v", container.Ports)

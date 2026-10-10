@@ -280,7 +280,15 @@ func checkRoutes(app Application, services map[string]*Service, secrets map[stri
 	}
 }
 
-// checkCycles detects cycles in the experimental workload dependency graph.
+// ValidateDependencies checks only startup dependency references, conditions and
+// cycles, so frontends can report them without requiring runtime capabilities.
+func ValidateDependencies(app Application) source.List {
+	var diagnostics source.List
+	checkCycles(app, indexWorkloads(app), func(d source.Diagnostic) { diagnostics = append(diagnostics, d) })
+	return diagnostics
+}
+
+// checkCycles validates startup gates and detects workload dependency cycles.
 func checkCycles(app Application, workloads map[string]*Workload, add func(source.Diagnostic)) {
 	const (
 		white = 0
@@ -327,6 +335,39 @@ func checkCycles(app Application, workloads map[string]*Workload, add func(sourc
 		ids = append(ids, id)
 	}
 	sort.Strings(ids)
+	for _, id := range ids {
+		w := workloads[id]
+		dependencies := map[string]bool{}
+		for _, dep := range w.DependsOn {
+			if dependencies[dep] {
+				add(source.Diagnostic{Code: CodeDuplicateName, Severity: source.SeverityError, Resource: "workload/" + id, Field: "dependsOn", Message: "duplicate startup dependency"})
+			}
+			dependencies[dep] = true
+			target := workloads[dep]
+			if target == nil || target.Replicas < 1 {
+				add(source.Diagnostic{Code: CodeReferenceMissing, Severity: source.SeverityError, Resource: "workload/" + id, Field: "dependsOn", Message: "startup dependency must reference a workload with at least one replica"})
+			}
+		}
+		keys := make([]string, 0, len(w.DependencyConditions))
+		for dep := range w.DependencyConditions {
+			keys = append(keys, dep)
+		}
+		sort.Strings(keys)
+		for _, dep := range keys {
+			condition := w.DependencyConditions[dep]
+			valid := dependencies[dep] && (condition == DependencyStarted || condition == DependencyHealthy)
+			if condition == DependencyHealthy && workloads[dep] != nil {
+				for _, container := range workloads[dep].Template.Containers {
+					if container.Probes.Readiness == nil {
+						valid = false
+					}
+				}
+			}
+			if !valid {
+				add(source.Diagnostic{Code: CodeSupportUnsupported, Severity: source.SeverityError, Resource: "workload/" + id, Field: "dependencyConditions", Message: "dependency condition must match a declared dependency; service_healthy requires a health/readiness probe"})
+			}
+		}
+	}
 	for _, id := range ids {
 		if color[id] == white {
 			if visit(id) {

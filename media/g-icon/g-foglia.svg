@@ -1,0 +1,50 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="104 88 1064 1064" fill="none">
+  <title>G verde a forma di foglia</title>
+  <desc>G a foglia con superfici curve, luce diffusa e ombre interne; sfondo trasparente.</desc>
+  <defs>
+    <linearGradient id="body" x1="690" y1="450" x2="1000" y2="990" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#007D47"/><stop offset=".38" stop-color="#004B33"/><stop offset=".72" stop-color="#00643E"/><stop offset="1" stop-color="#00874B"/>
+    </linearGradient>
+    <radialGradient id="front" cx="765" cy="760" r="650" gradientUnits="userSpaceOnUse" gradientTransform="translate(765 760) rotate(145) scale(1 .78) translate(-765 -760)">
+      <stop stop-color="#5CE74D"/><stop offset=".32" stop-color="#27CD46"/><stop offset=".64" stop-color="#06AB49"/><stop offset=".86" stop-color="#008E46"/><stop offset="1" stop-color="#007D42"/>
+    </radialGradient>
+    <radialGradient id="crown" cx="803" cy="173" r="860" gradientUnits="userSpaceOnUse" gradientTransform="translate(803 173) rotate(135) scale(1 .8) translate(-803 -173)">
+      <stop stop-color="#8BF05A"/><stop offset=".24" stop-color="#55E34A"/><stop offset=".52" stop-color="#16C548"/><stop offset=".78" stop-color="#00AA51"/><stop offset="1" stop-color="#008D4C"/>
+    </radialGradient>
+    <radialGradient id="fold" cx="1030" cy="424" r="530" gradientUnits="userSpaceOnUse" gradientTransform="translate(1030 424) scale(1 .58) translate(-1030 -424)">
+      <stop stop-color="#25CA43"/><stop offset=".28" stop-color="#08A343"/><stop offset=".6" stop-color="#00713F"/><stop offset=".84" stop-color="#005736"/><stop offset="1" stop-color="#004B31"/>
+    </radialGradient>
+    <linearGradient id="tail" x1="535" y1="1035" x2="790" y2="826" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#00AD4C"/><stop offset=".38" stop-color="#009B46"/><stop offset=".76" stop-color="#007C3E"/><stop offset="1" stop-color="#005C34"/>
+    </linearGradient>
+    <radialGradient id="bar" cx="1050" cy="636" r="540" gradientUnits="userSpaceOnUse" gradientTransform="translate(1050 636) scale(1 .62) translate(-1050 -636)">
+      <stop stop-color="#24CD46"/><stop offset=".35" stop-color="#0AB64A"/><stop offset=".65" stop-color="#008D43"/><stop offset=".86" stop-color="#00643A"/><stop offset="1" stop-color="#004F32"/>
+    </radialGradient>
+    <radialGradient id="barTop" cx="1030" cy="555" r="575" gradientUnits="userSpaceOnUse" gradientTransform="translate(1030 555) scale(1 .85) translate(-1030 -555)">
+      <stop stop-color="#75EA56"/><stop offset=".32" stop-color="#48D94B"/><stop offset=".64" stop-color="#1AC14A"/><stop offset="1" stop-color="#00A347"/>
+    </radialGradient>
+    <radialGradient id="contact" cx="866" cy="751" r="178" gradientUnits="userSpaceOnUse" gradientTransform="translate(866 751) rotate(32) scale(1 .57) translate(-866 -751)">
+      <stop stop-color="#002C21" stop-opacity=".65"/><stop offset=".48" stop-color="#003726" stop-opacity=".26"/><stop offset="1" stop-color="#003726" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="lip" x1="950" y1="428" x2="957" y2="489" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#004A30"/><stop offset=".45" stop-color="#00633B"/><stop offset="1" stop-color="#008D45"/>
+    </linearGradient>
+    <linearGradient id="foldFade" x1="480" y1="0" x2="650" y2="0" gradientUnits="userSpaceOnUse"><stop stop-color="white" stop-opacity="0"/><stop offset="1" stop-color="white"/></linearGradient>
+    <mask id="foldMask" maskUnits="userSpaceOnUse" x="100" y="100" width="1100" height="1000"><path d="M100 100H1200V1100H100Z" fill="url(#foldFade)"/></mask>
+    <path id="outline" d="M1085 421C1070 460 1039 480 990 480H903C874 480 859 472 846 455C792 382 713 340 625 340C480 340 362 459 362 608C362 757 477 872 625 872C720 872 801 826 850 750H732C657 750 607 701 568 633C545 594 548 584 584 584H1040C1081 584 1100 596 1100 620C1100 872 888 1074 625 1074C365 1074 164 874 164 609C164 354 377 148 640 148C830 148 981 238 1085 421Z"/>
+    <clipPath id="clip"><use href="#outline"/></clipPath>
+  </defs>
+  <g clip-path="url(#clip)">
+    <use href="#outline" fill="url(#body)"/>
+    <!-- Le superfici si estendono oltre il contorno: nessuna giunzione lungo il bordo esterno. -->
+    <path d="M410 1018C582 1010 737 900 850 740C755 882 804 1046 625 1074L550 1140L350 1100Z" fill="url(#tail)"/>
+    <path d="M100 250H650L625 340C480 340 362 459 362 608C362 757 477 872 625 872C720 872 801 826 850 750C737 918 582 1024 421 1029L100 1100Z" fill="url(#front)"/>
+    <path d="M625 340C713 340 792 382 846 455C859 472 874 480 903 480H990C1039 480 1070 460 1085 421C1050 443 927 438 805 398Z" fill="url(#lip)"/>
+    <path d="M480 375L548 333C750 253 953 251 1085 421C1050 443 927 438 805 398C736 360 682 340 625 340C574 340 536 350 480 375Z" fill="url(#fold)" mask="url(#foldMask)"/>
+    <path d="M203 811C175 745 164 678 164 609C164 354 377 148 640 148C830 148 981 238 1085 421C953 251 750 253 548 333C322 422 159 570 203 811Z" fill="url(#crown)"/>
+    <!-- Ombra di contatto sotto la traversa, interamente ritagliata nella G. -->
+    <path d="M680 680H1105V965H680Z" fill="url(#contact)"/>
+    <path d="M550 584H1100V620C1042 699 975 750 879 750H732C657 750 607 701 568 633Z" fill="url(#bar)"/>
+    <path d="M584 584H1040C1081 584 1100 596 1100 620C935 577 810 690 674 681C622 681 585 663 568 633C545 594 548 584 584 584Z" fill="url(#barTop)"/>
+  </g>
+</svg>

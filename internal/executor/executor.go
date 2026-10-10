@@ -226,6 +226,9 @@ func (e *Executor) Ensure(ctx context.Context, application string, descriptor pl
 	if workload == nil {
 		return fmt.Errorf("executor: workload %q not found", descriptor.Workload)
 	}
+	if err := e.waitStartupDependencies(ctx, application, app, *workload); err != nil {
+		return err
+	}
 	spec, guestSpec, err := e.buildSpecs(ctx, application, app, *workload, descriptor)
 	if err != nil {
 		return err

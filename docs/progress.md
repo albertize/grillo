@@ -17,16 +17,18 @@ run was started by the coding agent. Prior local vendor-version zero-finding
 scans do not clear stdlib vulnerabilities. [Actual pinned Go 1.26.9 local rebuilds](experiments/t24-go126-toolchain.md)
 passed advisory/check/fuzz/browser/KVM gates at that pin. The current pin is
 **Go 1.27.2**, matching the user's installed upstream toolchain; `make check`
-passes locally. Advisory/fuzz/browser/KVM gates have not been rerun on 1.27.2;
-hosted rerun and external-tool/old-running-process security remain separate.
+passes locally. Bounded [Chrome/browser Terminal and dependency KVM gates](experiments/t24-browser-terminal-compose-dependencies.md)
+now pass on 1.27.2; the full hardening/advisory/fuzz campaigns have not been rerun.
+Hosted rerun and external-tool/old-running-process security remain separate.
 
 Container stdout/stderr now reaches the bounded guest ring and host spool, with
 explicit guest-retention gaps; [real pipeline evidence](experiments/t24-guest-logs.md).
 CLI stdin/TTY/resize, actual guest/cgroup counters and verified private boot
 snapshots/fresh keys now have [local evidence](experiments/t24-interactive-metrics-artifacts.md).
 Known limits include persisted original compiler line
-diagnostics, PSS/cache/CPU percentages, interactive browser TTY,
-StatefulSet/Job, rolling updates and TLS/CA. Host-originated virtiofs notifications
+diagnostics, PSS/cache/CPU percentages, full-screen browser terminal emulation,
+StatefulSet/Job, rolling updates and TLS/CA. Pod Terminal now has real browser
+stdin/PTY/resize with a bounded text-only VT subset. Host-originated virtiofs notifications
 require polling; the tested Fedora SELinux Enforcing policy blocks pasta.
 Concurrent isolated daemons must coordinate host-wide guest CID ranges.
 See [compatibility](compatibility.md) and [console limits](ui.md#explicit-mvp-limits).
@@ -59,7 +61,7 @@ See [compatibility](compatibility.md) and [console limits](ui.md#explicit-mvp-li
 | T20 | Kubernetes MVP compiler | DONE | `internal/frontend/kubernetes`; goldens, rejections, secret separation, RollingUpdate consent, multi-container KVM; `docs/experiments/t20-kubernetes-compiler.md` |
 | T21 | Helm rendering and OCI charts | DONE | Real Helm package/template, local/OCI equivalence, explicit HTTPS fetch, verified atomic cache, stable offline plans, archive/corruption/concurrency/dependency restrictions; `docs/experiments/t21-helm-renderer.md` |
 | T22 | Helm gate and compatibility reporting | DONE | Full direct-runtime scenario C plus actual CLI/daemon chart gate PASS; unsupported provisioning blocked; compiler registry/counts and consumer/PVC semantics verified |
-| T23 | Web console and secure bridge | DONE | React/PatternFly frontend (ADR 0008), metadata-only views, bounded logs/SSE/non-TTY exec; actual Firefox desktop/mobile and native CLI/daemon/KVM lifetime/cancellation gates PASS; original data limits remain explicit |
+| T23 | Web console and secure bridge | DONE | React/PatternFly (ADR 0008), metadata-only views, bounded logs/SSE/captured Exec; [interactive Pod Terminal + Chrome/KVM](experiments/t24-browser-terminal-compose-dependencies.md) now PASS; original Firefox evidence remains historical, full terminal emulation/data limits explicit |
 | T24 | F3 MVP gate and hardening | BLOCKED | [100 verified boots](experiments/t24-closure-campaign.md) PASS; [Pinned Go 1.26.9 local gates PASS](experiments/t24-go126-toolchain.md); old hosted advisory FAIL/rerun pending, clean-host, delivery and full budgets/quota/load/provenance remain |
 | T25 | StatefulSet and Job | TODO | T24 |
 | T26 | Extended Tier 1/Tier 2 parity and TLS | TODO | T25 |
@@ -87,33 +89,31 @@ subsequent edit or that the whole product is release-ready.
 
 ## Latest delivery
 
-- **Task:** T24 — migrate the pinned Go toolchain to 1.27.2.
-- **Status:** BLOCKED overall (T24/D0); bounded migration checks PASS.
-- **Dependencies verified:** T23 recorded evidence; existing exact-pin bootstrap,
-  CI and fail-closed compiler/GOROOT/advisory-override policy. Installed
-  `/usr/local/go/bin/go` reports upstream `go1.27.2 linux/amd64`.
-- **Files and contracts changed:** `.go-version`, `go.mod`, bootstrap version and
-  official Linux/amd64 digest, policy/regression tests and current setup guides.
-  CI already reads `.go-version`. Go 1.27 tidy groups existing module requirements;
-  dependency versions and `go.sum` are unchanged.
-- **Decisions/ADRs:** Explicit user-requested 1.27 migration supersedes the previous
-  family selection; exact installed patch 1.27.2, no new module or architecture.
-  No host profile edit, tool install, automatic download or identity substitution.
-- **Tests run:** With `PATH=/usr/local/go/bin:$PATH`, first `make check` FAIL at
-  `go mod tidy -diff` (require-block formatting); after normalization, second
-  `make check` PASS: UI, formatting, vet, unit/offline scripts, race, four binary
-  builds and module audit. Official HTTPS Go release metadata supplied the archive
-  digest; no archive downloaded. `./bin/grillo version` reports `dev`.
-- **Tests NOT run and why:** Advisory/fuzz/browser/KVM/hosted gates and runtime
-  guest-image rebuild are outside this bounded compiler migration. Historical
-  1.26.9 evidence is not a 1.27.2 integration or vulnerability clearance.
-- **Integration/benchmark evidence:** Local non-KVM checks only; no performance
-  claim. Previous delivery/evidence retained in [history](history/implementation-log.md).
-- **Known limitations:** Installed Go's bin directory is absent from the session's
-  default PATH; select it explicitly. Built agent binary is new, existing guest
-  images, running processes and prior payloads are not automatically updated.
-- **Next task:** Rerun advisory and real rebuilt-guest integration gates on the new
-  pin, then hosted/clean-host verification; preserve remaining T24/D0 blockers.
+- **Task:** T24/D0 — README entrypoint and leaf-pattern wordmark banner, documentation slice.
+- **Status:** DONE for README/banner delivery; T24/D0 overall remain BLOCKED.
+- **Dependencies verified:** Current source setup guide, compatibility/progress
+  and console evidence; supplied leaf-G icon, cricket illustration and UI snapshot.
+- **Files and contracts changed:** `README.md`, `media/grillo-banner{.source.svg,.svg,.png}`,
+  `media/README.md`, this record and [history](history/implementation-log.md).
+  No runtime/build/API changes; staged environment setup and original media retained.
+- **Decisions/ADRs:** No new architecture decision. Self-contained petrol banner
+  with the supplied leaf-G, outlined Red Hat Display wordmark and original faint
+  leaf motif replaces the separate header icon/title. Existing OFL notice linked;
+  no reference artwork copied. Editable SVG and 2x PNG included. Supplied console
+  snapshot and cricket illustration remain separate; no benchmark claim.
+- **Tests run:** Existing installed Inkscape SVG/PNG export PASS; PNG visually
+  inspected. Python XML/PNG validation PASS (1024x256 vector, 2048x512 raster,
+  internal references, no external resources/script or live text in published SVG).
+  README/link/alt/H1/fence and diff checks PASS; Bash setup retained.
+- **Tests NOT run and why:** `make check`, browser/KVM and benchmarks not rerun for
+  documentation-only changes. Hosted GitHub rendering not verified locally.
+- **Integration/benchmark evidence:** None new. README links actual existing
+  terminal/runtime evidence rather than treating the supplied image as a new gate.
+- **Known limitations:** Experimental Linux/amd64/KVM status, no supported release,
+  host-policy/compatibility/security boundaries and T24/D0 blockers preserved.
+- **Next task:** Review hosted README/banner rendering when published; continue prior
+  Firefox/terminal/accessibility and T24/D0 hardening work. Prior terminal delivery
+  and failed trials remain in history and its linked report.
 
 ## Updating progress
 

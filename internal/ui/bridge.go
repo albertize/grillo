@@ -57,11 +57,12 @@ type Bridge struct {
 	now       func() time.Time
 	streams   chan struct{}
 	execs     chan struct{}
+	terminals map[string]*terminalSession // guarded by mu; lifetime belongs to the output request
 }
 
 // New returns a bridge with fresh bootstrap and session tokens.
 func New(core Core) *Bridge {
-	return &Bridge{core: core, bootstrap: randomToken(), session: randomToken(), expires: time.Now().Add(5 * time.Minute), now: time.Now, streams: make(chan struct{}, 8), execs: make(chan struct{}, 4)}
+	return &Bridge{core: core, bootstrap: randomToken(), session: randomToken(), expires: time.Now().Add(5 * time.Minute), now: time.Now, streams: make(chan struct{}, 8), execs: make(chan struct{}, 4), terminals: make(map[string]*terminalSession)}
 }
 
 // BootstrapToken is the one-time token placed in the URL fragment.
@@ -124,12 +125,18 @@ func (b *Bridge) Serve(ctx context.Context, listener net.Listener) error {
 func (b *Bridge) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /{$}", b.handleIndex)
+	mux.HandleFunc("GET /favicon.ico", func(w http.ResponseWriter, _ *http.Request) {
+		serveAsset(w, "assets/generated/icons/favicon.ico", "image/vnd.microsoft.icon")
+	})
 	mux.HandleFunc("GET /assets/", b.handleStatic)
 	mux.HandleFunc("POST /session", b.handleSession)
 	mux.HandleFunc("GET /v1/applications", b.auth(b.handleApplications))
 	mux.HandleFunc("GET /v1/applications/{id}", b.auth(b.handleStatus))
 	mux.HandleFunc("GET /v1/applications/{id}/view", b.auth(b.handleView))
 	mux.HandleFunc("POST /v1/exec", b.auth(b.handleExec))
+	mux.HandleFunc("POST /v1/terminal", b.auth(b.handleTerminal))
+	mux.HandleFunc("POST /v1/terminal/{id}/input", b.auth(b.handleTerminalInput))
+	mux.HandleFunc("POST /v1/terminal/{id}/close", b.auth(b.handleTerminalClose))
 	mux.HandleFunc("GET /v1/logs", b.auth(b.handleLogs))
 	mux.HandleFunc("GET /v1/events", b.auth(b.handleEvents))
 	return b.secure(mux)
@@ -172,7 +179,17 @@ func (b *Bridge) auth(next http.HandlerFunc) http.HandlerFunc {
 }
 
 func (b *Bridge) handleIndex(w http.ResponseWriter, _ *http.Request) {
-	serveAsset(w, "assets/index.html", "text/html; charset=utf-8")
+	data, err := assets.ReadFile("assets/index.html")
+	if err != nil {
+		http.Error(w, "console unavailable", http.StatusInternalServerError)
+		return
+	}
+	// Fresh per-document style authorization for the terminal's dynamic renderer.
+	// No script nonce and no unsafe-inline permission are introduced.
+	nonce := randomToken()
+	w.Header().Set("Content-Security-Policy", strings.Replace(w.Header().Get("Content-Security-Policy"), "style-src 'self'", "style-src 'self' 'nonce-"+nonce+"'", 1))
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	_, _ = io.WriteString(w, strings.Replace(string(data), `name="terminal-style-nonce" content=""`, `name="terminal-style-nonce" content="`+nonce+`"`, 1))
 }
 
 // Static reads are confined to immutable embedded build output, not the host
@@ -184,6 +201,9 @@ func (b *Bridge) handleStatic(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	contentType := mime.TypeByExtension(path.Ext(name))
+	if path.Ext(name) == ".webmanifest" {
+		contentType = "application/manifest+json"
+	}
 	if contentType == "" {
 		http.NotFound(w, r)
 		return

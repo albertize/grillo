@@ -1,0 +1,383 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   width="1024"
+   height="256"
+   viewBox="0 0 1024 256"
+   role="img"
+   aria-labelledby="title description"
+   version="1.1"
+   id="svg52"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg">
+  <!-- Original banner composition: Apache-2.0. Leaf-G artwork supplied in
+       media/g-icon/g-foglia.svg. Red Hat Display lettering: SIL OFL 1.1;
+       see web/licenses/redhatdisplay-OFL.txt. No external image or font loads. -->
+  <title
+     id="title">Grillo</title>
+  <desc
+     id="description">Green leaf-G icon beside the white Grillo name on a petrol background with faint outlined leaves.</desc>
+  <defs
+     id="defs3">
+    <linearGradient
+       id="background"
+       x1="0"
+       y1="0"
+       x2="1024"
+       y2="256"
+       gradientUnits="userSpaceOnUse">
+      <stop
+         stop-color="#102b35"
+         id="stop1" />
+      <stop
+         offset="1"
+         stop-color="#1b3d43"
+         id="stop2" />
+    </linearGradient>
+    <pattern
+       id="leaves"
+       width="128"
+       height="96"
+       patternUnits="userSpaceOnUse"
+       patternTransform="rotate(-24)">
+      <g
+         fill="none"
+         stroke="#b9ddce"
+         stroke-opacity=".065"
+         stroke-width="1.6"
+         stroke-linecap="round"
+         stroke-linejoin="round"
+         id="g3">
+        <path
+           d="M28 56C24 30 44 18 80 20C82 44 65 63 28 56Z"
+           id="path2" />
+        <path
+           d="M21 62L68 30M39 50L37 36M49 43L62 47"
+           id="path3" />
+      </g>
+    </pattern>
+  </defs>
+  <rect
+     width="1024"
+     height="256"
+     fill="url(#background)"
+     id="rect3" />
+  <rect
+     width="1024"
+     height="256"
+     fill="url(#leaves)"
+     id="rect4" />
+  <svg
+     x="347"
+     y="73"
+     width="112"
+     height="112"
+     viewBox="104 88 1064 1064"
+     fill="none"
+     version="1.1"
+     id="svg51">
+    <defs
+       id="defs43">
+      <linearGradient
+         id="body"
+         x1="690"
+         y1="450"
+         x2="1000"
+         y2="990"
+         gradientUnits="userSpaceOnUse">
+        <stop
+           stop-color="#007D47"
+           id="stop4" />
+        <stop
+           offset=".38"
+           stop-color="#004B33"
+           id="stop5" />
+        <stop
+           offset=".72"
+           stop-color="#00643E"
+           id="stop6" />
+        <stop
+           offset="1"
+           stop-color="#00874B"
+           id="stop7" />
+      </linearGradient>
+      <radialGradient
+         id="front"
+         cx="765"
+         cy="760"
+         r="650"
+         gradientUnits="userSpaceOnUse"
+         gradientTransform="translate(765 760) rotate(145) scale(1 .78) translate(-765 -760)">
+        <stop
+           stop-color="#5CE74D"
+           id="stop8" />
+        <stop
+           offset=".32"
+           stop-color="#27CD46"
+           id="stop9" />
+        <stop
+           offset=".64"
+           stop-color="#06AB49"
+           id="stop10" />
+        <stop
+           offset=".86"
+           stop-color="#008E46"
+           id="stop11" />
+        <stop
+           offset="1"
+           stop-color="#007D42"
+           id="stop12" />
+      </radialGradient>
+      <radialGradient
+         id="crown"
+         cx="803"
+         cy="173"
+         r="860"
+         gradientUnits="userSpaceOnUse"
+         gradientTransform="translate(803 173) rotate(135) scale(1 .8) translate(-803 -173)">
+        <stop
+           stop-color="#8BF05A"
+           id="stop13" />
+        <stop
+           offset=".24"
+           stop-color="#55E34A"
+           id="stop14" />
+        <stop
+           offset=".52"
+           stop-color="#16C548"
+           id="stop15" />
+        <stop
+           offset=".78"
+           stop-color="#00AA51"
+           id="stop16" />
+        <stop
+           offset="1"
+           stop-color="#008D4C"
+           id="stop17" />
+      </radialGradient>
+      <radialGradient
+         id="fold"
+         cx="1030"
+         cy="424"
+         r="530"
+         gradientUnits="userSpaceOnUse"
+         gradientTransform="translate(1030 424) scale(1 .58) translate(-1030 -424)">
+        <stop
+           stop-color="#25CA43"
+           id="stop18" />
+        <stop
+           offset=".28"
+           stop-color="#08A343"
+           id="stop19" />
+        <stop
+           offset=".6"
+           stop-color="#00713F"
+           id="stop20" />
+        <stop
+           offset=".84"
+           stop-color="#005736"
+           id="stop21" />
+        <stop
+           offset="1"
+           stop-color="#004B31"
+           id="stop22" />
+      </radialGradient>
+      <linearGradient
+         id="tail"
+         x1="535"
+         y1="1035"
+         x2="790"
+         y2="826"
+         gradientUnits="userSpaceOnUse">
+        <stop
+           stop-color="#00AD4C"
+           id="stop23" />
+        <stop
+           offset=".38"
+           stop-color="#009B46"
+           id="stop24" />
+        <stop
+           offset=".76"
+           stop-color="#007C3E"
+           id="stop25" />
+        <stop
+           offset="1"
+           stop-color="#005C34"
+           id="stop26" />
+      </linearGradient>
+      <radialGradient
+         id="bar"
+         cx="1050"
+         cy="636"
+         r="540"
+         gradientUnits="userSpaceOnUse"
+         gradientTransform="translate(1050 636) scale(1 .62) translate(-1050 -636)">
+        <stop
+           stop-color="#24CD46"
+           id="stop27" />
+        <stop
+           offset=".35"
+           stop-color="#0AB64A"
+           id="stop28" />
+        <stop
+           offset=".65"
+           stop-color="#008D43"
+           id="stop29" />
+        <stop
+           offset=".86"
+           stop-color="#00643A"
+           id="stop30" />
+        <stop
+           offset="1"
+           stop-color="#004F32"
+           id="stop31" />
+      </radialGradient>
+      <radialGradient
+         id="barTop"
+         cx="1030"
+         cy="555"
+         r="575"
+         gradientUnits="userSpaceOnUse"
+         gradientTransform="translate(1030 555) scale(1 .85) translate(-1030 -555)">
+        <stop
+           stop-color="#75EA56"
+           id="stop32" />
+        <stop
+           offset=".32"
+           stop-color="#48D94B"
+           id="stop33" />
+        <stop
+           offset=".64"
+           stop-color="#1AC14A"
+           id="stop34" />
+        <stop
+           offset="1"
+           stop-color="#00A347"
+           id="stop35" />
+      </radialGradient>
+      <radialGradient
+         id="contact"
+         cx="866"
+         cy="751"
+         r="178"
+         gradientUnits="userSpaceOnUse"
+         gradientTransform="translate(866 751) rotate(32) scale(1 .57) translate(-866 -751)">
+        <stop
+           stop-color="#002C21"
+           stop-opacity=".65"
+           id="stop36" />
+        <stop
+           offset=".48"
+           stop-color="#003726"
+           stop-opacity=".26"
+           id="stop37" />
+        <stop
+           offset="1"
+           stop-color="#003726"
+           stop-opacity="0"
+           id="stop38" />
+      </radialGradient>
+      <linearGradient
+         id="lip"
+         x1="950"
+         y1="428"
+         x2="957"
+         y2="489"
+         gradientUnits="userSpaceOnUse">
+        <stop
+           stop-color="#004A30"
+           id="stop39" />
+        <stop
+           offset=".45"
+           stop-color="#00633B"
+           id="stop40" />
+        <stop
+           offset="1"
+           stop-color="#008D45"
+           id="stop41" />
+      </linearGradient>
+      <linearGradient
+         id="foldFade"
+         x1="480"
+         y1="0"
+         x2="650"
+         y2="0"
+         gradientUnits="userSpaceOnUse">
+        <stop
+           stop-color="white"
+           stop-opacity="0"
+           id="stop42" />
+        <stop
+           offset="1"
+           stop-color="white"
+           id="stop43" />
+      </linearGradient>
+      <mask
+         id="foldMask"
+         maskUnits="userSpaceOnUse"
+         x="100"
+         y="100"
+         width="1100"
+         height="1000">
+        <path
+           d="M100 100H1200V1100H100Z"
+           fill="url(#foldFade)"
+           id="path43" />
+      </mask>
+      <path
+         id="outline"
+         d="M1085 421C1070 460 1039 480 990 480H903C874 480 859 472 846 455C792 382 713 340 625 340C480 340 362 459 362 608C362 757 477 872 625 872C720 872 801 826 850 750H732C657 750 607 701 568 633C545 594 548 584 584 584H1040C1081 584 1100 596 1100 620C1100 872 888 1074 625 1074C365 1074 164 874 164 609C164 354 377 148 640 148C830 148 981 238 1085 421Z" />
+      <clipPath
+         id="clip">
+        <use
+           href="#outline"
+           id="use43" />
+      </clipPath>
+    </defs>
+    <g
+       clip-path="url(#clip)"
+       id="g51">
+      <use
+         href="#outline"
+         fill="url(#body)"
+         id="use44" />
+      <path
+         d="M410 1018C582 1010 737 900 850 740C755 882 804 1046 625 1074L550 1140L350 1100Z"
+         fill="url(#tail)"
+         id="path44" />
+      <path
+         d="M100 250H650L625 340C480 340 362 459 362 608C362 757 477 872 625 872C720 872 801 826 850 750C737 918 582 1024 421 1029L100 1100Z"
+         fill="url(#front)"
+         id="path45" />
+      <path
+         d="M625 340C713 340 792 382 846 455C859 472 874 480 903 480H990C1039 480 1070 460 1085 421C1050 443 927 438 805 398Z"
+         fill="url(#lip)"
+         id="path46" />
+      <path
+         d="M480 375L548 333C750 253 953 251 1085 421C1050 443 927 438 805 398C736 360 682 340 625 340C574 340 536 350 480 375Z"
+         fill="url(#fold)"
+         mask="url(#foldMask)"
+         id="path47" />
+      <path
+         d="M203 811C175 745 164 678 164 609C164 354 377 148 640 148C830 148 981 238 1085 421C953 251 750 253 548 333C322 422 159 570 203 811Z"
+         fill="url(#crown)"
+         id="path48" />
+      <path
+         d="M680 680H1105V965H680Z"
+         fill="url(#contact)"
+         id="path49" />
+      <path
+         d="M550 584H1100V620C1042 699 975 750 879 750H732C657 750 607 701 568 633Z"
+         fill="url(#bar)"
+         id="path50" />
+      <path
+         d="M584 584H1040C1081 584 1100 596 1100 620C935 577 810 690 674 681C622 681 585 663 568 633C545 594 548 584 584 584Z"
+         fill="url(#barTop)"
+         id="path51" />
+    </g>
+  </svg>
+  <path
+     d="m 506.632,173.832 c 13.904,0 21.56,-6.6 21.56,-18.568 V 109.68 h -10.296 v 3.432 c -3.784,-2.728 -8.184,-4.136 -12.76,-4.136 -13.112,0 -23.232,10.12 -23.232,23.056 0,13.024 10.12,23.232 22.88,23.232 4.752,0 9.24,-1.496 12.936,-4.4 v 4.4 c 0,6.512 -3.872,9.944 -11.352,9.944 -4.752,0 -9.416,-1.232 -14.52,-3.784 l -3.872,8.096 c 5.28,2.816 11.792,4.312 18.656,4.312 z m -0.352,-27.456 c -8.008,0 -14.168,-6.248 -14.168,-14.344 0,-7.92 6.16,-14.08 14.168,-14.08 4.664,0 8.712,1.76 11.44,4.664 v 19.008 c -2.728,3.08 -6.688,4.752 -11.44,4.752 z M 536.44798,155 h 10.472 v -29.832 c 2.288,-4.84 6.336,-7.48 11.352,-7.48 1.936,0 3.96,0.352 5.632,1.056 v -9.24 c -1.232,-0.616 -2.552,-0.792 -4.752,-0.88 -5.192,0 -9.416,2.376 -12.232,6.512 v -5.456 h -10.472 z m 37.912,-51.656 c 3.344,0 6.072,-2.816 6.072,-6.16 0,-3.432 -2.728,-6.16 -6.072,-6.16 -3.344,0 -6.16,2.728 -6.16,6.16 0,3.344 2.816,6.16 6.16,6.16 z m -5.28,51.656 h 10.472 v -45.32 h -10.472 z m 18.72807,0 h 10.472 V 91.552 l -10.472,1.848 z m 18.72808,0 h 10.472 V 91.552 l -10.472,1.848 z m 40.64008,0.88 c 13.376,0 23.848,-10.296 23.848,-23.496 0,-13.2 -10.472,-23.584 -23.848,-23.584 -13.464,0 -23.936,10.384 -23.936,23.584 0,13.2 10.472,23.496 23.936,23.496 z m 0,-9.064 c -7.744,0 -13.728,-6.336 -13.728,-14.432 0,-8.096 6.072,-14.432 13.728,-14.432 7.568,0 13.64,6.336 13.64,14.432 0,8.096 -5.984,14.432 -13.64,14.432 z"
+     id="wordmark"
+     style="font-weight:700;font-size:88px;font-family:'Red Hat Display';letter-spacing:-1.6;fill:#f5f8f7"
+     aria-label="grillo" />
+</svg>

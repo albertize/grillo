@@ -26,6 +26,7 @@ test-scripts:
 	bash scripts/fetch_oci_test.sh
 	bash scripts/payload_test.sh
 	PYTHONDONTWRITEBYTECODE=1 python3 scripts/go_toolchain_test.py
+	PYTHONDONTWRITEBYTECODE=1 python3 scripts/prepare_env_test.py
 
 race:
 	CGO_ENABLED=1 $(GO) test -race ./...
@@ -228,15 +229,19 @@ test-helm: t07-guest
 	go test -tags kvm -count=1 -v -timeout 360s -run 'TestKVMHelmApplication|TestKVMHelmScenarioC' ./internal/executor/
 	go test -tags kvm -count=1 -v -timeout 300s -run TestKVMDaemonRemediation ./cmd/grillod/
 
-# T23: real Firefox rendering fixtures; no downloaded browser/driver packages.
+# T23: isolated Chrome/Firefox rendering fixtures; no downloaded browser/driver.
 test-ui-browser:
-	go test -tags browser -count=1 -v -timeout 90s -run TestFirefoxConsole ./internal/ui/
+	go test -tags browser -count=1 -v -timeout 180s -run 'TestChromeConsole|TestFirefoxConsole' ./internal/ui/
 
 # T23: actual CLI UI + daemon + real KVM workload, exec, metrics and lifetime.
 test-ui: t07-guest
 	go test -tags kvm -count=1 -v -timeout 360s -run TestKVMDaemonUI ./cmd/grillod/
 
-.PHONY: test-ui test-ui-browser
+# Startup-only Compose ordering/health on real KVM; uses the prepared OCI fixture.
+test-compose-dependencies: t07-guest
+	go test -tags kvm -count=1 -v -timeout 180s -run TestKVMComposeDependencyHealth ./internal/executor/
+
+.PHONY: test-ui test-ui-browser test-compose-dependencies
 
 # T18b native builder: real RUN execution inside a sandboxed guest.
 # Missing /dev/kvm or guest artifacts is a documented SKIP.

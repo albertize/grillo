@@ -41,36 +41,74 @@ refresh presentation.
 
 A PatternFly masthead and responsive sidebar replace the original long page.
 Choose an application in the toolbar. The petrol/teal/mint shell uses compact
-navigation, an application context toolbar and white panels over a neutral canvas.
-Overview has application details/inventory, observed readiness, per-guest memory
-rings, published routes, global daemon activity and per-VM resource accounting.
-Missing/invalid guest samples render unavailable, not 0%; no host disk/network
-capacity or CPU percentages are invented. Dedicated pages contain Workloads,
-Topology, Networking, Storage, Configuration, Logs, Events, Exec and Diagnostics.
-Workload rows open sandbox detail; its Exec action selects the exact replica.
-Configuration uses ConfigMap/Secret tabs. Errors, loading and empty states are
-explicit and styled consistently. Third-party notices are linked in the sidebar.
+navigation, an application context toolbar and theme-aware panels over a neutral canvas.
+Navigation follows the supported application-facing patterns in the user's
+OpenShift 4.22 reference; see [ADR 0010](adr/0010-pod-oriented-console.md).
+The sidebar groups Home (Overview, Topology, Events), Workloads (Pods, Workload
+controllers, ConfigMaps, Secrets), Networking (Services, Routes), Storage (Volumes)
+and Observe (Metrics, Logs, Exec, Diagnostics). Application selection is not a
+simulated OpenShift project/namespace selector. Unsupported cluster management,
+operators, RBAC and resource mutations are not presented as working features.
+Overview has application inventory, Pod readiness, Pod environment memory samples,
+published routes and recent global daemon activity. Pod/container metrics have a
+dedicated page. Missing samples are unavailable, not 0%; no host capacity or CPU
+percentages are invented. Errors, loading and empty states are explicit.
+Third-party notices remain linked in the sidebar.
+
+## Branding and color theme
+
+The masthead uses the supplied leaf-G icon from `media/g-icon/`, including a
+high-density variant. The embedded build also includes the SVG/ICO favicon,
+Apple touch icon and 192/512px browser/home-screen icons in a local webmanifest.
+No external image requests, service worker or offline/PWA guarantee are added.
+Only the explicitly selected icons are embedded; the media directory is not served.
+
+Choose **System / Light / Dark** in the masthead, also on mobile. System is the
+default and follows `prefers-color-scheme` live. Explicit modes override browser
+changes. The non-secret `grillo.theme` preference persists in local storage and
+updates other same-origin tabs; if storage is blocked, the current tab can still
+change theme without persistence. Different bridge origins have separate preferences.
+PatternFly's root dark theme covers controls; custom cards, topology/SVG and text
+have matching dark colors. The small local theme entrypoint applies preferences
+before the main React bundle; no inline script/style or CSP relaxation is used.
+See [browser evidence](experiments/t23-console-branding-theme.md).
 
 ## Views and controls
 
-- Application overview: desired replicas versus observed ready microVMs, source
+- Application overview: desired replicas versus observed ready Pods, source
   kind/path and snapshot time.
-- SVG topology: selectable routes, Services and **workload groups**, with a
-  Resources/Details inspector for related actual microVMs, Services and routes.
-  A workload group is not a VM isolation boundary. Each related observed VM is
-  identified individually. Selector/backend edges are inferred from declarations,
-  not measured traffic. Name filtering hides unmatched nodes/edges; zoom presets
-  and fit reset aid navigation. Tab/Enter/Space selects nodes; closing the detail
-  returns focus. Up to 100 nodes per kind, explicit cap notice, mobile inspector
-  stacked below the scrollable canvas. Full drag/pan/layout editing is not added.
-  Inspector Exec targets the exact running container; Daemon logs opens the
-  global log view, not a falsely resource-filtered stream.
-- Workloads and sandbox detail: containers/init containers, image references,
-  mounts, declared probes, actual container state and observed probe results,
-  private IP and QEMU backend. Exec selection uses `sandbox-ID/container` so
-  replicas cannot be silently confused.
-- Resource usage: allocated vCPU/guest memory budget and timestamped VMM RSS and
-  cumulative CPU time sampled from `/proc`. No misleading aggregate sum.
+- Topology: a selectable **Services-only overview**, without connections,
+  route nodes, workload nodes or VM nodes. Instance/Pod information and published
+  routes appear in the selected Service inspector. Instances are associated using
+  declared selectors, not measured traffic. Filtering matches Service names before
+  the 100-Service display cap; zoom/fit and keyboard selection remain available.
+  Closing the inspector returns focus. On mobile it stacks below the canvas.
+  Inspector Logs and Terminal open the exact Pod's corresponding detail tab.
+- Workloads → Pods: name/status filters and deterministic name/status/workload
+  sorting. Open a Pod by name, Logs or Terminal; the detail page replaces the list
+  and has a return-to-Pods breadcrumb. Tabs are Details, Logs, Terminal, Events
+  and Metrics. Missing selected Pods are explicit, never replaced by another
+  replica. Details show actual containers, images, mounts and declared/observed
+  probes. Backend/isolation/allocation are in collapsed Runtime details (advanced).
+  Node, restart count, creation time, Kubernetes owner references and manifest YAML
+  are unavailable; no synthetic fields or private configuration are substituted.
+  Container actions select its logs, interactive Terminal or exact non-TTY Exec target.
+- Pod logs lock the resource filter to the Pod, with container/stream selection,
+  optional follow and retention-gap resync. Pod Events filter exact Pod and
+  Pod/container IDs from the retained daemon stream; global/controller events are
+  not assigned to the Pod. Empty retained history does not prove health.
+- Terminal selects an exact running container and connects a real guest `/bin/sh`
+  with stdin/PTY and resize. Connect is explicit; Ctrl+C interrupts foreground work,
+  Ctrl+D sends EOF, paste is limited to 8 KiB. Disconnect or leaving the tab cancels
+  the shell, not the Pod. xterm.js provides direct keyboard/IME input, ANSI colors,
+  cursor editing, selection and alternate-screen applications, with 1000 scrollback
+  lines and measured rows/columns. The guest shell uses `TERM=xterm-256color`.
+  Shell-less images fail explicitly; no shell is installed. See
+  [real vi/PTY evidence](experiments/t23-xterm-terminal.md).
+- Metrics: actual container cgroup memory and cumulative CPU samples first.
+  Guest environment usage, allocated vCPU/memory budget and timestamped VMM RSS
+  are separately labelled in collapsed Runtime accounting (advanced). They are
+  not container usage and are not summed. History charts are unavailable.
 - Volumes and routes: storage class/access/retention-relevant metadata, explicit
   bind warnings, actual loopback HTTP fallback links. Host bind source paths
   are not exposed by this projection.
@@ -112,28 +150,39 @@ lifetime; explicit logout/session expiration is not implemented.
 
 Public binds are rejected before opening the socket. Host must be loopback;
 supplied mutation Origins must exactly match the HTTP Host and port. Exec also
-requires Origin and JSON content type. Local non-browser bootstrap clients may
+requires Origin and JSON content type. Terminal creation/input/close requires the
+same cookie, exact Origin and JSON content type; session IDs never replace auth. Local non-browser bootstrap clients may
 omit Origin but still need the token. CSP forbids external scripts and framing,
 CORS is closed, responses disable caching, and all workload strings are rendered
-using escaped JSX text, never `dangerouslySetInnerHTML`. Scripts, CSS, fonts and
+using escaped JSX text or xterm's terminal parser, never `dangerouslySetInnerHTML`.
+The terminal's dynamic renderer gets a fresh style-only CSP nonce through a
+scoped document adapter; scripts receive no nonce, and arbitrary inline
+styles remain forbidden. OSC title/link/clipboard and window effects are disabled.
+See [ADR 0013](adr/0013-xterm-browser-terminal.md). Scripts, CSS, fonts and
 notices are served only from the immutable embedded build, with no CDN. React
 and PatternFly run under the same CSP without unsafe-inline/unsafe-eval. No
 secret-reveal, source-file-read or arbitrary host-file API is exposed. SSE is bounded to eight concurrent streams (five-minute reconnect
-window); exec to four concurrent requests. Bootstrap/exec bodies are capped at
-4 KiB/32 KiB. Closing the bridge cancels its requests, not daemon lifetime.
+window); captured exec and Terminal share four concurrent slots. Bootstrap/exec/Terminal
+bodies are capped at 4 KiB/32 KiB/32 KiB. Each Terminal has a 16-frame input queue,
+8 KiB chunks, five-second write deadlines and a 30-minute / 16 MiB output limit;
+interrupted output is not a successful exit. See the
+[browser-terminal contract](../api/local-api.md#browser-terminal-adapter-loopback-bridge-only).
+Closing the bridge cancels its requests/shells, not daemon lifetime.
 
 ## Reproducible browser smoke
 
-Test prerequisites: installed Firefox with WebDriver BiDi and Node.js with
-built-in WebSocket (tested Firefox 157.0 and Node 24.18.0). After the explicit
-frontend `ui-deps` step, tests fetch/install no packages or tools. The harness
-uses Node built-ins, not an npm browser package/driver, and no CDN.
-Firefox uses a unique temporary profile and loopback-only remote-control port.
+Test prerequisites: installed Google Chrome (CDP) or Firefox (WebDriver BiDi),
+and Node.js with built-in WebSocket. The current run used Chrome 155.0.8059.39 /
+Node 24.18.0; Firefox was unavailable (older Firefox evidence remains historical).
+After the explicit frontend `ui-deps` step, tests fetch/install no packages or tools.
+The harness uses Node built-ins, not an npm browser package/driver or CDN.
+Each browser is a separate process with a unique temporary profile and loopback
+remote-control port; an existing Chrome/Firefox instance is not reused or stopped.
 
 ```sh
 make ui-deps         # explicit build dependency fetch; no install scripts
 make check           # frontend build/verification/tests + Go checks
-make test-ui-browser  # real Firefox with deterministic UI data fixtures
+make test-ui-browser  # isolated Chrome/Firefox with deterministic UI fixtures
 make test-ui          # rebuilt guest + actual CLI bridge/daemon, real KVM chart
 ```
 
@@ -148,26 +197,34 @@ stopping existing workloads. This is not a global allocator.
 
 See [original acceptance](experiments/t23-console.md) and
 [PatternFly revalidation](experiments/t23-console.md#patternfly-migration-gate) and
-[visual/topology iteration](experiments/t23-console-redesign.md) for actual checks.
+[visual/topology iteration](experiments/t23-console-redesign.md) for historical checks.
+Current [Chrome/PTY/resize/signal/lifetime evidence](experiments/t24-browser-terminal-compose-dependencies.md)
+is separate from the fixture-only browser test.
 
 Manual smoke steps:
 
 1. Start a supported workload, run `grillo ui --port 0`, open the URL once.
 2. Select an application and compare replica counts, VM boundaries and routes
-   with CLI inspection. Check unavailable metrics are labelled, not zeros.
+   with CLI inspection. Open Observe → Metrics; unavailable samples are labelled,
+   not zeros. Workloads → Pods opens resource tabs; runtime details stay advanced.
 3. Confirm config/Secret panes contain metadata only. Use text containing HTML
    in retained log/exec output and verify it remains text, not DOM markup.
 4. Filter logs by resource/container/stream; toggle polling. Disconnect/reconnect
    the event connection and confirm cursor resume; after a retention gap, confirm
    snapshot refresh. The deterministic browser gate exercises the latter.
 5. Select a running container, run a JSON argument array, check stdout/stderr and
-   exit code, and cancel a long request. Check CLI shell guidance and TTY limits.
+   exit code, and cancel a long request. Open a Pod Terminal, connect, type a command,
+   interrupt foreground work with Ctrl+C, resize, then disconnect. The automated KVM
+   gate verifies a real PTY with `test -t`/`stty` and checks shell/child cleanup.
 6. Close the browser and interrupt the bridge. Verify workload status and exec
    still succeed, with unchanged VMM PIDs.
 
 ## Explicit MVP limits
 
-Full browser TTY is deferred; CLI stdin/TTY/resize is implemented. Actual guest
+Interactive browser stdin/TTY/resize uses a bounded xterm-compatible emulator.
+No replay/reconnect, complete OpenShift parity or exhaustive terminal/Unicode/IME
+and accessibility coverage is claimed. CLI stdin/TTY/resize remains available.
+Actual guest
 `/proc` memory/CPU ticks and container cgroup memory/cumulative CPU microseconds
 are displayed with collection times and sources, separately from VMM RSS and
 guest allocation. Missing values are unavailable, never zeroed; guest reports
