@@ -10,7 +10,7 @@ your normal user; they do not grant missing host privileges.
 
 Build tools:
 
-- Go 1.26.x, exact reviewed patch 1.26.9 (`.go-version`), Make, Python 3 for
+- Go 1.27.x, exact selected patch 1.27.2 (`.go-version`), Make, Python 3 for
   toolchain policy, Node 24.18.0 / npm 11.16.0. No automatic family upgrade.
 - A C compiler for race tests; kernel-build tools include gcc, flex, bison, bc,
   libelf/OpenSSL headers and Perl.

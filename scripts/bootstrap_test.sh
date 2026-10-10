@@ -8,7 +8,7 @@ trap 'rm -rf -- "$work"' EXIT
 
 bash -n "$bootstrap"
 bash "$bootstrap" > "$work/plan"
-grep -q 'Go 1.26.9' "$work/plan"
+grep -q 'Go 1.27.2' "$work/plan"
 bash "$bootstrap" --help > /dev/null
 if bash "$bootstrap" --invalid > /dev/null 2>&1; then
     echo 'FAIL: invalid flag accepted' >&2; exit 1
@@ -61,7 +61,7 @@ else
     mkdir -p "$fixture/go/bin" "$fixture/release-v1.17.0-x86_64" "$fixture/linux-6.1.188"
     printf 'do not execute\n' > "$fixture/go/bin/go"
     chmod 755 "$fixture/go/bin/go"
-    printf 'go1.26.9\n' > "$fixture/go/VERSION"
+    printf 'go1.27.2\n' > "$fixture/go/VERSION"
     printf 'fixture license\n' > "$fixture/go/LICENSE"
     printf 'do not execute\n' > "$fixture/release-v1.17.0-x86_64/firecracker-v1.17.0-x86_64"
     printf 'fixture\n' > "$fixture/linux-6.1.188/COPYING"

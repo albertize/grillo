@@ -15,8 +15,10 @@ packaged release or supported runtime version. [User-supplied hosted CI logs](ex
 now record Ubuntu unit/build checks PASS but Go stdlib advisory FAIL; no hosted
 run was started by the coding agent. Prior local vendor-version zero-finding
 scans do not clear stdlib vulnerabilities. [Actual pinned Go 1.26.9 local rebuilds](experiments/t24-go126-toolchain.md)
-now pass advisory/check/fuzz/browser/KVM gates; hosted rerun and external-tool/
-old-running-process security remain separate.
+passed advisory/check/fuzz/browser/KVM gates at that pin. The current pin is
+**Go 1.27.2**, matching the user's installed upstream toolchain; `make check`
+passes locally. Advisory/fuzz/browser/KVM gates have not been rerun on 1.27.2;
+hosted rerun and external-tool/old-running-process security remain separate.
 
 Container stdout/stderr now reaches the bounded guest ring and host spool, with
 explicit guest-retention gaps; [real pipeline evidence](experiments/t24-guest-logs.md).
@@ -85,36 +87,33 @@ subsequent edit or that the whole product is release-ready.
 
 ## Latest delivery
 
-- **Task:** T24 — pinned Go 1.26 family and fail-closed advisory identity.
-- **Status:** Local bounded gates PASS; overall T24/D0 BLOCKED.
-- **Dependencies verified:** Supplied CI/version-coverage correction, existing
-  build/bootstrap/scanner and verified guest/installed/T23 browser contracts.
-- **Files and contracts changed:** `.go-version`/CI/go.mod/bootstrap/docs pin exact
-  1.26.9; Make local-toolchain policy, Python-stdlib version/root/override checks,
-  offline regressions and private Go-only staging; [evidence](experiments/t24-go126-toolchain.md).
-- **Decisions/ADRs:** User's 1.26 family fixed to the reviewed security patch,
-  never vulnerable .0/.8 or floating next family. No new dependency/ADR, sudo,
-  system Go overwrite, silent download or scanner identity substitution.
-- **Tests run:** Policy/bootstrap offline tests PASS; old vendor Go and GOVERSION
-  override correctly rejected (exit 2). Actual checksum-verified upstream Go 1.26.9
-  make check/vulncheck/fuzz PASS, all host/agent binaries freshly rebuilt. Firefox
-  7.48s, real UI/KVM 25.79s and installed runtime 5.98s PASS without SKIP; new
-  runtime-only guest and separate backend artifact. Documentation/diff PASS.
-- **Tests NOT run and why:** No remote CI run, transfer-payload publication,
-  external-tool/all-image security/source/license or new default-policy/other-host
-  gate. No live demo restart or owned-management-process replacement without
-  coordinating review session; previous binaries/images are not automatically patched.
-- **Integration/benchmark evidence:** Actual selected Go/PATH/source-scan consistency
-  and fresh verified KVM boot. Final existing gateway probe FAIL (curl 7); read-only
-  status shows no demo containers, old daemon/console still alive. Bookkeeping
-  predates this change; no attribution of stop cause. No cleanup/restart performed.
-- **Known limitations:** Source scan does not clear Helm/native helpers/guest/tools
-  or prior archives/old running processes. Family/metadata checks are not publisher
-  signatures, source attestation or Fedora backport review. Python 3 development
-  prerequisite now explicit. Short fuzz campaign is not a load/latency proof.
-- **Next task:** Hosted rerun with actual pin; deliberately rebuild transfer/demo
-  images and replace only verified owned old processes when coordinated, preserving
-  remaining T24/D0 blockers and unrelated UI work.
+- **Task:** T24 — migrate the pinned Go toolchain to 1.27.2.
+- **Status:** BLOCKED overall (T24/D0); bounded migration checks PASS.
+- **Dependencies verified:** T23 recorded evidence; existing exact-pin bootstrap,
+  CI and fail-closed compiler/GOROOT/advisory-override policy. Installed
+  `/usr/local/go/bin/go` reports upstream `go1.27.2 linux/amd64`.
+- **Files and contracts changed:** `.go-version`, `go.mod`, bootstrap version and
+  official Linux/amd64 digest, policy/regression tests and current setup guides.
+  CI already reads `.go-version`. Go 1.27 tidy groups existing module requirements;
+  dependency versions and `go.sum` are unchanged.
+- **Decisions/ADRs:** Explicit user-requested 1.27 migration supersedes the previous
+  family selection; exact installed patch 1.27.2, no new module or architecture.
+  No host profile edit, tool install, automatic download or identity substitution.
+- **Tests run:** With `PATH=/usr/local/go/bin:$PATH`, first `make check` FAIL at
+  `go mod tidy -diff` (require-block formatting); after normalization, second
+  `make check` PASS: UI, formatting, vet, unit/offline scripts, race, four binary
+  builds and module audit. Official HTTPS Go release metadata supplied the archive
+  digest; no archive downloaded. `./bin/grillo version` reports `dev`.
+- **Tests NOT run and why:** Advisory/fuzz/browser/KVM/hosted gates and runtime
+  guest-image rebuild are outside this bounded compiler migration. Historical
+  1.26.9 evidence is not a 1.27.2 integration or vulnerability clearance.
+- **Integration/benchmark evidence:** Local non-KVM checks only; no performance
+  claim. Previous delivery/evidence retained in [history](history/implementation-log.md).
+- **Known limitations:** Installed Go's bin directory is absent from the session's
+  default PATH; select it explicitly. Built agent binary is new, existing guest
+  images, running processes and prior payloads are not automatically updated.
+- **Next task:** Rerun advisory and real rebuilt-guest integration gates on the new
+  pin, then hosted/clean-host verification; preserve remaining T24/D0 blockers.
 
 ## Updating progress
 

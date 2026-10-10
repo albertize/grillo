@@ -11,7 +11,9 @@ verification is incomplete.
 [Supplied hosted CI](experiments/t24-ci-log-review.md) flags ten upstream Go
 1.26.8 stdlib findings, fixed in 1.26.9; historical vendor-suffix zero results are
 not clearance. [Actual upstream Go 1.26.9 rebuild/scan/browser/KVM gates](experiments/t24-go126-toolchain.md)
-now PASS locally with fail-closed identity checks and the pinned 1.26 family.
+passed locally with fail-closed identity checks at the historical 1.26.9 pin.
+The current pin is 1.27.2; routine checks pass, but its advisory and KVM gates
+have not been rerun. Do not treat the older scan as clearance for the new build.
 Hosted rerun, old running processes/payloads, external tools and broader T24 gates
 remain separate; no suppression or version-string-only substitution patches them.
 

@@ -36,7 +36,7 @@ silently changes the host and installs downloaded executables in one invocation.
 
 | Artifact | Pin | Source / purpose |
 |---|---|---|
-| Go | 1.26.x family, exact 1.26.9 / linux-amd64 | go.dev; CLI/agent/kernel-init development |
+| Go | 1.27.x family, exact 1.27.2 / linux-amd64 | go.dev; CLI/agent/kernel-init development |
 | Firecracker | 1.17.0, x86_64 | firecracker-microvm GitHub releases; candidate VMM, not selected backend |
 | Linux source | 6.1.188 | cdn.kernel.org; guest kernel build input, not a built kernel |
 | Guest kernel config | Firecracker v1.17.0, x86_64 6.1 config | upstream repository; starting point requiring review/adaptation |
@@ -102,7 +102,7 @@ For an explicit **Go-only** private update, without touching an existing
 
 ```sh
 bash scripts/bootstrap.sh --go-download
-source experiments/artifacts/go-toolchain-1.26.9/env.sh
+source experiments/artifacts/go-toolchain-1.27.2/env.sh
 make check-go
 make check
 make vulncheck

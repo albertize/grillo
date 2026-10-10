@@ -14,10 +14,10 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 
 
 def validate(actual, expected, override=None):
-    if not re.fullmatch(r"1\.26\.[0-9]+", expected):
-        raise ValueError("invalid pin: Grillo is pinned to the Go 1.26 release family")
-    if tuple(map(int, expected.split('.'))) < (1, 26, 9):
-        raise ValueError("Go pin is below the reviewed stdlib security minimum 1.26.9")
+    if not re.fullmatch(r"1\.27\.[0-9]+", expected):
+        raise ValueError("invalid pin: Grillo is pinned to the Go 1.27 release family")
+    if tuple(map(int, expected.split('.'))) < (1, 27, 2):
+        raise ValueError("Go pin is below the selected patch minimum 1.27.2")
     if override is not None:
         raise ValueError("unset GOVERSION: overriding advisory identity is not allowed")
     if actual != "go" + expected:

@@ -7,7 +7,7 @@ contract, not hardware execution. A skipped hardware check is not a passed gate.
 
 ## Routine checks
 
-Go 1.26.8, Make, Node 24.18.0/npm 11.16.0 and a C compiler for Linux race tests:
+Go 1.27.2 (`.go-version`), Make, Node 24.18.0/npm 11.16.0 and a C compiler for Linux race tests:
 
 ```sh
 make ui-deps          # explicit npm integrity-lock installation, scripts disabled

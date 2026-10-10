@@ -58,7 +58,7 @@ vet test race build test-ui-browser test-ui test-helm: ui-build
 check-go:
 	PYTHONDONTWRITEBYTECODE=1 python3 scripts/go-toolchain.py --go '$(GO)'
 
-# Require the exact reviewed 1.26 patch, never an automatic toolchain download.
+# Require the exact selected 1.27 patch, never an automatic toolchain download.
 vet test race build audit fuzz: check-go
 
 check: check-go ui-check fmt vet test test-scripts race build audit

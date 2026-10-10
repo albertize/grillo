@@ -25,7 +25,7 @@ and [progress](docs/progress.md) for delivery status and dated evidence.
 
 ## Start here
 
-Build from source using **Go 1.26.x**, exact reviewed patch **1.26.9**
+Build from source using **Go 1.27.x**, exact selected patch **1.27.2**
 (`.go-version`), Node **24.18.0** / npm **11.16.0**, Python 3 for toolchain policy,
 and Make. No automatic Go upgrade to another release family:
 

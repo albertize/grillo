@@ -6,6 +6,29 @@ superseded summaries. They are not current support claims; use
 [current progress](../progress.md) and [compatibility](../compatibility.md).
 
 
+## Archived T24 Go 1.26 pin and fail-closed identity delivery
+
+Superseded by the user-requested Go 1.27.2 migration; T24/D0 remain BLOCKED.
+[Detailed reproducible evidence](../experiments/t24-go126-toolchain.md) preserves
+version/digest/environment and commands. Exact 1.26.9 pins, local-toolchain policy,
+compiler/GOROOT/override checks, offline regressions and private Go-only staging
+changed bootstrap/build/scanner contracts; no new dependency/ADR, sudo, system
+Go overwrite or silent download. Policy/bootstrap tests PASS; vendor Go and
+GOVERSION override rejected (exit 2). Actual checksum-verified upstream 1.26.9
+make check/vulncheck/fuzz PASS with rebuilt host/agent binaries. Firefox 7.48s,
+real UI/KVM 25.79s and installed runtime 5.98s PASS without SKIP; new runtime-only
+guest and separate backend artifact. Documentation/diff PASS.
+
+No remote CI, transfer-payload publication, external-tool/all-image security,
+source/license, default-policy/other-host gate or coordinated demo/process
+replacement. Final existing gateway probe FAIL (curl 7); read-only status showed
+no demo containers, old daemon/console alive. Bookkeeping predates the change;
+no stop-cause attribution, cleanup or restart. Source scanning did not clear
+Helm/native helpers/guest tools, old archives or running processes. Identity
+checks are not publisher signatures/attestation or Fedora backport review;
+short fuzzing is not load/latency proof. Next was hosted rerun and deliberate
+coordinated transfer/demo rebuild while preserving T24/D0 blockers.
+
 ## Archived T24 supplied hosted-CI log review
 
 BLOCKED; [supplied archive review](../experiments/t24-ci-log-review.md) identifies

@@ -3,8 +3,8 @@
 # Explicit setup only; never called by build, test, doctor, or runtime commands.
 set -euo pipefail
 
-GO_VERSION=1.26.9
-GO_SHA256=42d158b4d8f7b61ac0a830567c940a86098fb7aac52e467a5ebec03ef5cc2f8d
+GO_VERSION=1.27.2
+GO_SHA256=ecbadb99091a3f46e31f5f934b068b1864eafa7995211b39eaddf76996045fe5
 FIRECRACKER_VERSION=1.17.0
 KERNEL_VERSION=6.1.188
 PACKAGES=(gcc make flex bison bc elfutils-libelf-devel openssl-devel perl
