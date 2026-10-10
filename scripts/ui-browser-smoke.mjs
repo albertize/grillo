@@ -103,6 +103,29 @@ try {
   }
   await navigate('topology');
   assert(await evaluate(`document.getElementById("topology").querySelectorAll("rect").length >= 3`),"missing topology");
+  await evaluate(`document.querySelector('#topology [data-kind="service"]').focus()`);
+  await command('input.performActions', {context, actions:[{type:'key', id:'topology-keyboard', actions:[{type:'keyDown', value:'\uE007'}, {type:'keyUp', value:'\uE007'}]}]});
+  await wait(`document.getElementById('topology-detail')?.textContent.includes('Services')`);
+  assert(await evaluate(`document.querySelector('#topology [data-kind="service"]').getAttribute('aria-pressed') === 'true'`), 'keyboard selection not exposed');
+  assert(await evaluate(`getComputedStyle(document.querySelector('.gr-masthead')).backgroundColor === 'rgb(16, 43, 53)'`), 'Grillo masthead palette missing');
+  assert(await evaluate(`getComputedStyle(document.getElementById('refresh')).color === 'rgb(8, 114, 108)'`), 'Grillo action palette missing');
+  await evaluate(`Array.from(document.querySelectorAll('#topology-detail [role="tab"]')).find(t => t.textContent === 'Details').click()`);
+  await wait(`document.getElementById('topology-detail').textContent.includes('Relationship source')`);
+  await evaluate(`Array.from(document.querySelectorAll('#topology-detail [role="tab"]')).find(t => t.textContent === 'Resources').click()`);
+  if (process.env.GRILLO_UI_SCREENSHOT) {
+    const shot = await command('browsingContext.captureScreenshot', {context, format:{type:'image/png'}});
+    await writeFile(process.env.GRILLO_UI_SCREENSHOT.replace('.png', '-topology.png'), Buffer.from(shot.data, 'base64'));
+  }
+  await evaluate(`document.querySelector('[aria-label="Close resource detail"]').click()`);
+  await wait(`!document.getElementById('topology-detail')`);
+  assert(await evaluate(`document.activeElement?.getAttribute('data-kind') === 'service'`), 'closing detail loses keyboard focus');
+  await setValue('topology-search', 'no-topology-match-unique');
+  await wait(`document.querySelectorAll('#topology [role="button"]').length === 0`);
+  await setValue('topology-search', '');
+  await wait(`document.querySelectorAll('#topology [role="button"]').length >= 3`);
+  await evaluate(`document.querySelector('[aria-label="Zoom in"]').click()`);
+  assert(await evaluate(`!!document.querySelector('.gr-zoom-in')`), 'zoom control failed');
+  await evaluate(`document.querySelector('[aria-label="Fit topology"]').click()`);
   assert(await evaluate(`!document.body.textContent.includes("synthetic-hidden-value") && !document.body.textContent.includes("synthetic-cli-private-token")`),"secret/config value in DOM");
   assert(await evaluate(`!document.cookie.includes("grillo_session")`),"session is not HttpOnly");
   const result=await evaluate(`(async()=>{const r=await fetch("/v1/applications/" + encodeURIComponent(document.getElementById("apps").value) + "/view"); return {status:r.status,body:await r.text()};})()`);
@@ -170,9 +193,22 @@ try {
   }
   await navigate('workloads');
   assert(await evaluate(`!!document.getElementById('sandboxes')`), 'mobile navigation failed');
+  await evaluate(`document.getElementById('nav-toggle').click()`);
+  await navigate('topology');
+  await evaluate(`document.querySelector('#topology [data-kind="service"]').focus()`);
+  await command('input.performActions', {context, actions:[{type:'key', id:'mobile-topology-keyboard', actions:[{type:'keyDown', value:'\uE007'}, {type:'keyUp', value:'\uE007'}]}]});
+  await wait(`!!document.getElementById('topology-detail')`);
+  assert(await evaluate(`document.getElementById('topology-detail').getBoundingClientRect().width <= innerWidth && document.documentElement.scrollWidth <= innerWidth`), 'mobile topology overflows the document');
+  if (process.env.GRILLO_UI_SCREENSHOT) {
+    await evaluate(`document.getElementById('topology-detail').scrollIntoView()`);
+    const shot = await command('browsingContext.captureScreenshot', {context, format:{type:'image/png'}});
+    await writeFile(process.env.GRILLO_UI_SCREENSHOT.replace('.png', '-topology-mobile.png'), Buffer.from(shot.data, 'base64'));
+  }
+  assert.deepEqual(await evaluate(`window.__cspErrors`), [], 'mobile topology violates CSP');
+  assert.deepEqual(await evaluate(`window.__runtimeErrors`), [], 'mobile topology runtime errors');
   await command("browsingContext.close",{context});
   await command("session.end",{});
-  console.log(live ? "PASS: real Firefox PatternFly React with native daemon/KVM views, local fonts/CSP, real guest logs/filtering/HTML safety, container exec and cancellation without a leaked exec process; desktop/mobile navigation and closure" : "PASS: real Firefox PatternFly React bootstrap, desktop/mobile navigation, local fonts/CSP, views/topology, metadata-only responses, HTML log safety, exec, SSE gap/reconnect and filters");
+  console.log(live ? "PASS: real Firefox PatternFly React with native daemon/KVM views, local fonts/CSP, real guest logs/filtering/HTML safety, container exec and cancellation without a leaked exec process; desktop/mobile navigation, keyboard topology selection/filter/zoom/detail and closure" : "PASS: real Firefox PatternFly React bootstrap, desktop/mobile navigation, local fonts/CSP, views/keyboard topology selection/filter/zoom/detail, metadata-only responses, HTML log safety, exec, SSE gap/reconnect and filters");
 } catch (error) {
   // Bootstrap credentials must not appear in test failure diagnostics.
   throw new Error(String(error.message).split(url).join("[console URL redacted]"));

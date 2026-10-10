@@ -3,7 +3,8 @@
 # Explicit setup only; never called by build, test, doctor, or runtime commands.
 set -euo pipefail
 
-GO_VERSION=1.26.8
+GO_VERSION=1.26.9
+GO_SHA256=42d158b4d8f7b61ac0a830567c940a86098fb7aac52e467a5ebec03ef5cc2f8d
 FIRECRACKER_VERSION=1.17.0
 KERNEL_VERSION=6.1.188
 PACKAGES=(gcc make flex bison bc elfutils-libelf-devel openssl-devel perl
@@ -11,11 +12,13 @@ PACKAGES=(gcc make flex bison bc elfutils-libelf-devel openssl-devel perl
 
 usage() {
     cat <<'EOF'
-Usage: bash scripts/bootstrap.sh [--dry-run|--download|--system-packages|--help]
+Usage: bash scripts/bootstrap.sh [--dry-run|--download|--go-download|--system-packages|--help]
 
 Default/--dry-run: print the plan; do not download/install software or change files.
 --download: download/check/extract pinned Linux/amd64 development and T01 tools
             into experiments/artifacts/dependencies-v1, as the normal user.
+--go-download: download/check/extract ONLY the pinned Go toolchain into a new
+               experiments/artifacts/go-toolchain-VERSION directory; no overwrite.
 --system-packages: install Fedora build packages using dnf (requires an explicitly
                    root-invoked script). This script never invokes sudo.
 
@@ -103,7 +106,7 @@ install_downloads() (
     printf 'module grillo.local/bootstrap-artifacts\n' > "$stage/go.mod"
 
     fetch_verified "https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz" \
-        d0f743b33e8d8945e6b1f432edd15785c70507121d6e2a723b21285eddf8b57b \
+        "$GO_SHA256" \
         "$stage/downloads/go${GO_VERSION}.linux-amd64.tar.gz"
     fetch_verified "https://github.com/firecracker-microvm/firecracker/releases/download/v${FIRECRACKER_VERSION}/firecracker-v${FIRECRACKER_VERSION}-x86_64.tgz" \
         06094a1108ae9e82aa4c23a775aa92758f53f1175d422270d9d6162cb9ade558 \
@@ -137,12 +140,56 @@ install_downloads() (
     printf 'Installed verified artifacts; no downloaded code executed.\nActivate in Bash:\n  source %q\n' "$destination/env.sh"
 )
 
+# Go-only update does not re-download unrelated guest/VMM sources or alter an
+# existing dependencies-v1 tree. Only its own temporary stage is cleaned.
+install_go_download() (
+    local root=$1 stage='' tool path
+    [[ $(uname -s) == Linux && $(uname -m) == x86_64 && $EUID != 0 ]] || {
+        fail 'Go download requires normal-user Linux/amd64'; exit 1;
+    }
+    for tool in curl sha256sum tar gzip mktemp mv rm; do
+        command -v "$tool" >/dev/null || { fail "missing prerequisite: $tool"; exit 1; }
+    done
+    for path in "$root/experiments" "$root/experiments/artifacts"; do
+        [[ ! -L "$path" ]] || { fail "refusing symlink directory: $path"; exit 1; }
+    done
+    local parent="$root/experiments/artifacts" destination="$root/experiments/artifacts/go-toolchain-$GO_VERSION"
+    [[ ! -e "$destination" && ! -L "$destination" ]] || { fail 'Go destination already exists; no overwrite'; exit 1; }
+    umask 077
+    mkdir -p -- "$parent" || exit 1
+    stage=$(mktemp -d "$parent/.go-toolchain.XXXXXXXX") || exit 1
+    trap '[[ -z "$stage" ]] || rm -rf -- "$stage"' EXIT
+    trap 'exit 130' INT
+    trap 'exit 143' TERM
+    printf 'module grillo.local/go-toolchain-artifacts\n' > "$stage/go.mod" || exit 1
+    fetch_verified "https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz" "$GO_SHA256" "$stage/go.tar.gz" || exit 1
+    tar --extract --gzip --file "$stage/go.tar.gz" --directory "$stage" --no-same-owner --no-same-permissions || exit 1
+    [[ -x "$stage/go/bin/go" && -f "$stage/go/LICENSE" && -f "$stage/go/VERSION" ]] || { fail 'incomplete Go archive'; exit 1; }
+    local version
+    IFS= read -r version < "$stage/go/VERSION" || exit 1
+    [[ "$version" == "go$GO_VERSION" ]] || { fail 'Go archive version differs from pin'; exit 1; }
+    {
+        printf '# Generated private toolchain activation; source with Bash.\n'
+        printf 'export PATH=%q:"$PATH"\n' "$destination/go/bin"
+        printf 'export GOTOOLCHAIN=local\n'
+        printf 'unset GOVERSION GOROOT\n'
+    } > "$stage/env.sh" || exit 1
+    mv -T -- "$stage" "$destination" || exit 1
+    stage=''
+    printf 'Installed checksum-verified Go; no downloaded code executed or system Go changed.\nActivate in Bash:\n  source %q\n' "$destination/env.sh"
+)
+
 main() {
     if (( $# > 1 )); then usage >&2; return 2; fi
     case "${1:---dry-run}" in
         --help|-h) usage ;;
         --dry-run) plan ;;
         --system-packages) system_packages ;;
+        --go-download)
+            local root
+            root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)
+            install_go_download "$root"
+            ;;
         --download)
             local root
             root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)

@@ -8,6 +8,13 @@ Go host runtime/agent, guest runc, Unix API and loopback React console. The
 specification's security goals remain requirements where implementation or
 verification is incomplete.
 
+[Supplied hosted CI](experiments/t24-ci-log-review.md) flags ten upstream Go
+1.26.8 stdlib findings, fixed in 1.26.9; historical vendor-suffix zero results are
+not clearance. [Actual upstream Go 1.26.9 rebuild/scan/browser/KVM gates](experiments/t24-go126-toolchain.md)
+now PASS locally with fail-closed identity checks and the pinned 1.26 family.
+Hosted rerun, old running processes/payloads, external tools and broader T24 gates
+remain separate; no suppression or version-string-only substitution patches them.
+
 ## Assets and adversaries
 
 Protect host files not deliberately shared, unrelated applications, private

@@ -11,8 +11,12 @@ T00–T23 (including T18b) have recorded completion evidence. F0/F2 passed their
 real gates; **F3/product hardening is not complete**. T24 is BLOCKED after the
 local hardening campaign; missing §28 contracts and external-host evidence are
 listed in the [current T24 report](experiments/t24-interactive-metrics-artifacts.md). There is no
-packaged release or supported runtime version. Hosted CI has not been executed
-in the recorded delivery sessions.
+packaged release or supported runtime version. [User-supplied hosted CI logs](experiments/t24-ci-log-review.md)
+now record Ubuntu unit/build checks PASS but Go stdlib advisory FAIL; no hosted
+run was started by the coding agent. Prior local vendor-version zero-finding
+scans do not clear stdlib vulnerabilities. [Actual pinned Go 1.26.9 local rebuilds](experiments/t24-go126-toolchain.md)
+now pass advisory/check/fuzz/browser/KVM gates; hosted rerun and external-tool/
+old-running-process security remain separate.
 
 Container stdout/stderr now reaches the bounded guest ring and host spool, with
 explicit guest-retention gaps; [real pipeline evidence](experiments/t24-guest-logs.md).
@@ -54,7 +58,7 @@ See [compatibility](compatibility.md) and [console limits](ui.md#explicit-mvp-li
 | T21 | Helm rendering and OCI charts | DONE | Real Helm package/template, local/OCI equivalence, explicit HTTPS fetch, verified atomic cache, stable offline plans, archive/corruption/concurrency/dependency restrictions; `docs/experiments/t21-helm-renderer.md` |
 | T22 | Helm gate and compatibility reporting | DONE | Full direct-runtime scenario C plus actual CLI/daemon chart gate PASS; unsupported provisioning blocked; compiler registry/counts and consumer/PVC semantics verified |
 | T23 | Web console and secure bridge | DONE | React/PatternFly frontend (ADR 0008), metadata-only views, bounded logs/SSE/non-TTY exec; actual Firefox desktop/mobile and native CLI/daemon/KVM lifetime/cancellation gates PASS; original data limits remain explicit |
-| T24 | F3 MVP gate and hardening | BLOCKED | [100 verified boots and current advisory hardening](experiments/t24-closure-campaign.md) PASS; clean external host, release delivery, full budgets/quota/load/provenance and hosted CI remain |
+| T24 | F3 MVP gate and hardening | BLOCKED | [100 verified boots](experiments/t24-closure-campaign.md) PASS; [Pinned Go 1.26.9 local gates PASS](experiments/t24-go126-toolchain.md); old hosted advisory FAIL/rerun pending, clean-host, delivery and full budgets/quota/load/provenance remain |
 | T25 | StatefulSet and Job | TODO | T24 |
 | T26 | Extended Tier 1/Tier 2 parity and TLS | TODO | T25 |
 | T27 | Measured optimization and packaging | TODO | T24; T26 for complete F4 |
@@ -81,33 +85,36 @@ subsequent edit or that the whole product is release-ready.
 
 ## Latest delivery
 
-- **Task:** T24 — fail-closed payload notices, actual binary provenance and host support boundaries.
-- **Status:** BLOCKED overall; bounded local staging/support delivery PASS.
-- **Dependencies verified:** T23 embedded UI, Stage/runtime-only/installed gates,
-  prior license inventory and user-run Fedora Permissive observations.
-- **Files and contracts changed:** Stage mandatory verbatim frontend/font texts,
-  no-follow/bounded notice checks, four copied-binary Go metadata records with
-  replacement redaction, partial coverage field, unit/KVM assertions; staged
-  host-support guide and README/runtime-layout. [Evidence](experiments/t24-payload-notices-provenance-support.md).
-- **Decisions/ADRs:** No dependency/ADR/support range/SLA/contact invented;
-  metadata/hashes do not authenticate producers or complete source/license review.
-- **Tests run:** Full `make check`, actual `make payload`, archive notice digest
-  check, 100 selected notice/provenance race suites, `make audit vulncheck` PASS
-  (no Grillo graph vulnerabilities). Rebuilt installed KVM gate PASS without SKIP
-  (final 7.35s), including new inventory/notice assertions. Formatting/docs/diff PASS.
-- **Tests NOT run and why:** No new external/default-policy/hosted CI proof;
-  full corresponding-source/Go/Helm notices and publisher trust/release gates remain
-  incomplete. Grillo advisory scan does not certify external binaries.
-- **Integration/benchmark evidence:** Actual copied Helm declares Go 1.26.4 and
-  106 dependency modules, unlike Grillo toolchain/graph; five exact notice texts
-  ship. User now confirms second-host UI functionality; lifetime/cleanup scope
-  still limited as [recorded](experiments/d0-second-host-fedora44.md).
-- **Known limitations:** Notice coverage remains partial; embedded metadata can
-  be forged and lacks exact source/patch proof. Fedora Enforcing still blocked,
-  no supported release. Other quota/performance/source/provenance gates remain.
-- **Next task:** Prepared Go/toolchain notice collection, explicit guest/Helm
-  corresponding sources and verified release decisions; presentation and remaining
-  hardening checks separately. Do not infer T24/D0 DONE from local functional PASS.
+- **Task:** T24 — pinned Go 1.26 family and fail-closed advisory identity.
+- **Status:** Local bounded gates PASS; overall T24/D0 BLOCKED.
+- **Dependencies verified:** Supplied CI/version-coverage correction, existing
+  build/bootstrap/scanner and verified guest/installed/T23 browser contracts.
+- **Files and contracts changed:** `.go-version`/CI/go.mod/bootstrap/docs pin exact
+  1.26.9; Make local-toolchain policy, Python-stdlib version/root/override checks,
+  offline regressions and private Go-only staging; [evidence](experiments/t24-go126-toolchain.md).
+- **Decisions/ADRs:** User's 1.26 family fixed to the reviewed security patch,
+  never vulnerable .0/.8 or floating next family. No new dependency/ADR, sudo,
+  system Go overwrite, silent download or scanner identity substitution.
+- **Tests run:** Policy/bootstrap offline tests PASS; old vendor Go and GOVERSION
+  override correctly rejected (exit 2). Actual checksum-verified upstream Go 1.26.9
+  make check/vulncheck/fuzz PASS, all host/agent binaries freshly rebuilt. Firefox
+  7.48s, real UI/KVM 25.79s and installed runtime 5.98s PASS without SKIP; new
+  runtime-only guest and separate backend artifact. Documentation/diff PASS.
+- **Tests NOT run and why:** No remote CI run, transfer-payload publication,
+  external-tool/all-image security/source/license or new default-policy/other-host
+  gate. No live demo restart or owned-management-process replacement without
+  coordinating review session; previous binaries/images are not automatically patched.
+- **Integration/benchmark evidence:** Actual selected Go/PATH/source-scan consistency
+  and fresh verified KVM boot. Final existing gateway probe FAIL (curl 7); read-only
+  status shows no demo containers, old daemon/console still alive. Bookkeeping
+  predates this change; no attribution of stop cause. No cleanup/restart performed.
+- **Known limitations:** Source scan does not clear Helm/native helpers/guest/tools
+  or prior archives/old running processes. Family/metadata checks are not publisher
+  signatures, source attestation or Fedora backport review. Python 3 development
+  prerequisite now explicit. Short fuzz campaign is not a load/latency proof.
+- **Next task:** Hosted rerun with actual pin; deliberately rebuild transfer/demo
+  images and replace only verified owned old processes when coordinated, preserving
+  remaining T24/D0 blockers and unrelated UI work.
 
 ## Updating progress
 

@@ -1,0 +1,23 @@
+# SPDX-License-Identifier: Apache-2.0
+# Build/tag all three images explicitly using Grillo's native builder first.
+name: ${GRILLO_STACK_NAME:-ui-stack}
+services:
+  ui:
+    image: grillo.local/ui-stack-ui:${GRILLO_STACK_TAG:-review}
+    command: ["/bin/busybox", "httpd", "-f", "-p", "8080", "-h", "/www"]
+    expose: ["8080"]
+    networks: [app]
+  backend:
+    image: grillo.local/ui-stack-backend:${GRILLO_STACK_TAG:-review}
+    command: ["/backend"]
+    expose: ["8080"]
+    networks: [app]
+  nginx:
+    image: grillo.local/ui-stack-nginx:${GRILLO_STACK_TAG:-review}
+    # Guest-side, bounded readiness wait; Compose depends_on is ordering only.
+    command: ["/bin/sh", "-c", "attempt=0; until wget -T 2 -q -O /dev/null http://ui:8080/ && wget -T 2 -q -O /dev/null http://backend:8080/healthz; do attempt=$$((attempt + 1)); if [ $$attempt -ge 30 ]; then echo 'upstream readiness timed out' >&2; exit 1; fi; sleep 1; done; exec nginx -c /etc/nginx/nginx.conf -g 'daemon off;'"]
+    ports: ["127.0.0.1:${GRILLO_STACK_PORT:-18088}:8080"]
+    depends_on: [ui, backend]
+    networks: [app]
+networks:
+  app:

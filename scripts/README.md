@@ -36,7 +36,7 @@ silently changes the host and installs downloaded executables in one invocation.
 
 | Artifact | Pin | Source / purpose |
 |---|---|---|
-| Go | 1.26.8, linux-amd64 | go.dev; CLI/agent/kernel-init development |
+| Go | 1.26.x family, exact 1.26.9 / linux-amd64 | go.dev; CLI/agent/kernel-init development |
 | Firecracker | 1.17.0, x86_64 | firecracker-microvm GitHub releases; candidate VMM, not selected backend |
 | Linux source | 6.1.188 | cdn.kernel.org; guest kernel build input, not a built kernel |
 | Guest kernel config | Firecracker v1.17.0, x86_64 6.1 config | upstream repository; starting point requiring review/adaptation |
@@ -91,7 +91,30 @@ The current OCI development-fixture export uses explicitly provisioned Podman;
 the native builder itself does not require it. Helm and Node/npm are also
 separate explicit prerequisites. No prebuilt distribution rootfs or alternative
 product backend is installed here. The pinned Go audit tool is invoked only by
-explicit `make vulncheck`.
+explicit `make vulncheck`. Builds/checks require the exact upstream Go patch in
+`.go-version` and reject unknown vendor/development version strings, mismatched
+GOROOT metadata or any `GOVERSION` advisory override. Python 3 is a development
+policy/test prerequisite, not a runtime dependency. No silent Go download or
+advisory-version substitution; `GOTOOLCHAIN=local` is enforced by Make.
+
+For an explicit **Go-only** private update, without touching an existing
+`dependencies-v1` tree or the system Go:
+
+```sh
+bash scripts/bootstrap.sh --go-download
+source experiments/artifacts/go-toolchain-1.26.9/env.sh
+make check-go
+make check
+make vulncheck
+```
+
+The Go-only mode uses the bootstrap's pinned Go SHA-256, retains upstream source/
+notices/archive, refuses existing destinations and cleans only its own stage.
+A previously installed toolchain needs deliberate inspection/activation, never
+a destructive replacement. Checksums identify bytes, not a publisher signature.
+Update `.go-version`, `go.mod`, bootstrap version/digest and documentation together;
+CI reads the same `.go-version` and tests reject pin drift. A fixed release does
+not upgrade any currently running daemon/guest/workload.
 
 ## Verification
 

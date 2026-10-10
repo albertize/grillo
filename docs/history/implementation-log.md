@@ -6,6 +6,84 @@ superseded summaries. They are not current support claims; use
 [current progress](../progress.md) and [compatibility](../compatibility.md).
 
 
+## Archived T24 supplied hosted-CI log review
+
+BLOCKED; [supplied archive review](../experiments/t24-ci-log-review.md) identifies
+55be94c Ubuntu unit/build make check PASS but upstream Go 1.26.8 advisory FAIL,
+ten called-symbol stdlib advisories fixed in 1.26.9; subsequent hosted fuzz not
+executed. Bounded inspection/hash outside repo, no archived credentials/raw logs
+tracked; user-supplied bytes not independent authenticated run provenance.
+Actual local vendor-version make vulncheck exit 0 vs explicit upstream 1.26.8
+baseline Make exit 2 reproduced the discrepancy. Installed scanner rejects the
+Fedora `-X:nodwarf5` suffix; stdlib-clearance conclusion withdrawn, historical
+output preserved. Security/progress/evidence corrections, no pins/system/tools/
+processes changed in that log-review step. Docs/diff PASS. No fixed toolchain
+install/rebuild/browser/KVM/remote hosted rerun in that step; next was deliberate
+fixed-source upgrade and fail-closed coverage regressions. Older live-stack
+availability was not reverified during log review. T24/D0 remain BLOCKED.
+
+## Archived T23 live full-stack review setup
+
+IN_PROGRESS for live user review; actual local build/HTTP/guest-network checks PASS,
+intentionally left running. Native Compose/DNS/publication/verified guest/T23
+contracts verified; new `examples/ui-stack` static UI, bounded standard-library Go
+notes API/tests and Nginx gateway, pinned native copy-only builds. No dependency/
+policy/sudo/fallback or release waiver. Unique owned private XDG session/CID ranges,
+no unrelated state recovery/cleanup. Backend tests / full make check PASS; three
+native image builds, plan/up/status/snapshots, UI assets/health/API GET/POST/readback
+and actual Nginx/UI guest exec to backend DNS/HTTP PASS. Three microVMs confirmed;
+management console HTTP shell PASS. Initial missing ENTRYPOINT-derived command and
+premature Nginx upstream DNS failures fixed with explicit commands/bounded guest
+readiness wait and preserved in [evidence](../experiments/t23-full-stack-review.md).
+New demo browser form not automated; HTTP assets/API are not browser proof. Down/
+post-down refusal/daemon cleanup not performed because user requested it stay live;
+no new default-policy/security/source/other-host/full-console gate. Three 512 MiB/
+1-vCPU allocations are not measured aggregate usage. Null endpoint/expose DTO
+finding remains, volatile unauthenticated demo and image/source/advisory review
+pending; bootstrap credential not in tracked evidence. Next was live dashboard/
+topology review and workload master/detail/scoped logs. T24/D0 BLOCKED overall.
+
+## Archived T23 first visual/topology revision
+
+Bounded local iteration DONE; user visual review next and T24/D0 BLOCKED. Verified
+T15/T22/T23 public snapshot/session/exec/chart/PatternFly/security/lifetime contracts.
+Reworked shared petrol/teal/mint shell, dashboard actual/unavailable guest memory
+rings, bounded declaration-only topology + responsive Resources/Details inspector,
+keyboard/filter/zoom/close-focus interactions and regressions. No new dependency,
+API, copied upstream branding or invented capacity/traffic. Full make check /
+10 Node tests PASS. Final real Firefox 9.07s and rebuilt CLI/daemon/KVM/UI gate
+39.11s PASS without SKIP. Initial BiDi key encoding FAIL fixed, default-blue token/
+stacked mobile header corrections preserved in [evidence](../experiments/t23-console-redesign.md).
+Actual logs/metrics/exec/cancellation and UI-independent VMM lifetime retained on
+local already-Permissive Fedora. No other-browser/CI/accessibility/cold-render/
+external-host proof, prior transfer payloads not rebuilt. Other resource pages
+retain functionality under shared styling; no drag/free-pan/full-browser TTY.
+User then found missing libexec daemon from incomplete plain-bin review command;
+corrected explicit checkout helper/guest overrides in UI guide, doctor preflight
+PASS with expected first-run/support WARNs and targeted cached tests PASS. No
+user-context daemon startup falsely inferred from those read-only checks.
+Next: actual user review / workload master-detail / scoped logs, without waiving
+remaining hardening/source/provenance gates. No commit/push in that UI iteration.
+
+## Archived T24 payload notices/provenance/support delivery
+
+Overall T24/D0 BLOCKED; bounded local Stage delivery PASS. Added mandatory verbatim
+frontend/font notice copying with bounded/no-follow inputs, four copied-binary
+Go metadata records, private replacement redaction, partial coverage status and
+staged host support guide. Verified T23/Stage/runtime-only/installed contracts and
+prior license/user-run Permissive evidence. No dependency/ADR/support waiver.
+Full make check, real payload builds/archive digest inspection, 100 selected race
+suites, audit/vulncheck PASS (Grillo graph only). Rebuilt installed KVM PASS without
+SKIP, final 7.35s. Helm actually declares Go 1.26.4 / 106 dependencies; metadata
+is not exact source/patch or publisher trust. Five notice texts ship, complete
+Go/Helm/guest notice/source review remains pending. No new external/default-policy
+or hosted CI evidence. User-confirmed UI on second Fedora host remains scoped
+functional evidence, with cleanup/lifetime gaps preserved. Known Enforcing/quota/
+performance/source/provenance gates remain. Next was prepared source/notice
+collection and remaining hardening, not automatic release acceptance.
+[Detailed report](../experiments/t24-payload-notices-provenance-support.md).
+User then authorized commit `55be94c` of accumulated work; no push performed.
+
 ## Archived D0/T24 partial second-host evidence entry
 
 Overall BLOCKED. User reports Fedora 44 Workstation/Linux 7.2.9-200.fc44 under

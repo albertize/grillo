@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 GO ?= go
+export GOTOOLCHAIN := local
 GOVULNCHECK_VERSION := v1.8.0
 # Development identity by default; release callers must provide locked metadata.
 VERSION ?= dev
@@ -24,6 +25,7 @@ test-scripts:
 	bash scripts/bootstrap_test.sh
 	bash scripts/fetch_oci_test.sh
 	bash scripts/payload_test.sh
+	PYTHONDONTWRITEBYTECODE=1 python3 scripts/go_toolchain_test.py
 
 race:
 	CGO_ENABLED=1 $(GO) test -race ./...
@@ -52,7 +54,14 @@ vet test race build test-ui-browser test-ui test-helm: ui-build
 
 .PHONY: ui-deps ui-build ui-check
 
-check: ui-check fmt vet test test-scripts race build audit
+.PHONY: check-go
+check-go:
+	PYTHONDONTWRITEBYTECODE=1 python3 scripts/go-toolchain.py --go '$(GO)'
+
+# Require the exact reviewed 1.26 patch, never an automatic toolchain download.
+vet test race build audit fuzz: check-go
+
+check: check-go ui-check fmt vet test test-scripts race build audit
 
 audit:
 	$(GO) mod verify
@@ -83,7 +92,7 @@ test-license-inventory:
 
 # Explicit opt-in: downloads and executes this pinned official Go audit tool.
 vulncheck:
-	$(GO) run golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION) ./...
+	PYTHONDONTWRITEBYTECODE=1 python3 scripts/go-toolchain.py --go '$(GO)' --scanner '$(GOVULNCHECK_VERSION)'
 
 # Build the T01 experiment guest kernel and initramfs (see experiments/boot).
 guest:

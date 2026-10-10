@@ -8,7 +8,7 @@ trap 'rm -rf -- "$work"' EXIT
 
 bash -n "$bootstrap"
 bash "$bootstrap" > "$work/plan"
-grep -q 'Go 1.26.8' "$work/plan"
+grep -q 'Go 1.26.9' "$work/plan"
 bash "$bootstrap" --help > /dev/null
 if bash "$bootstrap" --invalid > /dev/null 2>&1; then
     echo 'FAIL: invalid flag accepted' >&2; exit 1
@@ -60,6 +60,9 @@ else
     fixture="$work/fixtures"
     mkdir -p "$fixture/go/bin" "$fixture/release-v1.17.0-x86_64" "$fixture/linux-6.1.188"
     printf 'do not execute\n' > "$fixture/go/bin/go"
+    chmod 755 "$fixture/go/bin/go"
+    printf 'go1.26.9\n' > "$fixture/go/VERSION"
+    printf 'fixture license\n' > "$fixture/go/LICENSE"
     printf 'do not execute\n' > "$fixture/release-v1.17.0-x86_64/firecracker-v1.17.0-x86_64"
     printf 'fixture\n' > "$fixture/linux-6.1.188/COPYING"
     tar -czf "$fixture/go.tgz" -C "$fixture" go
@@ -88,6 +91,34 @@ test -f "$root/experiments/artifacts/dependencies-v1/linux-6.1.188/COPYING"
 source "$root/experiments/artifacts/dependencies-v1/env.sh"
 test "$(command -v firecracker)" = "$root/experiments/artifacts/dependencies-v1/bin/firecracker"
 test "$GOTOOLCHAIN" = local
+CASE
+    # Go-only updates preserve old full dependencies and never execute fixtures.
+    bash -s -- "$bootstrap" "$work/go only spaces" "$fixture" <<'CASE'
+set -euo pipefail
+source "$1"
+root=$2
+fixture=$3
+mkdir -p "$root/experiments/artifacts/dependencies-v1"
+printf 'preserve\n' > "$root/experiments/artifacts/dependencies-v1/marker"
+fetch_verified() { cp "$fixture/go.tgz" "$3"; }
+install_go_download "$root"
+test -f "$root/experiments/artifacts/go-toolchain-$GO_VERSION/go/LICENSE"
+test "$(< "$root/experiments/artifacts/go-toolchain-$GO_VERSION/go/VERSION")" = "go$GO_VERSION"
+test "$(< "$root/experiments/artifacts/dependencies-v1/marker")" = preserve
+if install_go_download "$root"; then echo 'FAIL: Go destination overwritten'; exit 1; fi
+source "$root/experiments/artifacts/go-toolchain-$GO_VERSION/env.sh"
+test "$GOTOOLCHAIN" = local
+test "$(command -v go)" = "$root/experiments/artifacts/go-toolchain-$GO_VERSION/go/bin/go"
+# A checksum/network failure removes only the new temporary stage.
+fetch_verified() { return 42; }
+if install_go_download "$root/failure"; then echo 'FAIL: Go fetch failure accepted'; exit 1; fi
+test ! -e "$root/failure/experiments/artifacts/go-toolchain-$GO_VERSION"
+test -z "$(find "$root/failure" -name '.go-toolchain.*' -print)"
+# Refuse symlink publication without touching its target.
+mkdir -p "$root/symlink/experiments/artifacts"
+ln -s "$fixture" "$root/symlink/experiments/artifacts/go-toolchain-$GO_VERSION"
+if install_go_download "$root/symlink"; then echo 'FAIL: Go symlink accepted'; exit 1; fi
+test -f "$fixture/go/LICENSE"
 CASE
     # Refuse existing installations, and never touch symlink destinations.
     for mode in existing symlink failure; do

@@ -10,11 +10,42 @@ already be available. The default bind is `127.0.0.1:9090`; `--port 0` selects
 and reports an available port. Closing the browser or interrupting `grillo ui`
 does **not** stop workloads. See the [T23 evidence](experiments/t23-console.md).
 
+## Reviewing a development checkout
+
+`make build` produces sibling binaries under `bin/`, not the installed layout
+under `libexec/grillo/`. With no healthy existing daemon, plain `bin/grillo ui`
+therefore cannot auto-start `libexec/grillo/grillod`. Use explicit development
+helpers and the prepared runtime-only guest selection (run `make runtime-guest`
+first if it is missing; required inputs must already be provisioned):
+
+```sh
+# Run from the repository root, with Bash.
+IFS= read -r guest < experiments/artifacts/runtime-selected.txt
+GRILLO_DAEMON_BINARY="$PWD/bin/grillod" \
+GRILLO_NETNS_BINARY="$PWD/bin/grillo-netns" \
+GRILLO_GUEST_KERNEL="$guest/bzImage" \
+GRILLO_GUEST_INITRAMFS="$guest/initramfs.cpio.gz" \
+GRILLO_GUEST_MANIFEST="$guest/manifest.json" \
+GRILLO_HELM_BINARY=/usr/bin/helm \
+  ./bin/grillo ui --port 0
+```
+
+The Helm path is this recorded development host's provisioned helper, not a
+universal host path. Existing healthy daemons are reused, not replaced by these
+overrides. An installed/staged prefix needs no checkout overrides. A running UI
+bridge keeps its old embedded assets; deliberately close/restart that bridge to
+review rebuilt UI. Do not share its bootstrap URL or stop workloads just to
+refresh presentation.
+
 ## Navigation
 
 A PatternFly masthead and responsive sidebar replace the original long page.
-Choose an application in the toolbar. Overview shows status cards, routes,
-activity and per-VM resource accounting; dedicated pages contain Workloads,
+Choose an application in the toolbar. The petrol/teal/mint shell uses compact
+navigation, an application context toolbar and white panels over a neutral canvas.
+Overview has application details/inventory, observed readiness, per-guest memory
+rings, published routes, global daemon activity and per-VM resource accounting.
+Missing/invalid guest samples render unavailable, not 0%; no host disk/network
+capacity or CPU percentages are invented. Dedicated pages contain Workloads,
 Topology, Networking, Storage, Configuration, Logs, Events, Exec and Diagnostics.
 Workload rows open sandbox detail; its Exec action selects the exact replica.
 Configuration uses ConfigMap/Secret tabs. Errors, loading and empty states are
@@ -24,8 +55,16 @@ explicit and styled consistently. Third-party notices are linked in the sidebar.
 
 - Application overview: desired replicas versus observed ready microVMs, source
   kind/path and snapshot time.
-- SVG topology: actual sandbox boundaries, Services and routes. Selector edges
-  are explicitly inferred from declarations, not measured traffic.
+- SVG topology: selectable routes, Services and **workload groups**, with a
+  Resources/Details inspector for related actual microVMs, Services and routes.
+  A workload group is not a VM isolation boundary. Each related observed VM is
+  identified individually. Selector/backend edges are inferred from declarations,
+  not measured traffic. Name filtering hides unmatched nodes/edges; zoom presets
+  and fit reset aid navigation. Tab/Enter/Space selects nodes; closing the detail
+  returns focus. Up to 100 nodes per kind, explicit cap notice, mobile inspector
+  stacked below the scrollable canvas. Full drag/pan/layout editing is not added.
+  Inspector Exec targets the exact running container; Daemon logs opens the
+  global log view, not a falsely resource-filtered stream.
 - Workloads and sandbox detail: containers/init containers, image references,
   mounts, declared probes, actual container state and observed probe results,
   private IP and QEMU backend. Exec selection uses `sandbox-ID/container` so
@@ -108,7 +147,8 @@ nonconflicting host-wide guest CID ranges (`grillod -vsock-cid-base …
 stopping existing workloads. This is not a global allocator.
 
 See [original acceptance](experiments/t23-console.md) and
-[PatternFly revalidation](experiments/t23-console.md#patternfly-migration-gate) for actual checks.
+[PatternFly revalidation](experiments/t23-console.md#patternfly-migration-gate) and
+[visual/topology iteration](experiments/t23-console-redesign.md) for actual checks.
 
 Manual smoke steps:
 

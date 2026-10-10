@@ -6,6 +6,13 @@ This bounded continuation addresses current dependency advisories and the missin
 production verified-boot lifecycle measurements. Prior user changes are retained;
 no commit, push, publication, privilege or host-policy modification occurred.
 
+> Subsequent correction: [supplied hosted-CI logs and local reproduction](t24-ci-log-review.md)
+> find 10 upstream Go 1.26.8 stdlib advisories fixed in 1.26.9. The local vendor
+> suffix was not recognized by govulncheck; historical zero-finding output below
+> is preserved, but **stdlib clearance from that scan is withdrawn**. Subsequent
+> [actual Go 1.26.9 local rebuild/gates](t24-go126-toolchain.md) PASS; hosted rerun
+> and overall T24 remain pending.
+
 ## Changes
 
 - Add `make test-t24-verified-lifecycle`, consuming a freshly rebuilt runtime-only
@@ -113,7 +120,7 @@ It does not close global disk/operation quotas, slow-input or other gates below.
 | Gate | Current disposition |
 |---|---|
 | T23 / local §28 runtime and surfaces | Existing evidence, installed smoke revalidated; limitations remain explicit |
-| Current dependency advisory scan | PASS after official module update; independent audit not claimed |
+| Current dependency advisory scan | BLOCKED: historical module update/zero output preserved; Go stdlib coverage correction in supplied CI review |
 | Warm verified boot/fresh keys/resource cleanup | PASS here, not full application/system budgets |
 | Complete cold/warm startup, idle CPU, peak memory/disk and DNS/proxy/load budgets | Still incomplete; this bounded collector does not replace them |
 | Sustained adversarial/fault/quota/slow-input review | Still incomplete; fuzz stalls must not be called latency evidence |

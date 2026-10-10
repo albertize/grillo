@@ -9,7 +9,7 @@
   "scripts": {
     "build": "node build.mjs",
     "check": "node build.mjs --check",
-    "test": "node --test src/client.test.mjs"
+    "test": "node --test src/*.test.mjs"
   },
   "dependencies": {
     "@patternfly/react-core": "6.6.1",

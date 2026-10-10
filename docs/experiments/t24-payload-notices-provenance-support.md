@@ -5,6 +5,13 @@ Dependencies verified: T23/T24's established embedded UI, runtime-only image and
 Stage/installed-prefix contracts, earlier license inventory and partial user-run
 Fedora 44 evidence. No new module/tool/ADR or release-support decision.
 
+> Advisory correction: [hosted-CI review](t24-ci-log-review.md) reproduces 10 Go
+> 1.26.8 stdlib findings fixed in 1.26.9. The historical local zero-finding result
+> used an unrecognized vendor suffix and does not clear stdlib vulnerabilities.
+> Notice/staging/KVM evidence stays scoped. Subsequent [actual Go 1.26.9 local
+> gates](t24-go126-toolchain.md) PASS; old payloads are not patched and hosted
+> rerun/overall T24 remain pending.
+
 ## Contracts changed
 
 1. Stage now requires the generated frontend notice text and the four existing

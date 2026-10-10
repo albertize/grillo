@@ -13,7 +13,10 @@ changes before implementing them; a backlog entry alone is not authorization.
 
 ## Build and test
 
-Use Go 1.26.8, Make, Node 24.18.0/npm 11.16.0 and a C compiler for Linux race tests:
+Use Go 1.26.x at the exact reviewed patch in `.go-version` (currently 1.26.9),
+Make, Python 3 for fail-closed toolchain checks, Node 24.18.0/npm 11.16.0 and a C
+compiler for Linux race tests. `GOTOOLCHAIN=local` prevents implicit downloads;
+unknown vendor/development identities and `GOVERSION` overrides are rejected:
 
 ```sh
 make ui-deps
