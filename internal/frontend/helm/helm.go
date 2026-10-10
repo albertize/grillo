@@ -21,6 +21,7 @@ import (
 
 	"github.com/albertize/grillo/internal/frontend/kubernetes"
 	"github.com/albertize/grillo/internal/model"
+	"github.com/albertize/grillo/internal/runtimeassets"
 	"github.com/albertize/grillo/internal/source"
 	"go.yaml.in/yaml/v3"
 )
@@ -116,13 +117,17 @@ func Compile(ctx context.Context, opts Options) (kubernetes.Result, error) {
 		}
 		args = append(args, "--values", target)
 	}
-	binary := opts.Binary
-	if binary == "" {
-		binary = "helm"
+	override := opts.Binary
+	if override == "" {
+		override = os.Getenv("GRILLO_HELM_BINARY")
+	}
+	binary, err := runtimeassets.Resolve("helm", override)
+	if err != nil {
+		return diagnostic("HELM_UNAVAILABLE", "Provide the installed pinned Helm helper or an explicit GRILLO_HELM_BINARY override."), nil
 	}
 	binary, err = exec.LookPath(binary)
 	if err != nil {
-		return diagnostic("HELM_UNAVAILABLE", "Install official Helm "+Version+" explicitly."), nil
+		return diagnostic("HELM_UNAVAILABLE", "Provide official Helm "+Version+" through the installed helper or an explicit GRILLO_HELM_BINARY override."), nil
 	}
 	binary, err = filepath.Abs(binary)
 	if err != nil {

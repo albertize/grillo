@@ -291,7 +291,7 @@ func (b *NativeBuilder) resolveStageBase(ctx context.Context, build *buildContex
 	if err != nil {
 		return nil, err
 	}
-	if err := b.Images.Unpack(pulled, rootfs, oci.UnpackOptions{}); err != nil {
+	if err := b.Images.Unpack(pulled, rootfs, oci.UnpackOptions{Context: ctx}); err != nil {
 		return nil, err
 	}
 	state.baseLayers = append([]oci.Descriptor{}, pulled.Manifest.Layers...)
@@ -519,7 +519,7 @@ func (b *NativeBuilder) stageOrImageRoot(ctx context.Context, build *buildContex
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return "", err
 	}
-	if err := b.Images.Unpack(pulled, dir, oci.UnpackOptions{}); err != nil {
+	if err := b.Images.Unpack(pulled, dir, oci.UnpackOptions{Context: ctx}); err != nil {
 		return "", err
 	}
 	return dir, nil

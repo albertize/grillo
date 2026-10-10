@@ -18,13 +18,16 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/albertize/grillo/internal/build"
 	"github.com/albertize/grillo/internal/image"
 	"github.com/albertize/grillo/internal/model"
 	"github.com/albertize/grillo/internal/observe"
+	"github.com/albertize/grillo/internal/state"
 )
 
 // Client talks to the local API over the Unix socket.
@@ -215,11 +218,21 @@ func EnsureDaemon(ctx context.Context, socketPath, daemonPath string, timeout ti
 		return fmt.Errorf("api: no daemon at %s", socketPath)
 	}
 	logPath := socketPath + ".log"
-	logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
+	if err := state.PrepareRuntimeDirectory(filepath.Dir(socketPath)); err != nil {
+		return err
+	}
+	logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0o600)
 	if err != nil {
 		return err
 	}
 	defer logFile.Close()
+	info, err := logFile.Stat()
+	if err != nil || !info.Mode().IsRegular() || info.Mode().Perm()&0077 != 0 {
+		return fmt.Errorf("api: daemon log must be a private regular file")
+	}
+	if stat, ok := info.Sys().(*syscall.Stat_t); !ok || int(stat.Uid) != os.Getuid() || stat.Nlink != 1 {
+		return fmt.Errorf("api: unsafe daemon log ownership/link count")
+	}
 	cmd := exec.Command(daemonPath)
 	cmd.Stdout, cmd.Stderr = logFile, logFile
 	if err := cmd.Start(); err != nil {

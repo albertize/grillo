@@ -154,6 +154,11 @@ Logs are local, untracked under `/tmp/grillo-t24/`, including
 
 ## Remaining gates
 
+The subsequent [verified lifecycle/dependency campaign](t24-closure-campaign.md)
+adds 100-cycle warm verified-copy/overlay, post-auth RSS/PSS and logical-byte
+measurements plus current advisory fixes. It does not close the full budget,
+external-host, load/quota, provenance or release gates below.
+
 T24/F3 remains open for clean external-host reproduction, a verifiable release
 installation/delivery path, hosted CI evidence, sustained adversarial/quota/load
 work, full startup/memory/disk/resource budgets with the new boot-copy cost,

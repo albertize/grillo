@@ -14,6 +14,16 @@ This is current subset behavior, not a supported release promise. See
 [progress](progress.md) for dated runtime evidence. Compiler acceptance alone
 does not imply host feasibility.
 
+The [D0 installed-runtime gate](experiments/d0-installed-runtime.md) validates
+standalone Compose/Helm examples and embedded UI lifetime from a moved/read-only
+prefix on the recorded Fedora development host. It does not establish a clean
+or supported host, SELinux Enforcing networking, release installation or general
+dependency ranges. `doctor` reports the experimental support boundary explicitly.
+The user also reports second-host Fedora 44 Compose/Helm HTTP and UI functionality
+under Permissive; see [host evidence/support boundaries](host-support.md) for the
+partial scope, missing checks and Enforcing blocker. No distribution support
+promise follows from these functional observations.
+
 ## Compose (F2 subset)
 
 | Concept | State | Notes |

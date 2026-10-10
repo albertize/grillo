@@ -28,11 +28,17 @@ type Artifact struct {
 	Path    string `json:"path"`
 	SHA256  string `json:"sha256"`
 	Size    int64  `json:"size"`
+	// directory anchors versioned paths. It is never serialized into the payload.
+	directory string
 }
 
 // Manifest is the guest artifact manifest written alongside an image.
 type Manifest struct {
-	Artifacts []Artifact `json:"artifacts"`
+	SchemaVersion int        `json:"schema_version,omitempty"`
+	GuestABI      string     `json:"guest_abi,omitempty"`
+	Platform      string     `json:"platform,omitempty"`
+	Artifacts     []Artifact `json:"artifacts"`
+	digest        string
 }
 
 // HashFile returns the SHA-256 digest and size of a file.
@@ -81,6 +87,9 @@ func BuildManifest(specs []ArtifactSpec) (Manifest, error) {
 
 // Write writes the manifest as indented JSON.
 func (m Manifest) Write(path string) error {
+	if err := m.Validate(); err != nil {
+		return err
+	}
 	data, err := json.MarshalIndent(m, "", "  ")
 	if err != nil {
 		return err
@@ -116,7 +125,7 @@ func (m Manifest) Write(path string) error {
 
 // ReadManifest loads a manifest from disk.
 func ReadManifest(path string) (Manifest, error) {
-	f, err := os.Open(path)
+	f, err := openRegular(path)
 	if err != nil {
 		return Manifest{}, err
 	}
@@ -127,6 +136,9 @@ func ReadManifest(path string) (Manifest, error) {
 	}
 	if len(data) > 1<<20 {
 		return Manifest{}, fmt.Errorf("guest: manifest exceeds size limit")
+	}
+	if err := rejectDuplicateManifestFields(data); err != nil {
+		return Manifest{}, err
 	}
 	var m Manifest
 	decoder := json.NewDecoder(strings.NewReader(string(data)))
@@ -140,11 +152,29 @@ func ReadManifest(path string) (Manifest, error) {
 	if err := m.Validate(); err != nil {
 		return Manifest{}, err
 	}
+	if m.SchemaVersion == ManifestSchemaVersion {
+		directory, err := filepath.Abs(filepath.Dir(path))
+		if err != nil {
+			return Manifest{}, err
+		}
+		for i := range m.Artifacts {
+			m.Artifacts[i].directory = directory
+		}
+	}
+	sum := sha256.Sum256(data)
+	m.digest = hex.EncodeToString(sum[:])
 	return m, nil
 }
 
+// Digest identifies the bounded manifest bytes read by the loader. It is local
+// integrity metadata, not publisher authentication or a boot credential hash.
+func (m Manifest) Digest() string { return m.digest }
+
 // Validate rejects ambiguous/incomplete inventories before reading artifacts.
 func (m Manifest) Validate() error {
+	if err := m.validateFormat(); err != nil {
+		return err
+	}
 	if len(m.Artifacts) == 0 || len(m.Artifacts) > 16 {
 		return fmt.Errorf("guest: invalid artifact count")
 	}
@@ -156,7 +186,18 @@ func (m Manifest) Validate() error {
 		if _, err := hex.DecodeString(a.SHA256); err != nil {
 			return fmt.Errorf("guest: invalid artifact digest")
 		}
+		if m.SchemaVersion == ManifestSchemaVersion {
+			if err := validatePortablePath(a.Path); err != nil {
+				return err
+			}
+			if a.Name != "kernel" && a.Name != "initramfs" || a.Size == 0 {
+				return fmt.Errorf("guest: portable boot inventory requires nonempty kernel and initramfs only")
+			}
+		}
 		seen[a.Name] = true
+	}
+	if m.SchemaVersion == ManifestSchemaVersion && (len(m.Artifacts) != 2 || !seen["kernel"] || !seen["initramfs"] || m.Artifacts[0].Path == m.Artifacts[1].Path) {
+		return fmt.Errorf("guest: portable boot inventory requires distinct kernel and initramfs")
 	}
 	return nil
 }
@@ -167,7 +208,10 @@ func (m Manifest) Verify() error {
 		return err
 	}
 	for _, a := range m.Artifacts {
-		sum, size, err := HashFile(a.Path)
+		if m.SchemaVersion == ManifestSchemaVersion && a.directory == "" {
+			return fmt.Errorf("guest: portable manifest must be loaded with its directory anchor")
+		}
+		sum, size, err := a.hash()
 		if err != nil {
 			return fmt.Errorf("guest: verify %s: %w", a.Name, err)
 		}

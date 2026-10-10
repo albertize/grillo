@@ -21,7 +21,8 @@ Runtime prerequisites:
 - Unprivileged user/network namespaces and `/dev/net/tun`.
 - `qemu-system-x86_64`, `pasta`, `ip` and `nft` on PATH.
 - virtiofsd, normally `/usr/libexec/virtiofsd`.
-- Helm **v4.2.2** on PATH when using charts.
+- Official Helm **v4.2.2**, selected explicitly with `GRILLO_HELM_BINARY`
+  for development (installed layouts use `libexec/grillo/helm`).
 
 The recorded Linux host used QEMU 10.2.2 and virtiofsd 1.14.0; this is evidence,
 not a promise that arbitrary other versions or distributions work. The tested
@@ -39,7 +40,7 @@ explicit operation. Runtime commands never escalate themselves.
 ```sh
 make ui-deps
 make build
-./bin/grillo doctor
+./bin/grillo version --json
 ```
 
 `ui-deps` downloads integrity-locked frontend dependencies with install scripts
@@ -65,11 +66,52 @@ fixture is absent. **Podman is development-fixture tooling here**, not the
 native workload/build backend; it is not selected as a runtime fallback. This
 bootstrap is not yet a self-contained release installation path.
 
-Outputs stay under ignored `experiments/artifacts/`. The default daemon expects
-`experiments/artifacts/qemu/bzImage` and the initramfs/manifest in
-`experiments/artifacts/t07/`. Keep the working directory at the repository root
-when using those defaults. See [guest inputs and manifest](../guest/README.md).
+Outputs stay under ignored `experiments/artifacts/`. Development paths are now
+explicit overrides, not daemon CWD defaults. From the repository root, configure
+absolute paths before starting the daemon:
+
+```sh
+export GRILLO_DAEMON_BINARY="$PWD/bin/grillod"
+export GRILLO_NETNS_BINARY="$PWD/bin/grillo-netns"
+export GRILLO_GUEST_KERNEL="$PWD/experiments/artifacts/qemu/bzImage"
+export GRILLO_GUEST_INITRAMFS="$PWD/experiments/artifacts/t07/initramfs-agent.cpio.gz"
+export GRILLO_GUEST_MANIFEST="$PWD/experiments/artifacts/t07/manifest.json"
+export GRILLO_HELM_BINARY="$(command -v helm)" # provision exact v4.2.2 first
+./bin/grillo doctor --verbose
+./bin/grillo doctor --json
+```
+
+These overrides are inherited by the on-demand daemon. An already-running daemon
+keeps its original configuration. Explicit daemon flags take precedence over its
+environment. Relative explicit paths are made absolute at invocation. Normal
+installed discovery uses `bin/grillo`, `libexec/grillo/{grillod,grillo-netns,helm}`
+and `lib/grillo/guest/1.1/{bzImage,initramfs.cpio.gz,manifest.json}` relative to the
+resolved executable prefix; an absolute `GRILLO_ASSET_PREFIX` can override that
+prefix. No managed helper is selected from CWD or implicitly from PATH.
+
+See [guest inputs and manifest](../guest/README.md) and
+[D0's remaining distribution gates](experiments/d0-runtime-layout.md).
+Installed assets require [manifest schema 1](../guest/manifest-schema.md), with
+exact ABI/platform metadata and manifest-relative paths. The explicit legacy
+fixture override above is development-only; incompatible declared metadata still
+fails. `doctor` now queries KVM API, transient namespace creation, required QEMU
+devices, filesystem-helper options and exact Helm identity without host
+configuration changes. It does not prove a guest handshake or the complete
+TAP/firewall/MAC datapath, and no general supported dependency range exists.
+Its success is not an E2E/support guarantee. Missing installed assets fail
+explicitly; known SELinux Enforcing networking restrictions fail explicitly.
 Do not redistribute guest artifacts without reviewing their component licenses.
+
+## Experimental runtime-only staging
+
+For a base without T07 roots or reusable boot credentials, use `make runtime-guest`
+after explicit pinned-input preparation. `make stage-runtime` copies one coherent
+host/guest/helper/example prefix with an explicitly selected Helm binary and SHA.
+`make test-installed-runtime` checks actual moved/read-only Compose, Helm and UI
+lifetime on KVM with checkout/build tools removed from runtime PATH.
+See the [self-contained runtime guide](runtime-layout.md) and
+[latest D0 evidence and blockers](experiments/d0-installed-runtime.md).
+This is local staging, not a native package installer or release publication.
 
 ## Run the Compose example
 

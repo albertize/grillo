@@ -58,6 +58,7 @@ func requireCLIHelm(t *testing.T) {
 	if err != nil || string(version) != helm.Version {
 		t.Skip("installed Helm does not match pin")
 	}
+	t.Setenv("GRILLO_HELM_BINARY", binary)
 }
 func writeHelmFile(t *testing.T, path, text string) {
 	t.Helper()

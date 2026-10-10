@@ -1,0 +1,642 @@
+{
+  "go": [
+    {
+      "module": "github.com/albertize/grillo",
+      "notices": [
+        {
+          "name": "LICENSE",
+          "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+        },
+        {
+          "name": "NOTICE",
+          "sha256": "4eb690690f621df5c399d7b4ac848c9aec5ff2c6675a09b1071c529534ffd071"
+        }
+      ],
+      "source_materialized": true,
+      "sum": null,
+      "version": "working-tree"
+    },
+    {
+      "module": "go.yaml.in/yaml/v3",
+      "notices": [
+        {
+          "name": "LICENSE",
+          "sha256": "d18f6323b71b0b768bb5e9616e36da390fbd39369a81807cca352de4e4e6aa0b"
+        },
+        {
+          "name": "NOTICE",
+          "sha256": "f6c2dd3a67b576eafb89b80200b8b1627230bf3821a0c14cb99a22ac19107d00"
+        }
+      ],
+      "source_materialized": true,
+      "sum": "h1:N6y/pJk8buWs9NY5ERU2HSMfm+IuD/OtfdAnq6kESPw=",
+      "version": "v3.0.5"
+    },
+    {
+      "module": "golang.org/x/crypto",
+      "notices": [
+        {
+          "name": "LICENSE",
+          "sha256": "911f8f5782931320f5b8d1160a76365b83aea6447ee6c04fa6d5591467db9dad"
+        }
+      ],
+      "source_materialized": true,
+      "sum": null,
+      "version": "v0.57.0"
+    },
+    {
+      "module": "golang.org/x/net",
+      "notices": [
+        {
+          "name": "LICENSE",
+          "sha256": "911f8f5782931320f5b8d1160a76365b83aea6447ee6c04fa6d5591467db9dad"
+        }
+      ],
+      "source_materialized": true,
+      "sum": "h1:79p50tfZlm0J9YfoDsSi639qSXNGVwEzOPLCxM2FsYU=",
+      "version": "v0.60.0"
+    },
+    {
+      "module": "golang.org/x/sys",
+      "notices": [
+        {
+          "name": "LICENSE",
+          "sha256": "911f8f5782931320f5b8d1160a76365b83aea6447ee6c04fa6d5591467db9dad"
+        }
+      ],
+      "source_materialized": true,
+      "sum": "h1:bbX/i/6MgT9BVLM9RT1thmxL04yeTAhbEz4SyadbXoo=",
+      "version": "v0.48.0"
+    },
+    {
+      "module": "golang.org/x/term",
+      "notices": [
+        {
+          "name": "LICENSE",
+          "sha256": "911f8f5782931320f5b8d1160a76365b83aea6447ee6c04fa6d5591467db9dad"
+        }
+      ],
+      "source_materialized": true,
+      "sum": "h1:3+OXuTbaKDgwk8jTi3aSLHRlmWqHEUDUtxnbFigO4YE=",
+      "version": "v0.46.0"
+    },
+    {
+      "module": "golang.org/x/text",
+      "notices": [
+        {
+          "name": "LICENSE",
+          "sha256": "911f8f5782931320f5b8d1160a76365b83aea6447ee6c04fa6d5591467db9dad"
+        }
+      ],
+      "source_materialized": true,
+      "sum": null,
+      "version": "v0.42.0"
+    }
+  ],
+  "go_toolchain": {
+    "notices": [],
+    "version": "go1.26.8-X:nodwarf5"
+  },
+  "limitations": [
+    "Uninstalled optional packages require separate source/notice review.",
+    "Metadata labels do not determine obligations of embedded fonts or bundled code.",
+    "Guest kernel/runc/BusyBox/glibc and helper provenance are reviewed separately.",
+    "Checksums identify bytes; no publisher signatures are verified here."
+  ],
+  "npm": [
+    {
+      "declared_license": "MIT",
+      "installed": false,
+      "integrity": "sha512-XExcO+dvLKvVtNTibSTBej1NCAbaGhWn9Ww1ZPx80qsahhPFe/8jgWP0IchNe0F3HwkU7n8ejhH8bjonqht8mQ==",
+      "notices": [],
+      "package": "@esbuild/aix-ppc64",
+      "resolved": "https://registry.npmjs.org/@esbuild/aix-ppc64/-/aix-ppc64-0.28.2.tgz",
+      "version": "0.28.2"
+    },
+    {
+      "declared_license": "MIT",
+      "installed": false,
+      "integrity": "sha512-kXXoiPVVGQcnIYGOeaovwOURpniDBpSq4A03qkQ+BMQqtGG6HYap3xne9C1O1yo4TR3qxlCX5IqqmX6fFo2Lqg==",
+      "notices": [],
+      "package": "@esbuild/android-arm",
+      "resolved": "https://registry.npmjs.org/@esbuild/android-arm/-/android-arm-0.28.2.tgz",
+      "version": "0.28.2"
+    },
+    {
+      "declared_license": "MIT",
+      "installed": false,
+      "integrity": "sha512-5YfKeeI8qWfBZIX+u2xZC3Zlb3Os/gLS2sbEKM+I4ZOcsWmHS2WLysCcQZDAFRslDUU5Oiq44gf6PYN1vGwG5A==",
+      "notices": [],
+      "package": "@esbuild/android-arm64",
+      "resolved": "https://registry.npmjs.org/@esbuild/android-arm64/-/android-arm64-0.28.2.tgz",
+      "version": "0.28.2"
+    },
+    {
+      "declared_license": "MIT",
+      "installed": false,
+      "integrity": "sha512-O387ite7SzUyCcy3JQX4P4bLtEA7bLLkx+esve5JHnyYfNTxcVpXZo9jhdB0lTKN44gztELTdU7nS8Nr16Fs1Q==",
+      "notices": [],
+      "package": "@esbuild/android-x64",
+      "resolved": "https://registry.npmjs.org/@esbuild/android-x64/-/android-x64-0.28.2.tgz",
+      "version": "0.28.2"
+    },
+    {
+      "declared_license": "MIT",
+      "installed": false,
+      "integrity": "sha512-n4KqkOQrraxHJcgjM1RvwbigfQKIKJVpM7xp+KsxiyUSrRdIXnt73VhrPAx0fV44hgfmIVKjxMN9J1t5jySVkw==",
+      "notices": [],
+      "package": "@esbuild/darwin-arm64",
+      "resolved": "https://registry.npmjs.org/@esbuild/darwin-arm64/-/darwin-arm64-0.28.2.tgz",
+      "version": "0.28.2"
+    },
+    {
+      "declared_license": "MIT",
+      "installed": false,
+      "integrity": "sha512-uq6suIWYP37qzGddBKPw5QEQPi6HiLGsO7UmkpfyaYNQ3D+rN6w6WfwH+nuqcGXWvawGwxOEroO4YGnFh95azw==",
+      "notices": [],
+      "package": "@esbuild/darwin-x64",
+      "resolved": "https://registry.npmjs.org/@esbuild/darwin-x64/-/darwin-x64-0.28.2.tgz",
+      "version": "0.28.2"
+    },
+    {
+      "declared_license": "MIT",
+      "installed": false,
+      "integrity": "sha512-n+I0BTSRIoy+d6RPKnEVwql5UwBJolytvY4mAOIEJorKlqgPII8ix6slVVrfZ5Tnj7glIZvloylbB/EJPMWEXw==",
+      "notices": [],
+      "package": "@esbuild/freebsd-arm64",
+      "resolved": "https://registry.npmjs.org/@esbuild/freebsd-arm64/-/freebsd-arm64-0.28.2.tgz",
+      "version": "0.28.2"
+    },
+    {
+      "declared_license": "MIT",
+      "installed": false,
+      "integrity": "sha512-78XJTJkvPs0kz2w61301PJjXl4g7q3JqiYMZ/M/yVI73EHBrCRTgkhu9oqG7vPqq+a/yadEW8aD+agKlk5xrmg==",
+      "notices": [],
+      "package": "@esbuild/freebsd-x64",
+      "resolved": "https://registry.npmjs.org/@esbuild/freebsd-x64/-/freebsd-x64-0.28.2.tgz",
+      "version": "0.28.2"
+    },
+    {
+      "declared_license": "MIT",
+      "installed": false,
+      "integrity": "sha512-XlDnu2q5yoqems+xay6wSAcg9DDD7K9RLKZEBOMZm3ckNpJBvOX20tSfby8KfrrhINDyv9V2YVZKY/SpoGJI8w==",
+      "notices": [],
+      "package": "@esbuild/linux-arm",
+      "resolved": "https://registry.npmjs.org/@esbuild/linux-arm/-/linux-arm-0.28.2.tgz",
+      "version": "0.28.2"
+    },
+    {
+      "declared_license": "MIT",
+      "installed": false,
+      "integrity": "sha512-pW4AC0P3it8c7do9MVM4p51FzHzdM/TZrerurgRcHJ2WTa1VQ1CIq18xncfpBJw4ojkiZZrKW2yIBWBP92j6Ug==",
+      "notices": [],
+      "package": "@esbuild/linux-arm64",
+      "resolved": "https://registry.npmjs.org/@esbuild/linux-arm64/-/linux-arm64-0.28.2.tgz",
+      "version": "0.28.2"
+    },
+    {
+      "declared_license": "MIT",
+      "installed": false,
+      "integrity": "sha512-CYbnj78HsIeA+DhgUKgFCfvNsTHFhMMrinUrMZpDXJXKN8T3XViTZ/+wtHeVxEWY8ewSzTFN+nRmSwO2tZaLUQ==",
+      "notices": [],
+      "package": "@esbuild/linux-ia32",
+      "resolved": "https://registry.npmjs.org/@esbuild/linux-ia32/-/linux-ia32-0.28.2.tgz",
+      "version": "0.28.2"
+    },
+    {
+      "declared_license": "MIT",
+      "installed": false,
+      "integrity": "sha512-buwkd8nsph4R+ajRvw0qM5Hja/TXQow3ptzWO2EbG/cqcIkHloRrdlBtQlshyYGTNFvfkfJ5tpPLVkY4DtsPfQ==",
+      "notices": [],
+      "package": "@esbuild/linux-loong64",
+      "resolved": "https://registry.npmjs.org/@esbuild/linux-loong64/-/linux-loong64-0.28.2.tgz",
+      "version": "0.28.2"
+    },
+    {
+      "declared_license": "MIT",
+      "installed": false,
+      "integrity": "sha512-ZVykbDyk7519VwiNb9Lcj9m8XM6v5V9uKPvrEMkkEedVewf+0itkhahp4HDpgERXhwLRpWFypsGbG/J8s0QjJA==",
+      "notices": [],
+      "package": "@esbuild/linux-mips64el",
+      "resolved": "https://registry.npmjs.org/@esbuild/linux-mips64el/-/linux-mips64el-0.28.2.tgz",
+      "version": "0.28.2"
+    },
+    {
+      "declared_license": "MIT",
+      "installed": false,
+      "integrity": "sha512-CAXl+Dtd9UUuJd8pKKdwh6MLm3MUMiqMPmhZ3tTSXPqfyQ3vDl6R5hZdZ/kYojK4ofXtdfSv1tFq8XzWx3heNQ==",
+      "notices": [],
+      "package": "@esbuild/linux-ppc64",
+      "resolved": "https://registry.npmjs.org/@esbuild/linux-ppc64/-/linux-ppc64-0.28.2.tgz",
+      "version": "0.28.2"
+    },
+    {
+      "declared_license": "MIT",
+      "installed": false,
+      "integrity": "sha512-GeXCej4IQtU1B+QlDV8W/RRvbzI3O/Stss+/bCXv4lZls5WGRtu2a+3JkA3i4qIUlMXpcHebWpF8AkJhATowuA==",
+      "notices": [],
+      "package": "@esbuild/linux-riscv64",
+      "resolved": "https://registry.npmjs.org/@esbuild/linux-riscv64/-/linux-riscv64-0.28.2.tgz",
+      "version": "0.28.2"
+    },
+    {
+      "declared_license": "MIT",
+      "installed": false,
+      "integrity": "sha512-3H1weTYZPxt/WOhByszQZybS9w5lKzUn1FDMsgEChbHWQwHYQQRfBxgCcZvPhjHfKyJjIievvMmEUawJrdY9Dg==",
+      "notices": [],
+      "package": "@esbuild/linux-s390x",
+      "resolved": "https://registry.npmjs.org/@esbuild/linux-s390x/-/linux-s390x-0.28.2.tgz",
+      "version": "0.28.2"
+    },
+    {
+      "declared_license": "MIT",
+      "installed": true,
+      "integrity": "sha512-4xTZr1FUmSoQW4XIWmit3tzQrUTZM+N3P0XV8xROKYF50XfI7xeO90+1bZvNwxIufQ9hDQVRJH5YhgPVF8A/HQ==",
+      "notices": [],
+      "package": "@esbuild/linux-x64",
+      "resolved": "https://registry.npmjs.org/@esbuild/linux-x64/-/linux-x64-0.28.2.tgz",
+      "version": "0.28.2"
+    },
+    {
+      "declared_license": "MIT",
+      "installed": false,
+      "integrity": "sha512-sSATRjPeDBg3pdgHoQfoYBob11Kk1FGa9lui5RIHZCoCkJa9QKlvl3/vKz2usCmYYjs7ymJR/2Nnsqe+Hjt5nw==",
+      "notices": [],
+      "package": "@esbuild/netbsd-arm64",
+      "resolved": "https://registry.npmjs.org/@esbuild/netbsd-arm64/-/netbsd-arm64-0.28.2.tgz",
+      "version": "0.28.2"
+    },
+    {
+      "declared_license": "MIT",
+      "installed": false,
+      "integrity": "sha512-lqnzCV+mM0gIADaKihiCg6ifgfU2L3h5E33rNQBN1Y4MaVGnzryzmvvf7UHxprpQdE8hpqLolJ9Rl+SkIRDpyw==",
+      "notices": [],
+      "package": "@esbuild/netbsd-x64",
+      "resolved": "https://registry.npmjs.org/@esbuild/netbsd-x64/-/netbsd-x64-0.28.2.tgz",
+      "version": "0.28.2"
+    },
+    {
+      "declared_license": "MIT",
+      "installed": false,
+      "integrity": "sha512-AL2qJILH7lNjrDmCQDvdxMfAUIv8KMNZOvrwAQ8i8//ntL9FflhOyMJ8OZSMBb8/AWXe3/5v5S20y3zCoZWKoQ==",
+      "notices": [],
+      "package": "@esbuild/openbsd-arm64",
+      "resolved": "https://registry.npmjs.org/@esbuild/openbsd-arm64/-/openbsd-arm64-0.28.2.tgz",
+      "version": "0.28.2"
+    },
+    {
+      "declared_license": "MIT",
+      "installed": false,
+      "integrity": "sha512-QtiuPytchRyC4rwUKhexJdQKvDuZ6hWloi3igqPQNUJCS1/v9EiO3UTOXR6A3FoMo4fnAKbWJdqaIwhOzh8qEw==",
+      "notices": [],
+      "package": "@esbuild/openbsd-x64",
+      "resolved": "https://registry.npmjs.org/@esbuild/openbsd-x64/-/openbsd-x64-0.28.2.tgz",
+      "version": "0.28.2"
+    },
+    {
+      "declared_license": "MIT",
+      "installed": false,
+      "integrity": "sha512-WkhYDmpTjLvGlScA1rwjRUmhl4k8oXR3cIbtqWmELgU/dFeHHlEllxDvdWcNJV9rbzCexB5vz8gtNewWLgCT7Q==",
+      "notices": [],
+      "package": "@esbuild/openharmony-arm64",
+      "resolved": "https://registry.npmjs.org/@esbuild/openharmony-arm64/-/openharmony-arm64-0.28.2.tgz",
+      "version": "0.28.2"
+    },
+    {
+      "declared_license": "MIT",
+      "installed": false,
+      "integrity": "sha512-GPMSkTOtMnv2U2F8gxe4Io6qmVs+YKyp832Etqqxr0hFngmXQ3rzwytelm3GIn7T4VviRUlf3sOgBOiTdvaf7g==",
+      "notices": [],
+      "package": "@esbuild/sunos-x64",
+      "resolved": "https://registry.npmjs.org/@esbuild/sunos-x64/-/sunos-x64-0.28.2.tgz",
+      "version": "0.28.2"
+    },
+    {
+      "declared_license": "MIT",
+      "installed": false,
+      "integrity": "sha512-PIhhEkE9uPBleRBrQEJpUn7MBnibZzbGzYWPmY3x+YoVg/95zbjB4CxPPOQ8l5tYYM4mMaCthF8/1DIfBQQyWQ==",
+      "notices": [],
+      "package": "@esbuild/win32-arm64",
+      "resolved": "https://registry.npmjs.org/@esbuild/win32-arm64/-/win32-arm64-0.28.2.tgz",
+      "version": "0.28.2"
+    },
+    {
+      "declared_license": "MIT",
+      "installed": false,
+      "integrity": "sha512-YmJbfTlvU7Sdn9BB+4PRES4oB6pxgS37MAONj+hBr/cpXS1aBPKXxNnDbu+QCWPj0o9dgyxeq79g6c5P8KeuYA==",
+      "notices": [],
+      "package": "@esbuild/win32-ia32",
+      "resolved": "https://registry.npmjs.org/@esbuild/win32-ia32/-/win32-ia32-0.28.2.tgz",
+      "version": "0.28.2"
+    },
+    {
+      "declared_license": "MIT",
+      "installed": false,
+      "integrity": "sha512-5ebpxr3nWMzrL/rnUI755Jkuee0bHL/Gq0WTF9lvcpv73wAp5eu8MfBUgWK9bhWvZjj7yX8etf/8tI8Ney695g==",
+      "notices": [],
+      "package": "@esbuild/win32-x64",
+      "resolved": "https://registry.npmjs.org/@esbuild/win32-x64/-/win32-x64-0.28.2.tgz",
+      "version": "0.28.2"
+    },
+    {
+      "declared_license": "MIT",
+      "installed": true,
+      "integrity": "sha512-1XEBj+RllMnx+nQNaQaEH08umNdW1/HoqiNiZVBrVACI7GAGqjNR/NOWCbfl3p/o6OggD3M3mlJPhCMmcoOaGg==",
+      "notices": [
+        {
+          "name": "LICENSE",
+          "sha256": "afc12cbdb54b4ee09bc1b9b19feadb4f424e46a47f64860e9941606e18e12703"
+        }
+      ],
+      "package": "@patternfly/react-core",
+      "resolved": "https://registry.npmjs.org/@patternfly/react-core/-/react-core-6.6.1.tgz",
+      "version": "6.6.1"
+    },
+    {
+      "declared_license": "MIT",
+      "installed": true,
+      "integrity": "sha512-EUHnTliMlUMNfaueyGTaNcdCDGN4CjLtQpNdSg6iWcl5oloHtUDEAIltP0nbCWnepMJDoM2YgjMlyjwWlkNzXg==",
+      "notices": [
+        {
+          "name": "LICENSE",
+          "sha256": "afc12cbdb54b4ee09bc1b9b19feadb4f424e46a47f64860e9941606e18e12703"
+        }
+      ],
+      "package": "@patternfly/react-icons",
+      "resolved": "https://registry.npmjs.org/@patternfly/react-icons/-/react-icons-6.6.1.tgz",
+      "version": "6.6.1"
+    },
+    {
+      "declared_license": "MIT",
+      "installed": true,
+      "integrity": "sha512-hwByXA4wSpOIBJFtrYUdkFDIqvzHRP5yzvip/NHDlG0y/kXausOh5Z4m00SbTA6t7Hzudw5eU1lf+IOPCm5C6Q==",
+      "notices": [
+        {
+          "name": "LICENSE",
+          "sha256": "afc12cbdb54b4ee09bc1b9b19feadb4f424e46a47f64860e9941606e18e12703"
+        }
+      ],
+      "package": "@patternfly/react-styles",
+      "resolved": "https://registry.npmjs.org/@patternfly/react-styles/-/react-styles-6.6.1.tgz",
+      "version": "6.6.1"
+    },
+    {
+      "declared_license": "MIT",
+      "installed": true,
+      "integrity": "sha512-owyLpkhFg28nQWkTA3jnhmbe8FOX5vXqZntbrjse4BfdaBTOzsBxPqtBzbf6o214Q8OQBzC2Atgz9C3j0yFscQ==",
+      "notices": [
+        {
+          "name": "LICENSE",
+          "sha256": "afc12cbdb54b4ee09bc1b9b19feadb4f424e46a47f64860e9941606e18e12703"
+        }
+      ],
+      "package": "@patternfly/react-table",
+      "resolved": "https://registry.npmjs.org/@patternfly/react-table/-/react-table-6.6.1.tgz",
+      "version": "6.6.1"
+    },
+    {
+      "declared_license": "MIT",
+      "installed": true,
+      "integrity": "sha512-t7dDEJMnO3QkdIKyjbyKJznVYki9ONZG27Cn/9RXwaM0lDGCrgQEJXy2XoVUCdYhIdXZu+TGSEqXeNFYUyZECg==",
+      "notices": [
+        {
+          "name": "LICENSE",
+          "sha256": "afc12cbdb54b4ee09bc1b9b19feadb4f424e46a47f64860e9941606e18e12703"
+        }
+      ],
+      "package": "@patternfly/react-tokens",
+      "resolved": "https://registry.npmjs.org/@patternfly/react-tokens/-/react-tokens-6.6.1.tgz",
+      "version": "6.6.1"
+    },
+    {
+      "declared_license": "MIT",
+      "installed": true,
+      "integrity": "sha512-0bDNnY/u6pPwHDMoF0FieU354oBi0a8rD9FcsLwzcGWbc8KS8KPIi7y+s13OlVY+gMWc/9xEMUgNE6Qm8ZllYQ==",
+      "notices": [
+        {
+          "name": "LICENSE",
+          "sha256": "d75a1dcd7216692931683668052a2801767bdd0ca19711633098ce87ebade863"
+        }
+      ],
+      "package": "attr-accept",
+      "resolved": "https://registry.npmjs.org/attr-accept/-/attr-accept-2.2.5.tgz",
+      "version": "2.2.5"
+    },
+    {
+      "declared_license": "MIT",
+      "installed": true,
+      "integrity": "sha512-HKVLS8dvII+xoKW9kmqxbRKrnWEXfJJr/FZhhJmiqIB0e053QNYFqOBouTMO/k5sID4MvCiUCvv8b9M4h32wIA==",
+      "notices": [
+        {
+          "name": "LICENSE.md",
+          "sha256": "b40ec5baec7bb34fa5b1c09521fa3cd52d5fad7adafed74932a2010d3612a681"
+        }
+      ],
+      "package": "esbuild",
+      "resolved": "https://registry.npmjs.org/esbuild/-/esbuild-0.28.2.tgz",
+      "version": "0.28.2"
+    },
+    {
+      "declared_license": "MIT",
+      "installed": true,
+      "integrity": "sha512-QgXo+mXTe8ljeqUFaX3QVHc5osSItJ/Km+xpocx0aSqWGMSCf6qYs/VnzZgS864Pjn5iceMRFigeAV7AfTlaig==",
+      "notices": [
+        {
+          "name": "LICENSE",
+          "sha256": "01949dbb7502b2f1a424c53a043892db5e842bf6bb9201efab5d96ffeac15f1e"
+        }
+      ],
+      "package": "file-selector",
+      "resolved": "https://registry.npmjs.org/file-selector/-/file-selector-2.1.2.tgz",
+      "version": "2.1.2"
+    },
+    {
+      "declared_license": "MIT",
+      "installed": true,
+      "integrity": "sha512-v/Z8bvMCajtx4mEXmOo7QEsIzlIOqRXTIwgUfsFOF9gEsespdbD0AkPIka1bSXZ8Y8oZ+2IVDQZePkTfEHZl7Q==",
+      "notices": [
+        {
+          "name": "LICENSE",
+          "sha256": "b8d0347312c547c22802b39e495bc8f75d1a27bd69a51950fe5dcf8529b05070"
+        }
+      ],
+      "package": "focus-trap",
+      "resolved": "https://registry.npmjs.org/focus-trap/-/focus-trap-7.6.6.tgz",
+      "version": "7.6.6"
+    },
+    {
+      "declared_license": "MIT",
+      "installed": true,
+      "integrity": "sha512-RdJUflcE3cUzKiMqQgsCu06FPu9UdIJO0beYbPhHN4k6apgJtifcoCtT9bcxOpYBtpD2kCM6Sbzg4CausW/PKQ==",
+      "notices": [
+        {
+          "name": "LICENSE",
+          "sha256": "2213d91c606205c71eb051a199478cdc2adde945893404d7f1421436dd6d5cc1"
+        }
+      ],
+      "package": "js-tokens",
+      "resolved": "https://registry.npmjs.org/js-tokens/-/js-tokens-4.0.0.tgz",
+      "version": "4.0.0"
+    },
+    {
+      "declared_license": "MIT",
+      "installed": true,
+      "integrity": "sha512-dMInicTPVE8d1e5otfwmmjlxkZoUpiVLwyeTdUsi/Caj/gfzzblBcCE5sRHV/AsjuCmxWrte2TNGSYuCeCq+0Q==",
+      "notices": [
+        {
+          "name": "LICENSE",
+          "sha256": "f71e8ed126b46346494aad5486874cd8f0aafe95092ed67d2e3cb6110f939abc"
+        }
+      ],
+      "package": "lodash",
+      "resolved": "https://registry.npmjs.org/lodash/-/lodash-4.18.1.tgz",
+      "version": "4.18.1"
+    },
+    {
+      "declared_license": "MIT",
+      "installed": true,
+      "integrity": "sha512-lyuxPGr/Wfhrlem2CL/UcnUc1zcqKAImBDzukY7Y5F/yQiNdko6+fRLevlw1HgMySw7f611UIY408EtxRSoK3Q==",
+      "notices": [
+        {
+          "name": "LICENSE",
+          "sha256": "4eb7543b08d955a6d23fcc224601d43ff566e775be918805e26210d7f6eb4893"
+        }
+      ],
+      "package": "loose-envify",
+      "resolved": "https://registry.npmjs.org/loose-envify/-/loose-envify-1.4.0.tgz",
+      "version": "1.4.0"
+    },
+    {
+      "declared_license": "MIT",
+      "installed": true,
+      "integrity": "sha512-rJgTQnkUnH1sFw8yT6VSU3zD3sWmu6sZhIseY8VX+GRu3P6F7Fu+JNDoXfklElbLJSnc3FUQHVe4cU5hj+BcUg==",
+      "notices": [
+        {
+          "name": "license",
+          "sha256": "6fb9754611c20f6649f68805e8c990e83261f29316e29de9e6cedae607b8634c"
+        }
+      ],
+      "package": "object-assign",
+      "resolved": "https://registry.npmjs.org/object-assign/-/object-assign-4.1.1.tgz",
+      "version": "4.1.1"
+    },
+    {
+      "declared_license": "MIT",
+      "installed": true,
+      "integrity": "sha512-oj87CgZICdulUohogVAR7AjlC0327U4el4L6eAvOqCeudMDVU0NThNaV+b9Df4dXgSP1gXMTnPdhfe/2qDH5cg==",
+      "notices": [
+        {
+          "name": "LICENSE",
+          "sha256": "f657f99d3fb9647db92628e96007aabb46e5f04f33e49999075aab8e250ca7ce"
+        }
+      ],
+      "package": "prop-types",
+      "resolved": "https://registry.npmjs.org/prop-types/-/prop-types-15.8.1.tgz",
+      "version": "15.8.1"
+    },
+    {
+      "declared_license": "MIT",
+      "installed": true,
+      "integrity": "sha512-E8LUcbtBWt20bbl2YoHfx4ZDBdxVTfOKtCZn9cDSJ4l6/nuoApcpIBcj47t2wZoVX8g2ZHuMHbiShgCR1T5Sog==",
+      "notices": [
+        {
+          "name": "LICENSE",
+          "sha256": "da6d3703ed11cbe42bd212c725957c98da23cbff1998c05fa4b3d976d1a58e93"
+        }
+      ],
+      "package": "react",
+      "resolved": "https://registry.npmjs.org/react/-/react-19.3.0.tgz",
+      "version": "19.3.0"
+    },
+    {
+      "declared_license": "MIT",
+      "installed": true,
+      "integrity": "sha512-JDk8dgif51OjFoDE70+OT9ICyYr+69HlmihNwp1+Nsfbna3t5sIiCa9ZJktDmQ4/1b/rn26hIAR2uYXDMr5r0Q==",
+      "notices": [
+        {
+          "name": "LICENSE",
+          "sha256": "da6d3703ed11cbe42bd212c725957c98da23cbff1998c05fa4b3d976d1a58e93"
+        }
+      ],
+      "package": "react-dom",
+      "resolved": "https://registry.npmjs.org/react-dom/-/react-dom-19.3.0.tgz",
+      "version": "19.3.0"
+    },
+    {
+      "declared_license": "MIT",
+      "installed": true,
+      "integrity": "sha512-QDuV76v3uKbHiH34SpwifZ+gOLi1+RdsCO1kl5vxMT4wW8R82+sthjvBw4th3NHF/XX6FBsqDYZVNN+pnhaw0g==",
+      "notices": [
+        {
+          "name": "LICENSE",
+          "sha256": "7b93b62069ec28d00cc7cf3696b5d243ad9887517f8e709dce4811747f0e2dc2"
+        }
+      ],
+      "package": "react-dropzone",
+      "resolved": "https://registry.npmjs.org/react-dropzone/-/react-dropzone-14.4.1.tgz",
+      "version": "14.4.1"
+    },
+    {
+      "declared_license": "MIT",
+      "installed": true,
+      "integrity": "sha512-24e6ynE2H+OKt4kqsOvNd8kBpV65zoxbA4BVsEOB3ARVWQki/DHzaUoC5KuON/BiccDaCCTZBuOcfZs70kR8bQ==",
+      "notices": [
+        {
+          "name": "LICENSE",
+          "sha256": "52412d7bc7ce4157ea628bbaacb8829e0a9cb3c58f57f99176126bc8cf2bfc85"
+        }
+      ],
+      "package": "react-is",
+      "resolved": "https://registry.npmjs.org/react-is/-/react-is-16.13.1.tgz",
+      "version": "16.13.1"
+    },
+    {
+      "declared_license": "MIT",
+      "installed": true,
+      "integrity": "sha512-juorfCmIkIw8tT+p5BXSm6PJjQF/ycEYmKyzURCIt/RaZIhL+PulbQ9Yu2z1HdOJDdqDTlxA1+xKBmHXJsczAw==",
+      "notices": [
+        {
+          "name": "LICENSE",
+          "sha256": "da6d3703ed11cbe42bd212c725957c98da23cbff1998c05fa4b3d976d1a58e93"
+        }
+      ],
+      "package": "scheduler",
+      "resolved": "https://registry.npmjs.org/scheduler/-/scheduler-0.28.0.tgz",
+      "version": "0.28.0"
+    },
+    {
+      "declared_license": "MIT",
+      "installed": true,
+      "integrity": "sha512-wieBHXygIm7OyQOu5hQlkk62/WyCFYGlWg7L6/ZCUZwx0o398Zkn4pVmMyfYhfMG8kGrj/Krt8eIk6UKC6VzwA==",
+      "notices": [
+        {
+          "name": "LICENSE",
+          "sha256": "8e714750725e75c8b31172ef84c0805f94873f86e3b5cfca8a948553f0778fa1"
+        }
+      ],
+      "package": "tabbable",
+      "resolved": "https://registry.npmjs.org/tabbable/-/tabbable-6.5.0.tgz",
+      "version": "6.5.0"
+    },
+    {
+      "declared_license": "0BSD",
+      "installed": true,
+      "integrity": "sha512-oJFu94HQb+KVduSUQL7wnpmqnfmLsOA/nAh6b6EH0wCEoK0/mPeXU6c3wKDV83MkOuHPRHtSXKKU99IBazS/2w==",
+      "notices": [
+        {
+          "name": "CopyrightNotice.txt",
+          "sha256": "da16ddb65f8ca390998fb99223d0112498b56b45784d00afd77ff8ce1ac4de8b"
+        },
+        {
+          "name": "LICENSE.txt",
+          "sha256": "210b19e543130388c68654b7497e967119ce17145f66ab7d85688fbd70f08751"
+        }
+      ],
+      "package": "tslib",
+      "resolved": "https://registry.npmjs.org/tslib/-/tslib-2.8.1.tgz",
+      "version": "2.8.1"
+    }
+  ],
+  "redistribution_review": "incomplete; not a release attestation",
+  "schema_version": 1
+}

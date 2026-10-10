@@ -14,7 +14,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"syscall"
 
 	"github.com/albertize/grillo/internal/guest"
 	"github.com/albertize/grillo/internal/sandbox"
@@ -24,7 +23,7 @@ func copyArtifact(ctx context.Context, a guest.Artifact, target string) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	source, err := os.OpenFile(a.Path, os.O_RDONLY|syscall.O_NOFOLLOW, 0)
+	source, err := a.Open()
 	if err != nil {
 		return fmt.Errorf("qemu: open %s artifact", a.Name)
 	}
@@ -134,7 +133,7 @@ func (b *Backend) prepareBoot(ctx context.Context, spec sandbox.Spec, dir string
 			if err != nil {
 				return spec, err
 			}
-			wanted, err := filepath.Abs(expected.Path)
+			wanted, err := filepath.Abs(expected.HostPath())
 			if err != nil || actual != wanted {
 				return spec, fmt.Errorf("qemu: %s path does not match manifest", name)
 			}

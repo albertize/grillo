@@ -22,13 +22,14 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/albertize/grillo/internal/buildinfo"
 	"github.com/albertize/grillo/internal/guest"
 	"github.com/albertize/grillo/internal/guestproto"
 
 	"golang.org/x/sys/unix"
 )
 
-const agentVersion = "0.1.0-t07"
+var agentVersion = buildinfo.Version
 
 func main() {
 	if err := run(); err != nil {

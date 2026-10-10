@@ -10,6 +10,7 @@ package main
 import (
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -26,6 +27,7 @@ import (
 	"github.com/albertize/grillo/internal/api"
 	"github.com/albertize/grillo/internal/backend/qemu"
 	"github.com/albertize/grillo/internal/build"
+	"github.com/albertize/grillo/internal/buildinfo"
 	"github.com/albertize/grillo/internal/executor"
 	"github.com/albertize/grillo/internal/guestproto"
 	"github.com/albertize/grillo/internal/image"
@@ -33,13 +35,12 @@ import (
 	"github.com/albertize/grillo/internal/observe"
 	"github.com/albertize/grillo/internal/oci"
 	"github.com/albertize/grillo/internal/reconcile"
+	"github.com/albertize/grillo/internal/runtimeassets"
 	"github.com/albertize/grillo/internal/sandbox"
 	"github.com/albertize/grillo/internal/secrets"
 	"github.com/albertize/grillo/internal/state"
 	"github.com/albertize/grillo/internal/storage"
 )
-
-const version = "0.1.0"
 
 func main() {
 	if err := run(); err != nil {
@@ -49,18 +50,53 @@ func main() {
 }
 
 func run() error {
-	kernel := flag.String("kernel", "experiments/artifacts/qemu/bzImage", "guest kernel")
-	initramfs := flag.String("initramfs", "experiments/artifacts/t07/initramfs-agent.cpio.gz", "guest initramfs")
-	keyFile := flag.String("key-file", "experiments/artifacts/t07/key", "deprecated fixture option; ignored, runtime boot keys are generated fresh")
-	manifestPath := flag.String("artifact-manifest", "experiments/artifacts/t07/manifest.json", "trusted guest artifact manifest; verified before each boot")
+	casBytes := flag.Int64("oci-cache-bytes", oci.DefaultCASCacheBytes, "aggregate CAS logical-byte quota; no automatic eviction")
+	rootfsBytes := flag.Int64("rootfs-cache-bytes", 32<<30, "aggregate runtime rootfs logical-byte quota")
+	cacheEntries := flag.Int64("cache-entries", oci.DefaultCacheEntries, "entry quota per CAS/rootfs cache")
+	showVersion := flag.Bool("version", false, "print shared build identity as JSON without starting the daemon")
+	kernel := flag.String("kernel", os.Getenv("GRILLO_GUEST_KERNEL"), "guest kernel (default: installed prefix)")
+	initramfs := flag.String("initramfs", os.Getenv("GRILLO_GUEST_INITRAMFS"), "guest initramfs (default: installed prefix)")
+	keyFile := flag.String("key-file", "", "deprecated fixture option; ignored, runtime boot keys are generated fresh")
+	manifestPath := flag.String("artifact-manifest", os.Getenv("GRILLO_GUEST_MANIFEST"), "trusted guest artifact manifest (default: installed prefix); verified before each boot")
 	qemuPath := flag.String("qemu", "", "qemu binary (default: PATH)")
-	virtiofsd := flag.String("virtiofsd", "", "virtiofsd binary (default: /usr/libexec/virtiofsd)")
+	virtiofsd := flag.String("virtiofsd", os.Getenv("GRILLO_VIRTIOFSD_BINARY"), "virtiofsd binary (default: compatible distro-managed helper)")
 	vsockPort := flag.Uint("vsock-port", 1024, "guest vsock port")
 	vsockCIDBase := flag.Uint("vsock-cid-base", 20, "first workload guest CID (choose a nonconflicting host-wide range)")
 	buildCIDBase := flag.Uint("build-vsock-cid-base", 200, "first build guest CID (choose a separate host-wide range)")
-	netnsBinary := flag.String("netns-binary", "bin/grillo-netns", "network supervisor for build egress (empty disables build networking)")
+	netnsBinary := flag.String("netns-binary", os.Getenv("GRILLO_NETNS_BINARY"), "network supervisor (default: installed prefix)")
 	pasta := flag.String("pasta", "pasta", "pasta binary for build egress")
 	flag.Parse()
+	if *showVersion {
+		return json.NewEncoder(os.Stdout).Encode(buildinfo.Current())
+	}
+	if *casBytes < 0 || *rootfsBytes < 0 || *cacheEntries < 0 {
+		return fmt.Errorf("cache quotas must not be negative")
+	}
+	if err := validateRuntimeUID(os.Geteuid()); err != nil {
+		return err
+	}
+	if *virtiofsd != "" {
+		path, err := runtimeassets.VirtioFSD(*virtiofsd)
+		if err != nil {
+			return err
+		}
+		*virtiofsd = path
+	}
+	// Only an explicit developer manifest override permits the legacy schema.
+	requirePortableManifest := *manifestPath == ""
+	for _, asset := range []struct {
+		name string
+		path *string
+	}{{"kernel", kernel}, {"initramfs", initramfs}, {"manifest", manifestPath}, {"netns", netnsBinary}} {
+		resolved, err := runtimeassets.Resolve(asset.name, *asset.path)
+		if err != nil {
+			return err
+		}
+		*asset.path = resolved
+	}
+	if err := runtimeassets.Executable(*netnsBinary); err != nil {
+		return err
+	}
 	if err := validateCIDBases(*vsockCIDBase, *buildCIDBase); err != nil {
 		return err
 	}
@@ -99,13 +135,14 @@ func run() error {
 		Launch: func(ctx context.Context, spec sandbox.Spec, args []string, logPath string) (sandbox.VMM, error) {
 			return workloadRuntime.LaunchSandbox(ctx, spec, args, logPath)
 		},
-		QEMU:             *qemuPath,
-		VirtioFSD:        *virtiofsd,
-		Kernel:           *kernel,
-		Initramfs:        *initramfs,
-		WorkDir:          filepath.Join(layout.Data, "backend"),
-		ArtifactManifest: *manifestPath,
-		BootKeyOverlay:   true,
+		QEMU:                    *qemuPath,
+		VirtioFSD:               *virtiofsd,
+		Kernel:                  *kernel,
+		Initramfs:               *initramfs,
+		WorkDir:                 filepath.Join(layout.Data, "backend"),
+		ArtifactManifest:        *manifestPath,
+		RequirePortableManifest: requirePortableManifest,
+		BootKeyOverlay:          true,
 	})
 	if err != nil {
 		return err
@@ -114,7 +151,7 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	cas, err := oci.OpenCAS(filepath.Join(layout.Cache, "oci"))
+	cas, err := oci.OpenCASWithQuota(filepath.Join(layout.Cache, "oci"), oci.CacheQuota{MaxBytes: *casBytes, MaxEntries: *cacheEntries})
 	if err != nil {
 		return err
 	}
@@ -154,7 +191,7 @@ func run() error {
 	var buildNetwork *build.BuildNetwork
 	if *netnsBinary != "" {
 		if _, err := os.Stat(*netnsBinary); err != nil {
-			fmt.Fprintf(os.Stderr, "grillod: build networking disabled: %v (build 'make build' or pass -netns-binary)\n", err)
+			return fmt.Errorf("required network supervisor unavailable: %w", err)
 		} else {
 			buildNetwork = &build.BuildNetwork{
 				QEMU:        qemuBinary,
@@ -166,14 +203,15 @@ func run() error {
 			}
 			defer buildNetwork.Close()
 			buildBackend, err := qemu.Open(qemu.Config{
-				QEMU:             *qemuPath,
-				VirtioFSD:        *virtiofsd,
-				Kernel:           *kernel,
-				Initramfs:        *initramfs,
-				WorkDir:          filepath.Join(layout.Data, "build-backend"),
-				ArtifactManifest: *manifestPath,
-				BootKeyOverlay:   true,
-				Launch:           buildNetwork.Launch,
+				QEMU:                    *qemuPath,
+				VirtioFSD:               *virtiofsd,
+				Kernel:                  *kernel,
+				Initramfs:               *initramfs,
+				WorkDir:                 filepath.Join(layout.Data, "build-backend"),
+				ArtifactManifest:        *manifestPath,
+				RequirePortableManifest: requirePortableManifest,
+				BootKeyOverlay:          true,
+				Launch:                  buildNetwork.Launch,
 			})
 			if err != nil {
 				return err
@@ -184,10 +222,11 @@ func run() error {
 		}
 	}
 	images := &executor.OCIResolver{
-		Puller:   &oci.Puller{CAS: cas, Registry: oci.NewRegistryClient(), Platform: oci.Platform{OS: "linux", Architecture: "amd64"}},
-		CacheDir: filepath.Join(layout.Cache, "rootfs"),
-		Store:    imagesStore,
-		CAS:      cas,
+		Puller:     &oci.Puller{CAS: cas, Registry: oci.NewRegistryClient(), Platform: oci.Platform{OS: "linux", Architecture: "amd64"}},
+		CacheDir:   filepath.Join(layout.Cache, "rootfs"),
+		CacheQuota: oci.CacheQuota{MaxBytes: *rootfsBytes, MaxEntries: *cacheEntries},
+		Store:      imagesStore,
+		CAS:        cas,
 	}
 	exec, err := executor.New(executor.Config{
 		Backend:       backend,
@@ -255,12 +294,19 @@ func run() error {
 		Images:   runtimeCore,
 		Events:   events,
 		Logs:     logs,
-		Version:  version,
+		Version:  buildinfo.Version,
 		Shutdown: cancel,
 	})
 	socket := filepath.Join(layout.Runtime, "grillod.sock")
-	fmt.Fprintf(os.Stderr, "grillod: serving %s (version %s)\n", socket, version)
+	fmt.Fprintf(os.Stderr, "grillod: serving %s (version %s)\n", socket, buildinfo.Version)
 	return server.Serve(ctx, socket)
+}
+
+func validateRuntimeUID(uid int) error {
+	if uid == 0 {
+		return fmt.Errorf("runtime requires an unprivileged user; no rootful workload fallback")
+	}
+	return nil
 }
 
 // hostNameservers reads the host resolver configuration so a build guest can

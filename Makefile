@@ -1,6 +1,11 @@
 # SPDX-License-Identifier: Apache-2.0
 GO ?= go
 GOVULNCHECK_VERSION := v1.8.0
+# Development identity by default; release callers must provide locked metadata.
+VERSION ?= dev
+COMMIT ?= $(shell git rev-parse HEAD)
+BUILD_TIME ?= unknown
+HOST_LDFLAGS = -X github.com/albertize/grillo/internal/buildinfo.Version=$(VERSION) -X github.com/albertize/grillo/internal/buildinfo.Commit=$(COMMIT) -X github.com/albertize/grillo/internal/buildinfo.BuildTime=$(BUILD_TIME)
 
 .PHONY: fmt vet test test-scripts race build check audit vulncheck guest oci-guest test-kvm bench-t01 net-helper storage-probe qemu-guest test-qemu qemu-share
 
@@ -18,16 +23,17 @@ test:
 test-scripts:
 	bash scripts/bootstrap_test.sh
 	bash scripts/fetch_oci_test.sh
+	bash scripts/payload_test.sh
 
 race:
 	CGO_ENABLED=1 $(GO) test -race ./...
 
 build:
 	mkdir -p bin
-	CGO_ENABLED=0 $(GO) build -trimpath -buildvcs=false -o bin/grillo ./cmd/grillo
-	CGO_ENABLED=0 $(GO) build -trimpath -buildvcs=false -o bin/grillod ./cmd/grillod
-	CGO_ENABLED=0 $(GO) build -trimpath -buildvcs=false -o bin/grillo-netns ./cmd/grillo-netns
-	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 $(GO) build -trimpath -buildvcs=false -o bin/grillo-agent ./cmd/grillo-agent
+	CGO_ENABLED=0 $(GO) build -trimpath -buildvcs=false -ldflags '$(HOST_LDFLAGS)' -o bin/grillo ./cmd/grillo
+	CGO_ENABLED=0 $(GO) build -trimpath -buildvcs=false -ldflags '$(HOST_LDFLAGS)' -o bin/grillod ./cmd/grillod
+	CGO_ENABLED=0 $(GO) build -trimpath -buildvcs=false -ldflags '$(HOST_LDFLAGS)' -o bin/grillo-netns ./cmd/grillo-netns
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 $(GO) build -trimpath -buildvcs=false -ldflags '$(HOST_LDFLAGS)' -o bin/grillo-agent ./cmd/grillo-agent
 
 # Frontend downloads are explicit. npm ci verifies the committed integrity lock;
 # lifecycle scripts are disabled (including native-tool post-install downloads).
@@ -64,6 +70,16 @@ fuzz:
 	$(GO) test ./internal/frontend/kubernetes -run '^$$' -fuzz '^FuzzCompile$$' -fuzztime=$(FUZZTIME) -parallel=$(FUZZWORKERS)
 	$(GO) test ./internal/network -run '^$$' -fuzz '^FuzzDNSRespond$$' -fuzztime=$(FUZZTIME) -parallel=$(FUZZWORKERS)
 	$(GO) test ./internal/oci -run '^$$' -fuzz '^FuzzUnpackLayer$$' -fuzztime=$(FUZZTIME) -parallel=$(FUZZWORKERS)
+
+# Bounded cache contention/cancellation; no KVM or eviction.
+.PHONY: test-cache-load test-license-inventory
+test-cache-load:
+	$(GO) test -race -count=100 -run 'TestCASQuota|TestCacheGuard' ./internal/oci/
+	$(GO) test -race -count=100 -run 'TestOCIResolverAggregateQuota|TestOCIResolverIndependentInstances' ./internal/executor/
+
+# Optional development audit tooling uses Python stdlib, not a runtime dependency.
+test-license-inventory:
+	PYTHONDONTWRITEBYTECODE=1 python3 scripts/license_inventory_test.py
 
 # Explicit opt-in: downloads and executes this pinned official Go audit tool.
 vulncheck:
@@ -120,6 +136,45 @@ test-t07: t07-guest
 # gate (~90s). Missing /dev/kvm or the T07 image is a SKIP.
 test-t08: t07-guest
 	go test -tags kvm -count=1 -v -timeout 600s -run TestKVMCreateStartStopDelete ./internal/backend/qemu/
+
+# D0 runtime-only guest. Inputs must already be provisioned; no implicit fetch.
+RUNTIME_STORE ?= experiments/artifacts/runtime
+RUNTIME_SELECTION ?= experiments/artifacts/runtime-selected.txt
+GUEST_KERNEL ?= experiments/artifacts/qemu/bzImage
+GUEST_INPUTS ?= experiments/artifacts/t02
+.PHONY: runtime-guest
+runtime-guest: build
+	@mkdir -p "$$(dirname '$(RUNTIME_SELECTION)')"
+	$(GO) run ./guest/runtime-image -agent bin/grillo-agent -kernel '$(GUEST_KERNEL)' -kernel-version 6.1.188 -inputs '$(GUEST_INPUTS)' -store '$(RUNTIME_STORE)' -version '$(VERSION)' -commit '$(COMMIT)' -selection '$(RUNTIME_SELECTION)'
+
+# One local experimental payload, not redistribution-cleared release packaging.
+STAGE_PREFIX ?= experiments/artifacts/stage
+HELM_BINARY ?=
+HELM_SHA256 ?=
+PAYLOAD_ROOT ?= experiments/artifacts/payloads
+.PHONY: stage-runtime test-installed-runtime payload
+# New uniquely named archive/checksum pair on every run; never reuse STAGE_PREFIX.
+payload: runtime-guest
+	GO='$(GO)' bash scripts/payload.sh '$(PAYLOAD_ROOT)' '$(RUNTIME_SELECTION)' '$(HELM_BINARY)' '$(HELM_SHA256)'
+
+stage-runtime: runtime-guest
+	@test -n '$(HELM_BINARY)' -a -n '$(HELM_SHA256)' || { echo 'Provide an explicit trusted HELM_BINARY and HELM_SHA256; no tool download is automatic.'; exit 1; }
+	$(GO) run ./scripts/stage -out '$(STAGE_PREFIX)' -guest-selection '$(RUNTIME_SELECTION)' -helm '$(HELM_BINARY)' -helm-sha256 '$(HELM_SHA256)'
+
+test-installed-runtime: runtime-guest
+	@test -n '$(HELM_BINARY)' -a -n '$(HELM_SHA256)' || { echo 'Provide an explicit trusted HELM_BINARY and HELM_SHA256.'; exit 1; }
+	GRILLO_TEST_HELM_BINARY='$(HELM_BINARY)' GRILLO_TEST_HELM_SHA256='$(HELM_SHA256)' GRILLO_TEST_GUEST_SELECTION='$(RUNTIME_SELECTION)' $(GO) test -tags kvm -count=1 -v -timeout 600s -run '^TestKVMInstalledRuntime$$' ./internal/distribution/
+
+# T24 warm production-path measurements: verified snapshots and fresh keys.
+# No application/network/idle-system budget or clean-host claim follows.
+.PHONY: test-t24-verified-lifecycle
+test-t24-verified-lifecycle: runtime-guest
+	GRILLO_TEST_GUEST_SELECTION='$(RUNTIME_SELECTION)' $(GO) test -tags kvm -count=1 -v -timeout 600s -run '^TestKVMVerifiedRuntimeLifecycle$$' ./internal/backend/qemu/
+
+# D0 portable inventory gate with a rebuilt development fixture, not a release guest.
+.PHONY: test-d0-manifest
+test-d0-manifest: t07-guest
+	go test -tags kvm -count=1 -v -timeout 180s -run '^TestKVMPortableManifestBoot$$' ./internal/backend/qemu/
 
 # T10 storage: real bind persistence and read-only enforcement (scenario G)
 # through the backend and guest agent. Missing /dev/kvm or the image is a SKIP.

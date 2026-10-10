@@ -770,6 +770,22 @@ Each task produces the required code/tests, consistent documentation, and verifi
 
 **Done when:** before/after reports and regression checks exist; uninstall preserves data unless explicitly requested otherwise; every added dependency is justified.
 
+### Distribution track — D0 through D4
+
+The user-provided [distribution/onboarding specification](docs/distribution-onboarding-spec.md)
+defines `T24 → D0 → D1 → (D2 || D3) → D4`, pulling release-critical preparation
+forward from T27 without expanding frontend/runtime semantics. T24 remains the
+acceptance dependency; independent D0 preparation may be implemented without
+claiming D0 DONE, supported installation or supported hosts. D0's
+[layout](docs/experiments/d0-runtime-layout.md),
+[portable inventory/real boot](docs/experiments/d0-portable-manifest.md), and
+[fixture/key-free installed runtime](docs/experiments/d0-installed-runtime.md)
+contracts have local evidence. Actual moved/read-only installed CLI/daemon
+Compose, Helm and embedded UI lifecycle pass real KVM without checkout/build
+tools on runtime PATH. T24 acceptance, clean-host, source/license review,
+provenance, retention/upgrade/uninstall and release-package gates remain open.
+T25/T26 remain unchanged.
+
 ### T28 — Future research, not a prerequisite
 
 **Dependencies:** stable F3 and measured use cases.

@@ -57,7 +57,7 @@ func Open(cfg Config) (*Backend, error) {
 		nextCID:     cfg.CIDBase,
 	}
 	if cfg.ArtifactManifest != "" {
-		manifest, err := guest.ReadManifest(cfg.ArtifactManifest)
+		manifest, err := guest.ReadBootManifest(cfg.ArtifactManifest, !cfg.RequirePortableManifest)
 		if err != nil {
 			return nil, fmt.Errorf("qemu: invalid artifact manifest: %w", err)
 		}
@@ -72,7 +72,7 @@ func Open(cfg Config) (*Backend, error) {
 			return nil, fmt.Errorf("qemu: manifest lacks initramfs")
 		}
 	}
-	if cfg.BootKeyOverlay && b.artifacts == nil {
+	if (cfg.BootKeyOverlay || cfg.RequirePortableManifest) && b.artifacts == nil {
 		return nil, fmt.Errorf("qemu: verified artifact manifest is required")
 	}
 	if cfg.DialGuest == nil {

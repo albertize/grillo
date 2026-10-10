@@ -106,6 +106,24 @@ root environments test root refusal and explicitly skip those fixtures. Tests
 never download artifacts, install packages, execute the fixture programs, or
 prove hardware integration. `make check` includes these tests.
 
+## Experimental transfer payload
+
+`make payload` rebuilds and stages the local runtime and archives one `grillo/`
+prefix, printing the new archive/checksum paths. Set trusted `HELM_BINARY` and
+`HELM_SHA256` explicitly (shell exports allow repeated `make payload` calls).
+`PAYLOAD_ROOT` defaults to ignored `experiments/artifacts/payloads`; every invocation
+uses a unique private directory, without overwriting previous output. No transfer,
+installation, signature, source-compliance clearance or dependency download occurs.
+See [runtime layout](../docs/runtime-layout.md#developer-preparation-source-checkout-only).
+
+`payload.sh` is invoked from the repository root. Offline `payload_test.sh` tests
+real archive/checksum/extraction behavior around a fake stage tool, two successive
+outputs, space-containing paths, pin argument rejection, symlink-root refusal and
+stage/archive failure cleanup preserving prior payloads/unrelated files. These are
+included in `make test-scripts`/`make check`; fake staging is not real artifact or
+hardware evidence. SIGKILL/power loss can leave an incomplete private output
+folder; only transfer the pair from a successfully completed invocation.
+
 ## Compatibility registry generation
 
 Run from the repository root:

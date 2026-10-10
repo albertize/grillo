@@ -82,9 +82,67 @@ func NewLayout(cfg Config) (Layout, error) {
 // real directory owned by the current user, rejecting symlinks.
 func (l Layout) Prepare() error {
 	for _, dir := range []string{l.Runtime, l.State, l.Data, l.Cache} {
-		if err := ensurePrivateDir(dir, os.Getuid()); err != nil {
+		if err := PrepareRuntimeDirectory(dir); err != nil {
 			return err
 		}
+	}
+	return nil
+}
+
+// PrepareRuntimeDirectory creates only the runtime namespace for on-demand
+// startup. Reject existing unsafe ownership/permissions and symlink ancestors;
+// do not chmod unrelated or preexisting directories as implicit remediation.
+func PrepareRuntimeDirectory(dir string) error {
+	absolute, err := filepath.Abs(dir)
+	if err != nil {
+		return err
+	}
+	for p := absolute; ; p = filepath.Dir(p) {
+		info, err := os.Lstat(p)
+		if err != nil && !errors.Is(err, fs.ErrNotExist) {
+			return err
+		}
+		if err == nil && (!info.IsDir() || info.Mode()&os.ModeSymlink != 0) {
+			return fmt.Errorf("state: unsafe runtime directory path")
+		}
+		if p == filepath.Dir(p) {
+			break
+		}
+	}
+	if err := ensurePrivateDir(absolute, os.Getuid()); err != nil {
+		return err
+	}
+	return CheckPrivateDirectory(absolute)
+}
+
+// CheckPrivateDirectory inspects existing XDG state without creating/remediating
+// anything. Missing paths are returned as normal filesystem errors.
+func CheckPrivateDirectory(dir string) error {
+	absolute, err := filepath.Abs(dir)
+	if err != nil {
+		return err
+	}
+	for p := absolute; ; p = filepath.Dir(p) {
+		info, err := os.Lstat(p)
+		if err != nil {
+			return err
+		}
+		if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+			return fmt.Errorf("state: unsafe private directory path")
+		}
+		if p == filepath.Dir(p) {
+			break
+		}
+	}
+	info, err := os.Lstat(absolute)
+	if err != nil {
+		return err
+	}
+	if stat, ok := info.Sys().(*syscall.Stat_t); !ok || int(stat.Uid) != os.Getuid() {
+		return fmt.Errorf("state: private directory has unexpected owner")
+	}
+	if info.Mode().Perm()&0077 != 0 {
+		return fmt.Errorf("state: directory must be private (0700)")
 	}
 	return nil
 }

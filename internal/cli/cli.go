@@ -19,15 +19,18 @@ import (
 
 	"github.com/albertize/grillo/internal/api"
 	"github.com/albertize/grillo/internal/build"
+	"github.com/albertize/grillo/internal/buildinfo"
 	"github.com/albertize/grillo/internal/executor"
 	"github.com/albertize/grillo/internal/frontend/compose"
 	"github.com/albertize/grillo/internal/frontend/detect"
 	"github.com/albertize/grillo/internal/frontend/helm"
 	"github.com/albertize/grillo/internal/frontend/kubernetes"
+	"github.com/albertize/grillo/internal/guest"
 	"github.com/albertize/grillo/internal/image"
 	"github.com/albertize/grillo/internal/model"
 	"github.com/albertize/grillo/internal/observe"
 	"github.com/albertize/grillo/internal/plan"
+	"github.com/albertize/grillo/internal/runtimeassets"
 	"github.com/albertize/grillo/internal/secrets"
 	"github.com/albertize/grillo/internal/source"
 	"github.com/albertize/grillo/internal/state"
@@ -112,7 +115,18 @@ func (a *App) withDefaults() {
 	}
 	if a.Ensure == nil {
 		a.Ensure = func(ctx context.Context, socketPath, daemonPath string, timeout time.Duration) error {
-			return api.EnsureDaemon(ctx, socketPath, daemonPath, timeout)
+			// Leave an already-running daemon alone; only resolve helpers on startup.
+			if _, err := api.NewClient(socketPath).Health(ctx); err == nil {
+				return nil
+			}
+			path, err := runtimeassets.Resolve("daemon", daemonPath)
+			if err != nil {
+				return err
+			}
+			if err := runtimeassets.Executable(path); err != nil {
+				return err
+			}
+			return api.EnsureDaemon(ctx, socketPath, path, timeout)
 		}
 	}
 	if a.Doctor == nil {
@@ -129,17 +143,40 @@ func (a *App) Run(ctx context.Context, args []string) int {
 	}
 	switch args[0] {
 	case "version", "--version":
-		version := a.Version
-		if version == "" {
-			version = "dev"
+		fs := flag.NewFlagSet("version", flag.ContinueOnError)
+		fs.SetOutput(a.Stderr)
+		asJSON := fs.Bool("json", false, "print build identity as JSON")
+		if err := fs.Parse(args[1:]); err != nil || fs.NArg() != 0 {
+			return 2
 		}
-		fmt.Fprintln(a.Stdout, version)
+		info := buildinfo.Current()
+		if a.Version != "" {
+			info.Version = a.Version
+		}
+		if *asJSON {
+			report := struct {
+				buildinfo.Info
+				AssetDigest string `json:"asset_digest,omitempty"`
+				AssetStatus string `json:"asset_status"`
+			}{Info: info, AssetStatus: "unavailable"}
+			if path, err := runtimeassets.Resolve("manifest", os.Getenv("GRILLO_GUEST_MANIFEST")); err == nil {
+				if manifest, err := guest.ReadBootManifest(path, false); err == nil {
+					report.AssetDigest = manifest.Digest()
+					report.AssetStatus = "portable-inventory; artifact verification occurs before boot"
+				}
+			}
+			if err := json.NewEncoder(a.Stdout).Encode(report); err != nil {
+				return 1
+			}
+		} else {
+			fmt.Fprintln(a.Stdout, info.Version)
+		}
 		return 0
 	case "help", "-h", "--help":
 		fmt.Fprint(a.Stdout, usage)
 		return 0
 	case "doctor":
-		return PrintDoctor(a.Stdout, a.Doctor())
+		return a.cmdDoctor(args[1:])
 	case "plan":
 		return a.cmdPlan(ctx, args[1:])
 	case "up":
@@ -277,7 +314,11 @@ func (a *App) cmdUp(ctx context.Context, args []string) int {
 	if err != nil {
 		return fail(a.Stderr, err)
 	}
-	return a.waitOperation(ctx, client, id)
+	code = a.waitOperation(ctx, client, id)
+	if code == 0 {
+		fmt.Fprintf(a.Stdout, "Application %s applied. Inspect endpoints: grillo inspect %s\n", app.Identity.Name, app.Identity.Name)
+	}
+	return code
 }
 
 func (a *App) cmdStatus(ctx context.Context, args []string) int {
@@ -346,6 +387,27 @@ func (a *App) cmdInspect(ctx context.Context, args []string) int {
 	encoder := json.NewEncoder(a.Stdout)
 	encoder.SetIndent("", "  ")
 	report := map[string]any{"application": application, "containers": containers}
+	if viewer, ok := client.(interface {
+		View(context.Context, string) (observe.ApplicationView, error)
+	}); ok {
+		view, err := viewer.View(ctx, application)
+		if err != nil {
+			return fail(a.Stderr, err)
+		}
+		var endpoints []string
+		seen := map[int32]bool{}
+		for _, workload := range view.Workloads {
+			for _, container := range workload.Containers {
+				for _, port := range container.Ports {
+					if port.HostPort > 0 && (port.Protocol == "" || port.Protocol == "TCP") && !seen[port.HostPort] {
+						seen[port.HostPort] = true
+						endpoints = append(endpoints, fmt.Sprintf("tcp://127.0.0.1:%d", port.HostPort))
+					}
+				}
+			}
+		}
+		report["published_endpoints"] = endpoints
+	}
 	if viewer, ok := client.(interface {
 		Routes(context.Context, string) ([]api.RouteStatus, error)
 	}); ok {
@@ -782,7 +844,7 @@ func (a *App) loadApplication(ctx context.Context, opts inputOptions, files stri
 			}
 			cacheDir = filepath.Join(layout.Cache, "helm", "charts")
 		}
-		result, err := helm.Compile(ctx, helm.Options{Chart: chart, Release: release, Values: values, AllowDegraded: allowDegraded, ChartVersion: opts.ChartVersion, ChartDigest: opts.ChartDigest, Fetch: opts.Fetch, CacheDir: cacheDir, Registry: a.HelmRegistry})
+		result, err := helm.Compile(ctx, helm.Options{Binary: os.Getenv("GRILLO_HELM_BINARY"), Chart: chart, Release: release, Values: values, AllowDegraded: allowDegraded, ChartVersion: opts.ChartVersion, ChartDigest: opts.ChartDigest, Fetch: opts.Fetch, CacheDir: cacheDir, Registry: a.HelmRegistry})
 		if err != nil {
 			return model.Application{}, fail(a.Stderr, err)
 		}

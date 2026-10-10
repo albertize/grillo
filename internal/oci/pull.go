@@ -104,9 +104,16 @@ func (p *Puller) Pull(ctx context.Context, ref Reference) (PulledImage, error) {
 // Unpack applies the image layers to root in order, verifying diff_ids when the
 // image config provides them.
 func (p *Puller) Unpack(image PulledImage, root string, opts UnpackOptions) error {
+	budget, err := newUnpackBudget(opts)
+	if err != nil {
+		return err
+	}
 	for i, layer := range image.Manifest.Layers {
+		if err := budget.opts.Context.Err(); err != nil {
+			return err
+		}
 		if i < len(image.Config.RootFS.DiffIDs) {
-			got, err := p.layerDiffID(layer)
+			got, err := p.layerDiffID(layer, budget)
 			if err != nil {
 				return err
 			}
@@ -118,7 +125,7 @@ func (p *Puller) Unpack(image PulledImage, root string, opts UnpackOptions) erro
 		if err != nil {
 			return err
 		}
-		unpackErr := UnpackLayer(root, f, IsGzipLayer(layer.MediaType), opts)
+		unpackErr := unpackLayer(root, f, IsGzipLayer(layer.MediaType), budget)
 		closeErr := f.Close()
 		if unpackErr != nil {
 			return fmt.Errorf("oci: unpack layer %d: %w", i, unpackErr)
@@ -130,21 +137,24 @@ func (p *Puller) Unpack(image PulledImage, root string, opts UnpackOptions) erro
 	return nil
 }
 
-func (p *Puller) layerDiffID(layer Descriptor) (string, error) {
+func (p *Puller) layerDiffID(layer Descriptor, budget *unpackBudget) (string, error) {
 	f, err := p.CAS.Open(layer.Digest)
 	if err != nil {
 		return "", err
 	}
 	defer f.Close()
+	bounded := func(reader io.Reader) (string, error) {
+		return DiffID(&quotaReader{reader: reader, ctx: budget.opts.Context, remaining: budget.opts.MaxArchiveBytes - budget.archive})
+	}
 	if !IsGzipLayer(layer.MediaType) {
-		return DiffID(f)
+		return bounded(f)
 	}
 	gz, err := gzip.NewReader(f)
 	if err != nil {
 		return "", err
 	}
 	defer gz.Close()
-	return DiffID(gz)
+	return bounded(gz)
 }
 
 func (p *Puller) fetchBlob(ctx context.Context, ref Reference, digest string, size int64) error {

@@ -54,11 +54,12 @@ See [compatibility](compatibility.md) and [console limits](ui.md#explicit-mvp-li
 | T21 | Helm rendering and OCI charts | DONE | Real Helm package/template, local/OCI equivalence, explicit HTTPS fetch, verified atomic cache, stable offline plans, archive/corruption/concurrency/dependency restrictions; `docs/experiments/t21-helm-renderer.md` |
 | T22 | Helm gate and compatibility reporting | DONE | Full direct-runtime scenario C plus actual CLI/daemon chart gate PASS; unsupported provisioning blocked; compiler registry/counts and consumer/PVC semantics verified |
 | T23 | Web console and secure bridge | DONE | React/PatternFly frontend (ADR 0008), metadata-only views, bounded logs/SSE/non-TTY exec; actual Firefox desktop/mobile and native CLI/daemon/KVM lifetime/cancellation gates PASS; original data limits remain explicit |
-| T24 | F3 MVP gate and hardening | BLOCKED | Local logs, [CLI TTY/metrics/verified boot](experiments/t24-interactive-metrics-artifacts.md) pass; clean external host, release installation, complete budgets/quota/load/provenance and hosted CI remain |
+| T24 | F3 MVP gate and hardening | BLOCKED | [100 verified boots and current advisory hardening](experiments/t24-closure-campaign.md) PASS; clean external host, release delivery, full budgets/quota/load/provenance and hosted CI remain |
 | T25 | StatefulSet and Job | TODO | T24 |
 | T26 | Extended Tier 1/Tier 2 parity and TLS | TODO | T25 |
 | T27 | Measured optimization and packaging | TODO | T24; T26 for complete F4 |
 | T28 | Future research, not a prerequisite | TODO | Stable F3 and measured use cases |
+| D0 | Packaging-ready runtime layout | BLOCKED | [Runtime-only guest and installed Compose/Helm/UI](experiments/d0-installed-runtime.md) local KVM gates PASS; T24, clean-host, license/source/provenance and release lifecycle remain |
 
 Contracts and acceptance criteria remain in the [implementation plan](../IMPLEMENTATION_PLAN.md).
 Completion records are dated evidence, not a claim that tests ran on every
@@ -80,36 +81,33 @@ subsequent edit or that the whole product is release-ready.
 
 ## Latest delivery
 
-- **Task:** T24 — interactive CLI, real metrics and verified boot artifacts.
-- **Status:** BLOCKED overall; all three local contracts have real delivery evidence.
-- **Dependencies verified:** T07/T08/T15/T16/T18/T19/T22/T23, prior T24 log delivery and
-  user authorization to implement all three without a second host.
-- **Files and contracts changed:** Bounded stdin/resize protocol and Unix upgrade;
-  foreground runc PTY/CLI raw restoration, cancellation-aware output; guest/cgroup
-  metrics/API/CLI/UI; pinned manifest/private verified snapshots/fresh boot keys;
-  sole-reaper network command wait; native terminal/metrics/Firefox/build and
-  negative/race regressions. See [report](experiments/t24-interactive-metrics-artifacts.md).
-- **Decisions/ADRs:** [ADR 0009](adr/0009-verified-boot-and-private-key-overlay.md)
-  Proposed, implemented experimentally; no new dependency or ADR acceptance.
-- **Tests run:** `make check`, uncached focused races, `make vulncheck`,
-  `make test-t07 test-helm test-ui test-ui-browser test-builder-kvm test-f2
-  test-executor` PASS without SKIP. Actual host PTY verifies CLI stdin/SIGWINCH,
-  mode restoration on exit/SIGINT; real guest cgroups reach Firefox. Unit/fake
-  tests separately prove mutation/launch-order/key contracts. Earlier failed
-  gates and corrections are preserved in the report. Markdown links/fences,
-  shell/JavaScript syntax and diff checks PASS; no QEMU/grillod/pasta leftovers.
-- **Tests NOT run and why:** Hosted CI and clean external host unavailable;
-  no new sustained load/fuzz/full-budget or redistribution/license campaign.
-- **Integration/benchmark evidence:** Existing Fedora fc44/KVM host, SELinux
-  already Permissive; rebuilt guest/CLI/daemon/frontend. No new benchmark claim;
-  new copy/hash startup costs still need full-budget measurements.
-- **Known limitations:** Full browser TTY, PSS/cache/CPU percentages, original
-  diagnostics persistence and log shutdown/host-retention gaps remain absent.
-  Local manifests are integrity expectations, not publisher authentication or
-  signed releases. Clean-host/release installation/quota/load/provenance gates
-  remain open; owning-UID/compromised-guest guarantees are not expanded.
-- **Next task:** T24 full-budget/quota/load and release provenance/installability
-  review; arrange the external-host gate separately. Do not advance to T25.
+- **Task:** T24 — fail-closed payload notices, actual binary provenance and host support boundaries.
+- **Status:** BLOCKED overall; bounded local staging/support delivery PASS.
+- **Dependencies verified:** T23 embedded UI, Stage/runtime-only/installed gates,
+  prior license inventory and user-run Fedora Permissive observations.
+- **Files and contracts changed:** Stage mandatory verbatim frontend/font texts,
+  no-follow/bounded notice checks, four copied-binary Go metadata records with
+  replacement redaction, partial coverage field, unit/KVM assertions; staged
+  host-support guide and README/runtime-layout. [Evidence](experiments/t24-payload-notices-provenance-support.md).
+- **Decisions/ADRs:** No dependency/ADR/support range/SLA/contact invented;
+  metadata/hashes do not authenticate producers or complete source/license review.
+- **Tests run:** Full `make check`, actual `make payload`, archive notice digest
+  check, 100 selected notice/provenance race suites, `make audit vulncheck` PASS
+  (no Grillo graph vulnerabilities). Rebuilt installed KVM gate PASS without SKIP
+  (final 7.35s), including new inventory/notice assertions. Formatting/docs/diff PASS.
+- **Tests NOT run and why:** No new external/default-policy/hosted CI proof;
+  full corresponding-source/Go/Helm notices and publisher trust/release gates remain
+  incomplete. Grillo advisory scan does not certify external binaries.
+- **Integration/benchmark evidence:** Actual copied Helm declares Go 1.26.4 and
+  106 dependency modules, unlike Grillo toolchain/graph; five exact notice texts
+  ship. User now confirms second-host UI functionality; lifetime/cleanup scope
+  still limited as [recorded](experiments/d0-second-host-fedora44.md).
+- **Known limitations:** Notice coverage remains partial; embedded metadata can
+  be forged and lacks exact source/patch proof. Fedora Enforcing still blocked,
+  no supported release. Other quota/performance/source/provenance gates remain.
+- **Next task:** Prepared Go/toolchain notice collection, explicit guest/Helm
+  corresponding sources and verified release decisions; presentation and remaining
+  hardening checks separately. Do not infer T24/D0 DONE from local functional PASS.
 
 ## Updating progress
 

@@ -5,6 +5,7 @@ package oci
 import (
 	"archive/tar"
 	"compress/gzip"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
@@ -29,10 +30,16 @@ type UnpackOptions struct {
 	// Returning -1 keeps the original value, which is then recorded only if the
 	// chown is permitted.
 	MapOwner func(uid, gid int) (int, int)
-	// MaxBytes bounds total uncompressed bytes written (0 = unlimited).
+	// MaxBytes bounds cumulative regular-file payload written, even overwrites.
+	// Zero selects DefaultMaxUnpackBytes; it never disables the quota.
 	MaxBytes int64
-	// MaxFiles bounds the number of extracted entries (0 = unlimited).
+	// MaxFiles bounds entries including whiteouts (zero selects the default).
 	MaxFiles int64
+	// MaxArchiveBytes bounds decompressed tar bytes including metadata, padding
+	// and skipped bodies. Zero selects a finite derived default, capped at 8 GiB.
+	MaxArchiveBytes int64
+	// Context checks cancellation between reads/entries, not within blocked I/O.
+	Context context.Context
 }
 
 // DiffID returns the SHA-256 of the uncompressed layer content.
@@ -48,6 +55,17 @@ func DiffID(r io.Reader) (string, error) {
 // directories, and refuses entries that could escape root through absolute
 // paths, "..", symlinks, hardlinks, devices, or FIFOs.
 func UnpackLayer(root string, layer io.Reader, gzipCompressed bool, opts UnpackOptions) error {
+	budget, err := newUnpackBudget(opts)
+	if err != nil {
+		return err
+	}
+	return unpackLayer(root, layer, gzipCompressed, budget)
+}
+
+func unpackLayer(root string, layer io.Reader, gzipCompressed bool, budget *unpackBudget) error {
+	if err := budget.opts.Context.Err(); err != nil {
+		return err
+	}
 	reader := layer
 	if gzipCompressed {
 		gz, err := gzip.NewReader(layer)
@@ -57,12 +75,17 @@ func UnpackLayer(root string, layer io.Reader, gzipCompressed bool, opts UnpackO
 		defer gz.Close()
 		reader = gz
 	}
-	tr := tar.NewReader(reader)
-	ex := &extractor{root: root, opts: opts}
+	bounded := &quotaReader{reader: reader, ctx: budget.opts.Context, remaining: budget.opts.MaxArchiveBytes - budget.archive}
+	defer func() { budget.archive += bounded.consumed }()
+	tr := tar.NewReader(bounded)
+	ex := &extractor{root: root, opts: budget.opts, budget: budget}
 	for {
 		header, err := tr.Next()
 		if errors.Is(err, io.EOF) {
-			return nil
+			// Consume padding/trailing compressed data under the same quota, validating
+			// gzip checksum rather than stopping as soon as tar reports its trailer.
+			_, err := io.Copy(io.Discard, bounded)
+			return err
 		}
 		if err != nil {
 			return fmt.Errorf("oci: read layer tar: %w", err)
@@ -74,13 +97,18 @@ func UnpackLayer(root string, layer io.Reader, gzipCompressed bool, opts UnpackO
 }
 
 type extractor struct {
-	root  string
-	opts  UnpackOptions
-	bytes int64
-	files int64
+	root   string
+	opts   UnpackOptions
+	budget *unpackBudget
 }
 
 func (e *extractor) entry(header *tar.Header, body io.Reader) error {
+	if err := e.opts.Context.Err(); err != nil {
+		return err
+	}
+	if err := e.count(); err != nil {
+		return err
+	}
 	name := header.Name
 	if name == "" {
 		return nil
@@ -106,9 +134,6 @@ func (e *extractor) entry(header *tar.Header, body io.Reader) error {
 
 	target, err := e.join(name)
 	if err != nil {
-		return err
-	}
-	if err := e.count(); err != nil {
 		return err
 	}
 	switch header.Typeflag {
@@ -148,10 +173,10 @@ func (e *extractor) entry(header *tar.Header, body io.Reader) error {
 }
 
 func (e *extractor) count() error {
-	e.files++
-	if e.opts.MaxFiles > 0 && e.files > e.opts.MaxFiles {
-		return fmt.Errorf("oci: layer exceeds %d entries", e.opts.MaxFiles)
+	if e.budget.files >= e.opts.MaxFiles {
+		return fmt.Errorf("%w: image exceeds %d entries", ErrUnpackLimit, e.opts.MaxFiles)
 	}
+	e.budget.files++
 	return nil
 }
 
@@ -159,8 +184,8 @@ func (e *extractor) regular(target string, header *tar.Header, body io.Reader) e
 	if header.Size < 0 {
 		return fmt.Errorf("oci: negative file size for %q", header.Name)
 	}
-	if e.opts.MaxBytes > 0 && e.bytes+header.Size > e.opts.MaxBytes {
-		return fmt.Errorf("oci: layer exceeds %d bytes", e.opts.MaxBytes)
+	if header.Size > e.opts.MaxBytes-e.budget.bytes {
+		return fmt.Errorf("%w: image exceeds %d payload bytes", ErrUnpackLimit, e.opts.MaxBytes)
 	}
 	if dir := filepath.Dir(target); dir != e.root {
 		if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -174,7 +199,7 @@ func (e *extractor) regular(target string, header *tar.Header, body io.Reader) e
 		return err
 	}
 	n, copyErr := io.CopyN(f, body, header.Size)
-	e.bytes += n
+	e.budget.bytes += n
 	closeErr := f.Close()
 	if copyErr != nil {
 		return fmt.Errorf("oci: write %q: %w", header.Name, copyErr)

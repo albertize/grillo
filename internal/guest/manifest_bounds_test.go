@@ -11,7 +11,7 @@ import (
 
 func TestManifestRejectsEmptyUnknownTrailingAndOversized(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "manifest")
-	for _, data := range []string{`{"artifacts":[]}`, `{"artifacts":[],"unknown":true}`, `{"artifacts":[]} {}`, strings.Repeat(" ", (1<<20)+1)} {
+	for _, data := range []string{`{"artifacts":[]}`, `{"artifacts":[],"unknown":true}`, `{"artifacts":[]} {}`, `{"artifacts":[],"artifacts":[]}`, `{"artifacts":[],"schema_version":1,"schema_version":0}`, `{"artifacts":[],"unknown":` + strings.Repeat("[", 10) + `0` + strings.Repeat("]", 10) + `}`, strings.Repeat(" ", (1<<20)+1)} {
 		if err := os.WriteFile(path, []byte(data), 0o600); err != nil {
 			t.Fatal(err)
 		}

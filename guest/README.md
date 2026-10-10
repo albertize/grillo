@@ -4,7 +4,25 @@ This directory holds the guest-side build inputs for the Grillo microVM. The
 runtime code lives in `internal/guest`; the PID 1 entry point is
 `cmd/grillo-agent`.
 
-## Layout of a built image
+## Runtime-only base
+
+`make runtime-guest` builds a separate production-shaped base from explicitly
+provisioned inputs. It selects only the static agent/runc, BusyBox networking
+utility and pinned glibc ELF dependencies, plus essential directories. Build
+metadata is an adjacent host-side inventory. The image contains no application
+fixture roots or reusable authentication
+key. The existing private fresh-key overlay is still required for each boot.
+
+The builder publishes verified, content-identity, no-replace store entries under
+`experiments/artifacts/runtime/`; the optional selection file is developer-only.
+Bounded archive scanning rejects unknown namespace entries, duplicates, extra
+gzip streams, fixture/key files and explicitly supplied forbidden markers.
+Opaque binary scanning is not publisher authentication or a proof against all
+unknown embedded secrets. Build/source trust and redistribution review remain
+required. See [runtime layout](../docs/runtime-layout.md) and
+[actual installed-prefix KVM evidence](../docs/experiments/d0-installed-runtime.md).
+
+## Layout of a development fixture
 
 ```
 /init                grillo-agent (PID 1, static, CGO_ENABLED=0)
@@ -59,9 +77,17 @@ are local integrity expectations, not publisher authentication or release SBOMs.
 
 ## Artifact manifest
 
-`internal/guest` provides `BuildManifest`, `Manifest.Verify`, and
-`ReadManifest`. The manifest records each component's name, version, path,
-SHA-256, and size, sorted by name for reproducibility:
+`internal/guest` provides `BuildManifest` for legacy development inventories,
+`BuildPortableManifest` for schema 1 boot inventories, `Manifest.Verify` and
+`ReadBootManifest`. Installed daemon defaults require schema 1 with exact guest
+ABI/platform metadata and manifest-relative kernel/initramfs paths. Explicit
+`--artifact-manifest` / `GRILLO_GUEST_MANIFEST` developer overrides permit legacy
+inventories; declared incompatible metadata is never bypassed.
+
+See [portable schema and builder](manifest-schema.md) and
+[real moved-directory boot evidence](../docs/experiments/d0-portable-manifest.md).
+The current `make t07-guest` still generates the legacy fixture inventory below,
+recording each component's name, version, path, SHA-256 and size, sorted by name:
 
 ```json
 {
@@ -72,7 +98,8 @@ SHA-256, and size, sorted by name for reproducibility:
 ```
 
 Boot code must verify the manifest before starting the VMM; `Manifest.Verify`
-re-hashes each file and reports the first mismatch.
+re-hashes bounded regular files and reports the first mismatch. Portable inventory
+paths are anchored to the manifest directory and confined with `os.Root`, not CWD.
 
 ## Agent behavior
 

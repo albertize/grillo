@@ -8,6 +8,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/albertize/grillo/internal/guest"
@@ -15,6 +16,7 @@ import (
 
 func main() {
 	out := flag.String("out", "manifest.json", "output manifest path")
+	portable := flag.Bool("portable", false, "write schema 1 boot inventory; stage kernel/initramfs beneath the output directory first")
 	flag.Parse()
 	var specs []guest.ArtifactSpec
 	for _, arg := range flag.Args() {
@@ -25,7 +27,13 @@ func main() {
 		}
 		specs = append(specs, guest.ArtifactSpec{Name: parts[0], Version: parts[1], Path: parts[2]})
 	}
-	manifest, err := guest.BuildManifest(specs)
+	var manifest guest.Manifest
+	var err error
+	if *portable {
+		manifest, err = guest.BuildPortableManifest(filepath.Dir(*out), specs)
+	} else {
+		manifest, err = guest.BuildManifest(specs)
+	}
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "manifest:", err)
 		os.Exit(1)

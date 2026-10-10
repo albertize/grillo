@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"time"
 )
 
 // CAS errors.
@@ -33,6 +34,7 @@ type CAS struct {
 
 	mu       sync.Mutex
 	inflight map[string]*casInflight
+	quota    CacheQuota
 }
 
 type casInflight struct {
@@ -41,8 +43,14 @@ type casInflight struct {
 }
 
 // OpenCAS prepares a CAS rooted at dir.
-func OpenCAS(dir string) (*CAS, error) {
+func OpenCAS(dir string) (*CAS, error) { return OpenCASWithQuota(dir, CacheQuota{}) }
+
+func OpenCASWithQuota(dir string, quota CacheQuota) (*CAS, error) {
+	if quota.MaxBytes < 0 || quota.MaxEntries < 0 {
+		return nil, fmt.Errorf("oci: negative CAS quota")
+	}
 	c := &CAS{
+		quota:    quota,
 		dir:      dir,
 		tmpDir:   filepath.Join(dir, "tmp"),
 		blobsDir: filepath.Join(dir, "blobs", "sha256"),
@@ -104,8 +112,25 @@ func (c *CAS) Read(digest string) ([]byte, error) {
 // Commit writes a blob, verifying its size and digest before the atomic rename.
 // maxBytes bounds the read (<=0 means no bound).
 func (c *CAS) Commit(expectedDigest string, r io.Reader, expectedSize, maxBytes int64) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
+	return c.commitContext(ctx, expectedDigest, r, expectedSize, maxBytes)
+}
+func (c *CAS) commitContext(ctx context.Context, expectedDigest string, r io.Reader, expectedSize, maxBytes int64) error {
 	if _, err := digestHex(expectedDigest); err != nil {
 		return err
+	}
+	guard, err := AcquireCacheGuard(ctx, c.dir, c.quota)
+	if err != nil {
+		return err
+	}
+	defer guard.Close()
+	if guard.Entries >= guard.Quota.MaxEntries {
+		return ErrCacheQuota
+	}
+	available := guard.Quota.MaxBytes - guard.Bytes
+	if expectedSize > available {
+		return ErrCacheQuota
 	}
 	tmp, err := os.CreateTemp(c.tmpDir, "blob-*")
 	if err != nil {
@@ -120,8 +145,14 @@ func (c *CAS) Commit(expectedDigest string, r io.Reader, expectedSize, maxBytes 
 	var written int64
 	buf := make([]byte, 64*1024)
 	for {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		n, readErr := r.Read(buf)
 		if n > 0 {
+			if int64(n) > available-written {
+				return ErrCacheQuota
+			}
 			if maxBytes > 0 && written+int64(n) > maxBytes {
 				return fmt.Errorf("%w: exceeds %d bytes", ErrSizeMismatch, maxBytes)
 			}
@@ -200,16 +231,30 @@ func (c *CAS) Fetch(ctx context.Context, digest string, fetch func(context.Conte
 }
 
 func (c *CAS) fetchOnce(ctx context.Context, digest string, fetch func(context.Context) (io.ReadCloser, int64, error), maxBytes int64) error {
+	// Another flight can publish and retire between Fetch's initial Has and
+	// admission of this leader. Recheck after admission before downloading again.
+	if c.Has(digest) {
+		return nil
+	}
 	body, size, err := fetch(ctx)
 	if err != nil {
 		return err
 	}
 	defer body.Close()
-	return c.Commit(digest, body, size, maxBytes)
+	stop := context.AfterFunc(ctx, func() { _ = body.Close() })
+	defer stop()
+	return c.commitContext(ctx, digest, body, size, maxBytes)
 }
 
 // Collect removes blobs for which keep returns false and returns the count.
 func (c *CAS) Collect(keep func(digest string) bool) (int, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
+	guard, err := acquireCacheGuard(ctx, c.dir, c.quota, false)
+	if err != nil {
+		return 0, err
+	}
+	defer guard.Close()
 	entries, err := os.ReadDir(c.blobsDir)
 	if err != nil {
 		return 0, err

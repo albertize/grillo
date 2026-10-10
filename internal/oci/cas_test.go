@@ -88,6 +88,27 @@ func TestCASFetchDeduplicates(t *testing.T) {
 	}
 }
 
+func TestCASAdmittedLeaderRechecksPublishedBlob(t *testing.T) {
+	c, err := OpenCAS(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	data := []byte("published-before-leader-admission")
+	digest := "sha256:" + sha256Hex(data)
+	if err := c.PutBytes(digest, data); err != nil {
+		t.Fatal(err)
+	}
+	// Models the window after an initial cache miss but before a later leader's
+	// fetchOnce: the earlier flight has already atomically published the blob.
+	err = c.fetchOnce(context.Background(), digest, func(context.Context) (io.ReadCloser, int64, error) {
+		t.Error("already-published blob downloaded again")
+		return nil, 0, errors.New("unexpected download")
+	}, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestCASCollect(t *testing.T) {
 	c, _ := OpenCAS(t.TempDir())
 	first := []byte("first")

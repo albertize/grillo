@@ -36,9 +36,11 @@ import (
 // datapaths are failures, not permission to substitute a test-local proxy.
 func TestKVMHelmScenarioC(t *testing.T) {
 	skipUnlessBridged(t)
-	if _, err := exec.LookPath("helm"); err != nil {
+	if renderer, err := exec.LookPath("helm"); err != nil {
 		t.Skip("SKIP: provision official Helm " + helm.Version)
-	}
+	} else {
+		t.Setenv("GRILLO_HELM_BINARY", renderer)
+	} // explicit development prerequisite
 	root := repoRoot(t)
 	kernel := filepath.Join(root, "experiments/artifacts/qemu/bzImage")
 	initramfs := filepath.Join(root, "experiments/artifacts/t07/initramfs-agent.cpio.gz")

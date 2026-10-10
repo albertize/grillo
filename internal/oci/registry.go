@@ -125,6 +125,34 @@ func (c *RegistryClient) do(ctx context.Context, method, endpoint, registry, sco
 		return nil, err
 	}
 	retry.Header.Set("Authorization", authorization)
+	resp, err = c.client().Do(retry)
+	if err != nil {
+		return nil, err
+	}
+	scheme, params := parseChallenge(challenge)
+	if resp.StatusCode != http.StatusUnauthorized || !strings.EqualFold(scheme, "bearer") {
+		return resp, nil
+	}
+	// A cached opaque token may expire or be revoked. Invalidate only the
+	// rejected value (not a concurrent replacement), then refresh once. Never
+	// follow a new realm from this second response or retry authentication forever.
+	key := bearerCacheKey(params, scope)
+	c.mu.Lock()
+	if c.tokens[key] == strings.TrimPrefix(authorization, "Bearer ") {
+		delete(c.tokens, key)
+	}
+	c.mu.Unlock()
+	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
+	_ = resp.Body.Close()
+	authorization, err = c.authorize(ctx, challenge, registry, scope)
+	if err != nil {
+		return nil, err
+	}
+	retry, err = newRequest()
+	if err != nil {
+		return nil, err
+	}
+	retry.Header.Set("Authorization", authorization)
 	return c.client().Do(retry)
 }
 
@@ -156,7 +184,7 @@ func (c *RegistryClient) bearerToken(ctx context.Context, params map[string]stri
 	if realm == "" {
 		return "", errors.New("oci: bearer challenge has no realm")
 	}
-	key := realm + "|" + scope
+	key := bearerCacheKey(params, scope)
 	c.mu.Lock()
 	if token, ok := c.tokens[key]; ok {
 		c.mu.Unlock()
@@ -218,6 +246,14 @@ func (c *RegistryClient) bearerToken(ctx context.Context, params map[string]stri
 	c.tokens[key] = token
 	c.mu.Unlock()
 	return token, nil
+}
+
+func bearerCacheKey(params map[string]string, scope string) string {
+	if scope == "" {
+		scope = params["scope"]
+	}
+	// Include service so tokens for distinct audiences are not mixed.
+	return params["realm"] + "|" + params["service"] + "|" + scope
 }
 
 func (c *RegistryClient) client() *http.Client {

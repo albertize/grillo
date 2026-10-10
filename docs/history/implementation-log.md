@@ -6,6 +6,162 @@ superseded summaries. They are not current support claims; use
 [current progress](../progress.md) and [compatibility](../compatibility.md).
 
 
+## Archived D0/T24 partial second-host evidence entry
+
+Overall BLOCKED. User reports Fedora 44 Workstation/Linux 7.2.9-200.fc44 under
+Permissive, installed Compose HTTP up/down/up, Helm Ingress HTTP/down and later UI
+functionality confirmation. External functional PASS attributed to user, not coding
+agent execution or full clean-host/default-policy support. Preserved first 401 and
+endpoint/ps diagnostics; no timing or token-expiry recovery inferred. Process regex
+contains qemu-system comma, so QEMU cleanup remains unproven; closing UI/terminal
+lifetime, DNS, delayed retry, clean-target and byte/helper identities remain missing.
+Docs-only link/fence/diff checks PASS; no Go/KVM/remote runs for this entry. UI
+bootstrap credential omitted from all reports. [Sanitized record](../experiments/d0-second-host-fedora44.md).
+Next was missing checks, separate presentation and continuing hardening/source/
+provenance blockers; [payload notices/support delivery](../experiments/t24-payload-notices-provenance-support.md)
+addresses a bounded part without clearing the gates.
+
+## Archived D0/T24 transfer payload delivery
+
+Overall BLOCKED; established Make/runtime-guest/Stage/Helm pin dependencies
+verified. Added `make payload`, unique private output per invocation, archive and
+relative verified checksum, owned-stage failure cleanup and offline script tests
+in `make check`; no installer/transfer/implicit pin/daemon termination. Shell/full
+checks PASS; two actual unique payloads and extracted CLI version/doctor PASS with
+expected state/support warnings. No new wrapper-specific KVM/remote acceptance
+claim; preceding installed-prefix KVM evidence remains separate. SIGKILL can retain
+incomplete output; dirty dev identities/hashes are not release attestations. No
+commit/publication. [Payload report](../experiments/d0-transfer-payload.md).
+Next was transfer/new-daemon up/down/up and remaining external checks; subsequent
+[user-submitted Fedora 44 observations](../experiments/d0-second-host-fedora44.md)
+record partial progress without closing the gate.
+
+## Archived T24 registry rejected-token delivery
+
+T24 BLOCKED overall; T09/Puller/CAS and installed-prefix dependencies verified.
+User's second host reports first Compose HTTP success followed by manifest 401
+on later up, empty container inspection and registered name retained by ps.
+Kernel 7.2.9-200.fc44, OS/MAC not established: partial external evidence only.
+Code review verified indefinite cached Bearer reuse after rejection. Added one
+refresh from original challenge, conditional invalidation and service/scope keys,
+without JWT trust/login/credentials/cleanup/policy changes. Registry/selected
+race/full checks PASS; 100 auth race campaigns PASS (3.81s), rebuilt installed
+KVM Compose/Helm/UI PASS without SKIP (7.30s) on unchanged local environment.
+Remote expiry cause and updated-daemon recovery not yet verified; null endpoint
+and stopped-app presentation remain separate. No new release/dependency/commit.
+[Full report](../experiments/t24-registry-token-refresh.md); next was safe fresh
+payload transfer and daemon restart/retest, now assisted by
+[the payload target](../experiments/d0-transfer-payload.md).
+
+## Archived T24 aggregate cache/load/license review delivery
+
+T24 BLOCKED overall. T09/T18, per-image OCI budgets and installed D0 dependencies
+verified. CAS/rootfs finite logical quotas, cross-process admission, CAS prune,
+rootfs publication/reopen tests and bounded streaming scans delivered. Full check,
+100 selected cache race suites (80,000 attempted writes plus child-process lock
+checks), independent resolver and Python notice suites PASS. Installed KVM and
+ten-cycle campaign (20 workloads/75.28s) PASS without SKIP on the unchanged local
+Fedora/Permissive environment. First failed-stage assertion rejected the new lock;
+corrected to allow only that exact file. Later streaming ReadDir lstat failed due
+to synthetic File.Name; corrected real path, reran all gates PASS. Explicitly
+materialized two existing Go source pins, produced seven-entry Go/47-entry npm
+notice inventory and identified missing guest/helper corresponding-source/notices.
+No redistribution clearance, global/physical/volume quota or active-rootfs GC;
+no full external/hosted-CI/performance evidence. Full scope/failures/limitations:
+[cache/load/license report](../experiments/t24-cache-load-license-review.md).
+Next was remaining quotas/budgets/source/release decisions; user subsequently
+reported second-host registry authorization failure, tracked in
+[registry refresh](../experiments/t24-registry-token-refresh.md).
+
+## Archived T24 OCI extraction budget delivery
+
+T24 BLOCKED overall; T09/T18 and installed-runtime dependencies verified.
+Finite per-image payload/entry/archive defaults span layers; bounded diff_id,
+CRC/cancellation and cache failure/retry contracts delivered. CAS duplicate-fetch
+race observed during full checks, corrected by admitted-leader recheck and
+regressions. Unit/complete checks, 100 selected race suites, 60-second OCI fuzz,
+installed Compose/Helm/UI and rebuilt legacy native RUN/multistage/network KVM
+all final PASS without SKIP. Fuzz stalls still not latency evidence.
+Same Fedora fc44/Linux 7.2.9/UID 1000/unchanged Permissive; no global/physical quota,
+source/provenance clearance, hosted CI or external-host claim. User deferred
+external-host checks. Full failure/limits/hash evidence:
+[OCI budgets](../experiments/t24-oci-extraction-budgets.md); next was aggregate
+quota/admission, load and source/notice review, now tracked in the
+[subsequent report](../experiments/t24-cache-load-license-review.md).
+
+## Archived T24 verified lifecycle/advisory delivery
+
+Task T24, BLOCKED overall; dependencies T23/D0 and ADR 0009 verified.
+Added verified runtime-only lifecycle measurements and pure regressions, patched
+existing official x/net to v0.60.0 for five module-only advisories, no new module
+or release claim. Complete check/advisory/npm audit, five 60-second fuzz targets,
+100 real verified boot cycles twice and installed Compose/Helm/UI passed.
+Initial QMP socket measurement rejection was fixed and recorded.
+Fedora fc44/Linux 7.2.9, UID 1000, SELinux already Permissive and unchanged;
+final verified-start median/p95 419,497/422,478 µs with zero retained tracked VMMs.
+Missing global budgets/quota/load, source/provenance/release and hosted CI remain;
+fuzz stalls are not latency evidence. User explicitly deferred second-host checks,
+not acceptance requirements. Full measurements, failed gates, advisory IDs and
+next steps: [campaign report](../experiments/t24-closure-campaign.md).
+Subsequent [OCI budget work](../experiments/t24-oci-extraction-budgets.md) addresses
+one local resource boundary without closing T24/D0.
+
+## Archived D0 runtime-only/installed delivery
+
+- **Task/status:** D0 — runtime-only guest, coherent staging and installed
+  lifecycle; BLOCKED overall, local gates PASS.
+- **Dependencies:** Prior layout/inventory, T07/T08/T11/T15, Compose/Helm,
+  ADR 0009; T24 remained BLOCKED without acceptance waiver.
+- **Contracts:** Runtime builder/scanner, staging, standalone examples/guide,
+  shared identity, first-run private directories/log safety, root guards,
+  doctor capability/remediation, endpoint inspection and developer harnesses.
+- **Decisions:** Explicit provisioned inputs; no new dependency, accepted ADR,
+  publisher/support or release claim. License/source review pending.
+- **Checks:** Unit/focused races, `make check`, scanner fuzz, runtime/stage targets,
+  real installed Compose/Helm/UI and legacy `make test-helm`, all final PASS;
+  first-run/output-limit/compile/harness failures and corrections preserved in
+  [full evidence](../experiments/d0-installed-runtime.md).
+- **Environment:** Fedora fc44/Linux 7.2.9, QEMU 10.2.2, UID 1000; SELinux already
+  Permissive and unchanged. Moved/read-only prefix, arbitrary CWD, no checkout/
+  build tools on runtime PATH, HTTP/DNS/UI/lifetime and cleanup; online OCI pull.
+- **Not run/limits:** Clean external host, Enforcing, release/source/licenses/
+  signing, native package lifecycle, hosted CI, cold benchmark, supported ranges
+  and retention GC. Historical T07 fixture/key remains development-only.
+- **Next then:** T24/maintainer review before D1 and dependent D2/D3/D4. Subsequent
+  [T24 campaign](../experiments/t24-closure-campaign.md) adds measurements/advisory
+  fixes without closing external gates.
+
+## Archived D0 portable inventory delivery
+
+- **Task:** D0 — portable guest inventory and ABI validation.
+- **Status:** BLOCKED overall; bounded inventory/real boot contract delivered.
+- **Dependencies verified:** Prior D0 layout, T07/T08 and T24 verified snapshots/
+  fresh-key overlay; T24 acceptance remained BLOCKED. Continuation was not a
+  waiver of external-host/release gates.
+- **Files and contracts changed:** Versioned inventory, confined/bounded reads,
+  strict JSON, portable manifest builder, QEMU installed-metadata/snapshot policy,
+  daemon/doctor wiring, tests and `make test-d0-manifest`;
+  [evidence](../experiments/d0-portable-manifest.md).
+- **Decisions/ADRs:** Existing ABI/protocol and ADR 0009 retained; exact metadata,
+  explicit legacy overrides. No dependency, publisher authentication,
+  supported-host claim or ADR acceptance.
+- **Tests run:** Focused unit/race and `make check` PASS; real
+  `make test-d0-manifest` PASS without SKIP after rebuilding T07. Actual builder/
+  moved-read-only-prefix doctor smoke from `/tmp`, links/fences/diff checks PASS.
+- **Tests NOT run then:** Fixture-free guest/secret scan and installed CLI/daemon
+  Compose+Helm lifecycle still pending. No clean external host, packages,
+  upgrade/uninstall, provenance/license or benchmark gate.
+- **Integration evidence:** Fedora fc44/kernel 7.2.8, QEMU 10.2.2, SELinux already
+  Permissive. Two authenticated boots with distinct fresh keys, VMM/resource
+  teardown verified. Development fixture only, not a distribution/network gate.
+- **Known limitations then:** T07 fixture roots/legacy key, local expectations not
+  publisher identity/opaque-image inspection, helper integrity/ranges and fuller
+  doctor still open. T24 release blockers preserved.
+- **Next task then:** Runtime-only guest builder, content/key scan and actual
+  installed Compose/Helm; these are delivered in the
+  [subsequent local D0 report](../experiments/d0-installed-runtime.md), not a T24
+  or clean-host acceptance waiver.
+
 ## Status snapshot before consolidation
 
 **T00 is implemented and locally verified.** The repository contains a Go module, tested command scaffolding, build/check targets, and CI configuration.
@@ -1676,3 +1832,67 @@ historical evidence only.
   open then; the later three-contract delivery supersedes those local blockers.
 - **Next task at delivery:** Interactive CLI, metrics/artifacts and remaining T24
   hardening; external-host gate stays open and T25 must not start.
+
+## T24 — Interactive CLI, real metrics and verified boot artifacts
+
+- **Status:** BLOCKED overall; all three local contracts have real delivery evidence.
+- **Dependencies verified:** T07/T08/T15/T16/T18/T19/T22/T23, prior T24 log delivery and
+  user authorization to implement all three without a second host.
+- **Files and contracts changed:** Bounded stdin/resize protocol and Unix upgrade;
+  foreground runc PTY/CLI raw restoration, cancellation-aware output; guest/cgroup
+  metrics/API/CLI/UI; pinned manifest/private verified snapshots/fresh boot keys;
+  sole-reaper network command wait; native terminal/metrics/Firefox/build and
+  negative/race regressions. See [report](../experiments/t24-interactive-metrics-artifacts.md).
+- **Decisions/ADRs:** [ADR 0009](../adr/0009-verified-boot-and-private-key-overlay.md)
+  Proposed, implemented experimentally; no new dependency or ADR acceptance.
+- **Tests run:** `make check`, uncached focused races, `make vulncheck`,
+  `make test-t07 test-helm test-ui test-ui-browser test-builder-kvm test-f2
+  test-executor` PASS without SKIP. Actual host PTY verifies CLI stdin/SIGWINCH,
+  mode restoration on exit/SIGINT; real guest cgroups reach Firefox. Unit/fake
+  tests separately prove mutation/launch-order/key contracts. Earlier failed
+  gates and corrections are preserved in the report. Markdown links/fences,
+  shell/JavaScript syntax and diff checks PASS; no QEMU/grillod/pasta leftovers.
+- **Tests NOT run and why:** Hosted CI and clean external host unavailable;
+  no new sustained load/fuzz/full-budget or redistribution/license campaign.
+- **Integration/benchmark evidence:** Existing Fedora fc44/KVM host, SELinux
+  already Permissive; rebuilt guest/CLI/daemon/frontend. No new benchmark claim;
+  new copy/hash startup costs still need full-budget measurements.
+- **Known limitations:** Full browser TTY, PSS/cache/CPU percentages, original
+  diagnostics persistence and log shutdown/host-retention gaps remain absent.
+  Local manifests are integrity expectations, not publisher authentication or
+  signed releases. Clean-host/release installation/quota/load/provenance gates
+  remain open; owning-UID/compromised-guest guarantees are not expanded.
+- **Next task:** T24 full-budget/quota/load and release provenance/installability
+  review; arrange the external-host gate separately. Do not advance to T25.
+
+## D0 — Packaging-ready runtime layout, first bounded preparation
+
+- **Status:** BLOCKED overall; layout/build identity/doctor preparation implemented.
+- **Dependencies verified:** T07/T08/T15/T16/T21 and prior T24 verified-boot delivery
+  exist; T24 remains BLOCKED. User requested starting the distribution track;
+  this does not waive the `T24 → D0` acceptance dependency.
+- **Files and contracts changed:** `internal/runtimeassets`, `internal/buildinfo`,
+  CLI/daemon/Helm discovery, build metadata injection, doctor JSON/verbose and
+  installed-file checks; tests and development setup. See
+  [bounded evidence](../experiments/d0-runtime-layout.md).
+- **Decisions/ADRs:** Existing pinned Helm executable and ADR 0009 preserved;
+  no SDK, new dependency, signature/support claim or ADR acceptance.
+- **Tests run:** Focused Go tests PASS; first `make check` failed new-test
+  formatting, corrected; second `make check` PASS (frontend, format, vet, tests,
+  script tests, races, build and module audit). Moved/read-only host prefix,
+  spaces and `/tmp` CWD: version and Helm plan PASS; doctor correctly failed
+  absent guest assets. Final focused tests/races PASS. Broad `gofmt -l .` failed
+  on ignored upstream toolchain syntax-error fixtures; established formatting
+  scope passes. Markdown file links/fences and `git diff --check` PASS.
+- **Tests NOT run and why:** No KVM workload/daemon startup or clean-host gate:
+  the fixture-free portable guest/inventory was not implemented in this delivery.
+  No release, package, upgrade/uninstall, secret-scanning, provenance or benchmark campaign.
+- **Integration/benchmark evidence:** Existing Linux/amd64 development host,
+  SELinux already Permissive; only host-layout/offline rendering smoke, no
+  hardware integration or benchmark claim.
+- **Known limitations at delivery:** Guest manifests still used build-time paths;
+  ABI validation, helper integrity/ranges, full doctor capability/distro remediation
+  and runtime guest without fixtures/embedded key remained open. No packaged release.
+- **Next task at delivery:** Continue D0 with portable manifest/ABI and fixture-free
+  guest; rebuild and verify moved-prefix real Compose/Helm KVM. T24 external/full-budget
+  and release-provenance gates remain separate blockers.

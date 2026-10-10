@@ -84,6 +84,11 @@ func runDaemonGate(t *testing.T, browser bool) {
 		}
 	}
 	env := append([]string{}, os.Environ()...)
+	renderer, err := exec.LookPath("helm")
+	if err != nil {
+		t.Fatal(err)
+	}
+	env = append(env, "GRILLO_HELM_BINARY="+renderer)
 	for _, v := range []struct{ name, dir string }{{"XDG_RUNTIME_DIR", "run"}, {"XDG_STATE_HOME", "state"}, {"XDG_DATA_HOME", "data"}, {"XDG_CACHE_HOME", "cache"}} {
 		dir := filepath.Join(work, v.dir)
 		if err := os.MkdirAll(dir, 0700); err != nil {
@@ -106,7 +111,7 @@ func runDaemonGate(t *testing.T, browser bool) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		proc = exec.Command(daemon, "-kernel", kernel, "-initramfs", guest, "-key-file", key, "-netns-binary", helper, "-vsock-cid-base", fmt.Sprint(cidBase), "-build-vsock-cid-base", fmt.Sprint(cidBase+64))
+		proc = exec.Command(daemon, "-kernel", kernel, "-initramfs", guest, "-artifact-manifest", filepath.Join(root, "experiments/artifacts/t07/manifest.json"), "-key-file", key, "-netns-binary", helper, "-vsock-cid-base", fmt.Sprint(cidBase), "-build-vsock-cid-base", fmt.Sprint(cidBase+64))
 		proc.Env = env
 		proc.Dir = root
 		proc.Stdout = f

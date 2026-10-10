@@ -31,13 +31,18 @@ Build from source using Go **1.26.8**, Node **24.18.0** / npm **11.16.0**, and M
 make ui-deps          # explicit locked frontend dependency download
 make build
 ./bin/grillo version
-./bin/grillo doctor   # read-only host readiness check
+./bin/grillo version --json # development build identity
 ```
 
 Building the binaries is not enough to run workloads. You also need QEMU,
 virtiofsd, rootless networking tools and locally prepared guest artifacts.
-Follow [getting started](docs/getting-started.md) before the first `up`.
+Follow [getting started](docs/getting-started.md) to set explicit development
+asset paths and run the read-only `doctor` before the first `up`.
 Node/npm are build tools, not runtime dependencies of the compiled binary.
+For a local fixture/key-free staged prefix and its standalone examples, see
+[experimental runtime layout](docs/runtime-layout.md). Actual moved/read-only
+Compose, Helm and UI gates now pass without checkout/build tools; this is not a
+supported or redistribution-cleared release.
 
 Once the host and guest are ready, run the included Compose example:
 
@@ -53,7 +58,8 @@ credential; do not share it. Closing the browser or CLI does not stop workloads.
 
 ## Everyday use
 
-Run commands from the repository root while using the development artifacts:
+The examples below use repository-relative source paths. Runtime assets use
+absolute development overrides or installed-prefix discovery:
 
 ```sh
 ./bin/grillo ps
@@ -67,7 +73,8 @@ Run commands from the repository root while using the development artifacts:
 managed data, never host bind paths. Reapplying the same source is idempotent;
 changed templates use Recreate, not Kubernetes rolling updates.
 
-For Helm, explicitly provision **Helm v4.2.2**, then:
+For Helm, explicitly provision **Helm v4.2.2** and set `GRILLO_HELM_BINARY`
+to its absolute executable path, then:
 
 ```sh
 ./bin/grillo plan examples/helm/demo --release demo
@@ -114,6 +121,8 @@ objectives are not performance guarantees.
 - [Architecture](docs/architecture.md): runtime components, lifetime, storage
   and networking boundaries.
 - [Web console](docs/ui.md): views, authentication, exec and unavailable data.
+- [Host evidence and support boundaries](docs/host-support.md): tested scopes,
+  prerequisites, artifact/notices limitations and safe reporting.
 - [Compatibility](docs/compatibility.md): Compose, Kubernetes and Helm semantics.
 - [Testing and development](docs/testing.md): routine checks and real gates.
 - [Local API](api/local-api.md) and [guest protocol](api/guest-protocol.md): contracts.
