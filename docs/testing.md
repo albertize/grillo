@@ -99,6 +99,51 @@ examples against actual CLI help/source, task/ADR status consistency, and
 `git diff --check`. Generated compatibility inventories must remain unchanged
 unless regenerated from validators with `go run ./scripts/compatibility -output docs`.
 
+## T24 bounded local campaign and acceptance preparation
+
+With already prepared artifacts and an explicitly trusted Helm path/digest:
+
+```sh
+make test-t24-admission
+make test-cache-load test-license-inventory
+make bench-t24-network
+make test-t24-resources HELM_BINARY=/absolute/path/to/helm HELM_SHA256=reviewed_sha256
+```
+
+Resource collection runs 30 installed-runtime tests, each with a fresh private
+cache and a warm-cache restart, readiness confirmed by actual HTTP. It samples
+owned-process RSS, CPU tick deltas at idle, and logical/allocated test-directory
+bytes. RSS peaks are sampled, not instantaneous maxima or PSS. Fresh caches may
+pull from the registry: this is **not** page-cache-cold or guaranteed offline.
+The target stops at the first failed iteration (including cleanup) and requires
+all 30 samples; never aggregate a failed batch into a passed budget gate.
+Registry rate limits are blockers, not permission to substitute a mock.
+
+Explicit live provisioning (`make prepare-t24-fixture T24_FIXTURE_OUT=/new/output`)
+creates a digest-verified graph for repeatability. Pass `T24_SEED_CAS=/fixture/cas`
+to the resource target to transfer only verified content into each new private
+cache. Phases then say `seeded-cas-*`: never label these fresh online pulls.
+`make test-t24-resource-budget T24_SEED_CAS=/fixture/cas` retains a unique complete
+30-repeat receipt and checks candidate local readiness/RSS/disk/idle-tick bounds.
+These are not portable product SLOs or full guest-load/peak measurements.
+
+`make test-t24-volume-quota` rebuilds the guest and requires real KVM plus reviewed
+mke2fs 1.47.3; it proves ext4 ENOSPC/retry/persistence through the executor.
+`make test-t24-volume-load` runs 30 block-storage race repetitions, including a
+child-process lock/cancel case. Optional formatter unit tests can SKIP on hosts
+without that pin; the hardware target instead fails on absent prerequisites.
+See [ADR 0014](adr/0014-fixed-size-block-volume-quotas.md) for opt-in scope:
+legacy/bind data and native RUN workspaces are not bounded by this proof.
+The read-only `scripts/source-inventory.py` (Python 3.11+) hashes deliberately
+provisioned sources/crates, not legal clearance or a fetch/build step.
+
+Network benchmarks exercise actual loopback UDP DNS and TCP publication with
+response validation, two parallel workers and 30 repetitions. They do not prove
+guest-network throughput or chart/application scalability. See the
+[initial campaign](experiments/t24-autonomous-local-campaign.md),
+[continuation evidence](experiments/t24-pinned-cache-block-quota-sources.md) and
+[acceptance checklist](t24-acceptance.md) for scope and remaining gates.
+
 ## Recording evidence
 
 Record command, environment, result, skips/blockers and artifact versions/hashes.

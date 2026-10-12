@@ -73,7 +73,7 @@ func (s *Server) handlePruneImages(w http.ResponseWriter, r *http.Request) {
 		_, err := s.opts.Images.PruneImages(ctx, request.Keep)
 		return err
 	})
-	writeJSON(w, http.StatusAccepted, map[string]string{"operationId": operation.ID})
+	s.writeAccepted(w, operation)
 }
 
 func (s *Server) handlePinImage(w http.ResponseWriter, r *http.Request) {
@@ -122,7 +122,7 @@ func (s *Server) handleBuild(w http.ResponseWriter, r *http.Request) {
 		_, err := s.opts.Images.Build(ctx, request, s.buildProgress("build", request.Reference))
 		return err
 	})
-	writeJSON(w, http.StatusAccepted, map[string]string{"operationId": operation.ID})
+	s.writeAccepted(w, operation)
 }
 
 func (s *Server) buildProgress(kind, resource string) func(string) {

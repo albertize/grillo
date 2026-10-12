@@ -20,6 +20,8 @@ type Proxy struct {
 
 	closeOnce sync.Once
 	closed    chan struct{}
+	serveDone chan struct{}
+	slots     chan struct{}
 	wg        sync.WaitGroup
 }
 
@@ -32,7 +34,7 @@ func Publish(hostIP string, hostPort int, target string) (*Proxy, error) {
 	if err != nil {
 		return nil, fmt.Errorf("%w: %s:%d: %v", ErrPortInUse, hostIP, hostPort, err)
 	}
-	p := &Proxy{listener: listener, target: target, closed: make(chan struct{})}
+	p := &Proxy{listener: listener, target: target, closed: make(chan struct{}), serveDone: make(chan struct{}), slots: make(chan struct{}, 128)}
 	go p.serve()
 	return p, nil
 }
@@ -47,11 +49,14 @@ func (p *Proxy) Close() error {
 		close(p.closed)
 		err = p.listener.Close()
 	})
+	// Stop all Add calls before Wait, including an accept racing with Close.
+	<-p.serveDone
 	p.wg.Wait()
 	return err
 }
 
 func (p *Proxy) serve() {
+	defer close(p.serveDone)
 	for {
 		conn, err := p.listener.Accept()
 		if err != nil {
@@ -62,9 +67,21 @@ func (p *Proxy) serve() {
 				return
 			}
 		}
+		select {
+		case p.slots <- struct{}{}:
+		case <-p.closed:
+			conn.Close()
+			return
+		default:
+			// TCP has no structured management diagnostic channel. Refuse excess
+			// connections without creating workers or an unbounded waiting queue.
+			conn.Close()
+			continue
+		}
 		p.wg.Add(1)
 		go func() {
 			defer p.wg.Done()
+			defer func() { <-p.slots }()
 			p.handle(conn)
 		}()
 	}
@@ -78,6 +95,14 @@ func (p *Proxy) handle(client net.Conn) {
 		return
 	}
 	defer upstream.Close()
+	p.forward(client, upstream, time.Now().Add(5*time.Minute))
+}
+
+// forward bounds the whole connection lifetime, including blocked writes.
+func (p *Proxy) forward(client, upstream net.Conn, deadline time.Time) {
+	if client.SetDeadline(deadline) != nil || upstream.SetDeadline(deadline) != nil {
+		return
+	}
 	done := make(chan struct{}, 2)
 	copyConn := func(dst, src net.Conn) {
 		_, _ = io.Copy(dst, src)
@@ -88,10 +113,13 @@ func (p *Proxy) handle(client net.Conn) {
 	}
 	go copyConn(upstream, client)
 	go copyConn(client, upstream)
-	select {
-	case <-done:
-	case <-p.closed:
-		_ = client.SetDeadline(time.Now())
-		_ = upstream.SetDeadline(time.Now())
+	for range 2 {
+		select {
+		case <-done:
+		case <-p.closed:
+			_ = client.SetDeadline(time.Now())
+			_ = upstream.SetDeadline(time.Now())
+			<-done
+		}
 	}
 }

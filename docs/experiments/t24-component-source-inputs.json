@@ -1,0 +1,826 @@
+{
+  "archive_execution": "none",
+  "format_version": 1,
+  "inputs": [
+    {
+      "bytes": 10403972,
+      "component": "Helm Fedora SRPM",
+      "file": "helm-4.2.2-1.fc44.src.rpm",
+      "sha256": "264ef660fe91f3a3c9eb5340b15934ed6517155b04941655e4c65107d56faee0",
+      "source": "Fedora fedora-source/updates-source repodata; resolved by explicit dnf5 source download",
+      "version": "4.2.2-1.fc44"
+    },
+    {
+      "bytes": 1042894,
+      "component": "Helm upstream source",
+      "file": "helm-srpm/helm-4.2.2.tar.gz",
+      "sha256": "2208572edb814bf481bf4657a73009e5155c83967ba1f514083b476de95f948f",
+      "source": "contained in the inventoried source/package input; see review report",
+      "version": "4.2.2"
+    },
+    {
+      "bytes": 9353763,
+      "component": "Helm vendored sources",
+      "file": "helm-srpm/helm-4.2.2-vendor.tar.bz2",
+      "sha256": "2efc2a826e4762fb7b9da36e1b385192c3efa33d5205ad5f2a7c74bfbce99309",
+      "source": "contained in the inventoried source/package input; see review report",
+      "version": "4.2.2-1.fc44"
+    },
+    {
+      "bytes": 6764,
+      "component": "Helm build recipe",
+      "file": "helm-srpm/helm.spec",
+      "sha256": "2fbeff6b94878ad3be2921012d47852c968278537725eae5e995ffee4986d24c",
+      "source": "contained in the inventoried source/package input; see review report",
+      "version": "4.2.2-1.fc44"
+    },
+    {
+      "bytes": 2106,
+      "component": "Helm license recipe",
+      "file": "helm-srpm/go-vendor-tools.toml",
+      "sha256": "f16661874ae7473a95339fd2746d60126cd834cf76e64128df3de6e6deb42e87",
+      "source": "contained in the inventoried source/package input; see review report",
+      "version": "4.2.2-1.fc44"
+    },
+    {
+      "bytes": 2666129,
+      "component": "runc source and Go vendor",
+      "file": "runc-29dd3dc2b13b4123162e5fe132504bb4b15569f1.tar.gz",
+      "sha256": "5386e1968f70cc1482b4b2a93dc1a88ea7fa5517fba49b9e0fafe614d5a4c97a",
+      "source": "https://codeload.github.com/opencontainers/runc/tar.gz/29dd3dc2b13b4123162e5fe132504bb4b15569f1",
+      "version": "1.5.2 / 29dd3dc2b13b4123162e5fe132504bb4b15569f1"
+    },
+    {
+      "bytes": 209637,
+      "component": "libseccomp source",
+      "file": "libseccomp-2.6.1.tar.gz",
+      "sha256": "f9a13e4c633d319a9240189760ca348caa0837c0ebe2a09b17061da8ceaf60f0",
+      "source": "https://codeload.github.com/seccomp/libseccomp/tar.gz/refs/tags/v2.6.1",
+      "version": "2.6.1"
+    },
+    {
+      "bytes": 339841,
+      "component": "libpathrs source",
+      "file": "libpathrs-0.2.6.tar.gz",
+      "sha256": "ae274cd296b863d538e28ee42e612f40723f9f0b2601a41c5b796ac074e5eb9c",
+      "source": "https://codeload.github.com/cyphar/libpathrs/tar.gz/refs/tags/v0.2.6",
+      "version": "0.2.6"
+    },
+    {
+      "bytes": 19409,
+      "component": "libpathrs crate locks",
+      "file": "libpathrs-Cargo.lock",
+      "sha256": "60a2bb9fd384b51d52a94bd577ea6349b6af8aa9385f27f1257022cb5c58eebb",
+      "source": "contained in the inventoried source/package input; see review report",
+      "version": "0.2.6"
+    },
+    {
+      "bytes": 7797348,
+      "component": "BusyBox image build recipes and patches",
+      "file": "busybox-recipe-066dbf90090ab2dbb905310fac2fa10ea39a7ba6.tar.gz",
+      "sha256": "c53d3539454a86ce9db4ca3625439d600a5de95474807dd022845618c5d0d79d",
+      "source": "https://codeload.github.com/docker-library/busybox/tar.gz/066dbf90090ab2dbb905310fac2fa10ea39a7ba6",
+      "version": "066dbf90090ab2dbb905310fac2fa10ea39a7ba6"
+    },
+    {
+      "bytes": 2565764,
+      "component": "BusyBox source",
+      "file": "busybox-1.37.0.tar.bz2",
+      "sha256": "3311dff32e746499f4df0d5df04d7eb396382d7e108bb9250e7b519b837043a4",
+      "source": "https://busybox.net/downloads/busybox-1.37.0.tar.bz2",
+      "version": "1.37.0"
+    },
+    {
+      "bytes": 7576,
+      "component": "glibc Debian source descriptor",
+      "file": "glibc_2.41-12+deb13u4.dsc",
+      "sha256": "0915324aa646bb99abfaa9aa6ecb734b30babd28454a3e51f3152912370fbd3e",
+      "source": "https://deb.debian.org/debian/pool/main/g/glibc/glibc_2.41-12+deb13u4.dsc",
+      "version": "2.41-12+deb13u4"
+    },
+    {
+      "bytes": 20323540,
+      "component": "glibc upstream source",
+      "file": "glibc_2.41.orig.tar.xz",
+      "sha256": "f24aa441021121a79266f0d75242706cab8843a47901fefe74527491807f1998",
+      "source": "https://deb.debian.org/debian/pool/main/g/glibc/glibc_2.41.orig.tar.xz",
+      "version": "2.41"
+    },
+    {
+      "bytes": 499524,
+      "component": "glibc Debian patches/build recipes",
+      "file": "glibc_2.41-12+deb13u4.debian.tar.xz",
+      "sha256": "dda4153511bfd543502d18e5bc9323110996fe9c531f14ae3fad6eb17f027c7d",
+      "source": "https://deb.debian.org/debian/pool/main/g/glibc/glibc_2.41-12+deb13u4.debian.tar.xz",
+      "version": "2.41-12+deb13u4"
+    },
+    {
+      "bytes": 51200,
+      "component": "glibc Debian copyright/terms",
+      "file": "glibc-copyright.txt",
+      "sha256": "f5788886720a2605a946e81d571e6c8162b09f58d2e2ceb8d36e5768fccd850d",
+      "source": "contained in the inventoried source/package input; see review report",
+      "version": "2.41-12+deb13u4"
+    },
+    {
+      "bytes": 2846580,
+      "component": "glibc binary comparison input (not source)",
+      "file": "libc6_2.41-12+deb13u4_amd64.deb",
+      "sha256": "967aa62605721081c3eb2a17650611a792aa802d76a6511d1840242623d204c9",
+      "source": "https://deb.debian.org/debian/pool/main/g/glibc/libc6_2.41-12+deb13u4_amd64.deb",
+      "version": "2.41-12+deb13u4"
+    },
+    {
+      "bytes": 108243,
+      "component": "Debian glibc source signature public key",
+      "file": "debian-glibc-maintainer.asc",
+      "sha256": "eba1f3b38c3d166f311ca6fa5cd1a6834b536ea3f341f9e4b5afd02ec2f17e25",
+      "source": "https://keyring.debian.org/pks/lookup?op=get&search=0x52BC8695BE34F90AD7D40CB81388C0F899E8336B",
+      "version": "primary 77462642A9EF94FD0F77196DBA9C78061DDD8C9B"
+    },
+    {
+      "bytes": 1354,
+      "component": "BusyBox source signature public key",
+      "file": "busybox-maintainer.asc",
+      "sha256": "64bf79d9de94ca14825dd8384591b769030f9a1f2086a7f2974d2660511a81f9",
+      "source": "https://keyserver.ubuntu.com/pks/lookup?op=get&search=0xC9E9416F76E610DBD09D040F47B70C55ACC9965B",
+      "version": "C9E9416F76E610DBD09D040F47B70C55ACC9965B"
+    },
+    {
+      "bytes": 121,
+      "component": "BusyBox source signature",
+      "file": "busybox-1.37.0.tar.bz2.sig",
+      "sha256": "36fa69cb206b2ae2d975e62a3192a45ff0d7f7a2fcb3a43de8d33beaaac4c3f7",
+      "source": "https://busybox.net/downloads/busybox-1.37.0.tar.bz2.sig",
+      "version": "1.37.0"
+    }
+  ],
+  "rust_crates": [
+    {
+      "bytes": 29516,
+      "file": "libpathrs-crates/anstream-0.6.21.crate",
+      "name": "anstream",
+      "sha256": "43d5b281e737544384e969a5ccad3f1cdd24b48086a0fc1b2a5262a26b8f4f4a",
+      "source": "https://static.crates.io/crates/anstream/anstream-0.6.21.crate",
+      "version": "0.6.21"
+    },
+    {
+      "bytes": 17651,
+      "file": "libpathrs-crates/anstyle-1.0.13.crate",
+      "name": "anstyle",
+      "sha256": "5192cca8006f1fd4f7237516f40fa183bb07f8fbdfedaa0036de5ea9b0b45e78",
+      "source": "https://static.crates.io/crates/anstyle/anstyle-1.0.13.crate",
+      "version": "1.0.13"
+    },
+    {
+      "bytes": 21707,
+      "file": "libpathrs-crates/anstyle-parse-0.2.7.crate",
+      "name": "anstyle-parse",
+      "sha256": "4e7644824f0aa2c7b9384579234ef10eb7efb6a0deb83f9630a49594dd9c15c2",
+      "source": "https://static.crates.io/crates/anstyle-parse/anstyle-parse-0.2.7.crate",
+      "version": "0.2.7"
+    },
+    {
+      "bytes": 10264,
+      "file": "libpathrs-crates/anstyle-query-1.1.5.crate",
+      "name": "anstyle-query",
+      "sha256": "40c48f72fd53cd289104fc64099abca73db4166ad86ea0b4341abe65af83dadc",
+      "source": "https://static.crates.io/crates/anstyle-query/anstyle-query-1.1.5.crate",
+      "version": "1.1.5"
+    },
+    {
+      "bytes": 12638,
+      "file": "libpathrs-crates/anstyle-wincon-3.0.11.crate",
+      "name": "anstyle-wincon",
+      "sha256": "291e6a250ff86cd4a820112fb8898808a366d8f9f58ce16d1f538353ad55747d",
+      "source": "https://static.crates.io/crates/anstyle-wincon/anstyle-wincon-3.0.11.crate",
+      "version": "3.0.11"
+    },
+    {
+      "bytes": 54059,
+      "file": "libpathrs-crates/anyhow-1.0.100.crate",
+      "name": "anyhow",
+      "sha256": "a23eb6b1614318a8071c9b2521f36b424b2c83db5eb3a0fead4a6c0809af6e61",
+      "source": "https://static.crates.io/crates/anyhow/anyhow-1.0.100.crate",
+      "version": "1.0.100"
+    },
+    {
+      "bytes": 5470,
+      "file": "libpathrs-crates/atty-0.2.14.crate",
+      "name": "atty",
+      "sha256": "d9b39be18770d11421cdb1b9947a45dd3f37e93092cbf377614828a319d5fee8",
+      "source": "https://static.crates.io/crates/atty/atty-0.2.14.crate",
+      "version": "0.2.14"
+    },
+    {
+      "bytes": 18729,
+      "file": "libpathrs-crates/autocfg-1.5.0.crate",
+      "name": "autocfg",
+      "sha256": "c08606f8c3cbf4ce6ec8e28fb0014a2c086708fe954eaa885384a6165172e7e8",
+      "source": "https://static.crates.io/crates/autocfg/autocfg-1.5.0.crate",
+      "version": "1.5.0"
+    },
+    {
+      "bytes": 23021,
+      "file": "libpathrs-crates/bitflags-1.3.2.crate",
+      "name": "bitflags",
+      "sha256": "bef38d45163c2f1dde094a7dfd33ccf595c92905c8f8f4fdc18d06fb1037718a",
+      "source": "https://static.crates.io/crates/bitflags/bitflags-1.3.2.crate",
+      "version": "1.3.2"
+    },
+    {
+      "bytes": 51280,
+      "file": "libpathrs-crates/bitflags-2.13.0.crate",
+      "name": "bitflags",
+      "sha256": "b4388bee8683e3d04af747c73422af53102d2bd24d9eadb6cbc100baef4b43f8",
+      "source": "https://static.crates.io/crates/bitflags/bitflags-2.13.0.crate",
+      "version": "2.13.0"
+    },
+    {
+      "bytes": 8481,
+      "file": "libpathrs-crates/bpfvm-0.1.2.crate",
+      "name": "bpfvm",
+      "sha256": "6199736892ea0f6c5746b34ba5e104d61967d55dd61c9a80284133be096d9fbf",
+      "source": "https://static.crates.io/crates/bpfvm/bpfvm-0.1.2.crate",
+      "version": "0.1.2"
+    },
+    {
+      "bytes": 53466,
+      "file": "libpathrs-crates/bytemuck-1.25.0.crate",
+      "name": "bytemuck",
+      "sha256": "c8efb64bd706a16a1bdde310ae86b351e4d21550d98d056f22f8a7f7a2183fec",
+      "source": "https://static.crates.io/crates/bytemuck/bytemuck-1.25.0.crate",
+      "version": "1.25.0"
+    },
+    {
+      "bytes": 25678,
+      "file": "libpathrs-crates/bytemuck_derive-1.10.2.crate",
+      "name": "bytemuck_derive",
+      "sha256": "f9abbd1bc6865053c427f7198e6af43bfdedc55ab791faed4fbd361d789575ff",
+      "source": "https://static.crates.io/crates/bytemuck_derive/bytemuck_derive-1.10.2.crate",
+      "version": "1.10.2"
+    },
+    {
+      "bytes": 9360,
+      "file": "libpathrs-crates/cfg-if-1.0.4.crate",
+      "name": "cfg-if",
+      "sha256": "9330f8b2ff13f34540b44e946ef35111825727b38d33286ef986142615121801",
+      "source": "https://static.crates.io/crates/cfg-if/cfg-if-1.0.4.crate",
+      "version": "1.0.4"
+    },
+    {
+      "bytes": 219403,
+      "file": "libpathrs-crates/clap-3.2.25.crate",
+      "name": "clap",
+      "sha256": "4ea181bf566f71cb9a5d17a59e1871af638180a18fb0035c92ae62b705207123",
+      "source": "https://static.crates.io/crates/clap/clap-3.2.25.crate",
+      "version": "3.2.25"
+    },
+    {
+      "bytes": 62002,
+      "file": "libpathrs-crates/clap-4.5.60.crate",
+      "name": "clap",
+      "sha256": "2797f34da339ce31042b27d23607e051786132987f595b02ba4f6a6dffb7030a",
+      "source": "https://static.crates.io/crates/clap/clap-4.5.60.crate",
+      "version": "4.5.60"
+    },
+    {
+      "bytes": 171105,
+      "file": "libpathrs-crates/clap_builder-4.5.60.crate",
+      "name": "clap_builder",
+      "sha256": "24a241312cea5059b13574bb9b3861cabf758b879c15190b37b6d6fd63ab6876",
+      "source": "https://static.crates.io/crates/clap_builder/clap_builder-4.5.60.crate",
+      "version": "4.5.60"
+    },
+    {
+      "bytes": 9652,
+      "file": "libpathrs-crates/clap_lex-0.2.4.crate",
+      "name": "clap_lex",
+      "sha256": "2850f2f5a82cbf437dd5af4d49848fbdfc27c157c3d010345776f952765261c5",
+      "source": "https://static.crates.io/crates/clap_lex/clap_lex-0.2.4.crate",
+      "version": "0.2.4"
+    },
+    {
+      "bytes": 13466,
+      "file": "libpathrs-crates/clap_lex-1.0.0.crate",
+      "name": "clap_lex",
+      "sha256": "3a822ea5bc7590f9d40f1ba12c0dc3c2760f3482c6984db1573ad11031420831",
+      "source": "https://static.crates.io/crates/clap_lex/clap_lex-1.0.0.crate",
+      "version": "1.0.0"
+    },
+    {
+      "bytes": 8196,
+      "file": "libpathrs-crates/colorchoice-1.0.4.crate",
+      "name": "colorchoice",
+      "sha256": "b05b61dc5112cbb17e4b6cd61790d9845d13888356391624cbe7e41efeac1e75",
+      "source": "https://static.crates.io/crates/colorchoice/colorchoice-1.0.4.crate",
+      "version": "1.0.4"
+    },
+    {
+      "bytes": 46216,
+      "file": "libpathrs-crates/diff-0.1.13.crate",
+      "name": "diff",
+      "sha256": "56254986775e3233ffa9c4d7d3faaf6d36a2c09d30b20687e9f88bc8bafc16c8",
+      "source": "https://static.crates.io/crates/diff/diff-0.1.13.crate",
+      "version": "0.1.13"
+    },
+    {
+      "bytes": 20114,
+      "file": "libpathrs-crates/either-1.15.0.crate",
+      "name": "either",
+      "sha256": "48c757948c5ede0e46177b7add2e67155f70e33c07fea8284df6576da70b3719",
+      "source": "https://static.crates.io/crates/either/either-1.15.0.crate",
+      "version": "1.15.0"
+    },
+    {
+      "bytes": 12002,
+      "file": "libpathrs-crates/errno-0.3.14.crate",
+      "name": "errno",
+      "sha256": "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb",
+      "source": "https://static.crates.io/crates/errno/errno-0.3.14.crate",
+      "version": "0.3.14"
+    },
+    {
+      "bytes": 15076,
+      "file": "libpathrs-crates/fastrand-2.3.0.crate",
+      "name": "fastrand",
+      "sha256": "37909eebbb50d72f9059c3b6d82c0463f2ff062c9e95845c43a6c9c0355411be",
+      "source": "https://static.crates.io/crates/fastrand/fastrand-2.3.0.crate",
+      "version": "2.3.0"
+    },
+    {
+      "bytes": 50932,
+      "file": "libpathrs-crates/getrandom-0.3.4.crate",
+      "name": "getrandom",
+      "sha256": "899def5c37c4fd7b2664648c28120ecec138e4d395b459e5ca34f9cce2dd77fd",
+      "source": "https://static.crates.io/crates/getrandom/getrandom-0.3.4.crate",
+      "version": "0.3.4"
+    },
+    {
+      "bytes": 102968,
+      "file": "libpathrs-crates/hashbrown-0.12.3.crate",
+      "name": "hashbrown",
+      "sha256": "8a9ee70c43aaf417c914396645a0fa852624801b24ebb7ae78fe8272889ac888",
+      "source": "https://static.crates.io/crates/hashbrown/hashbrown-0.12.3.crate",
+      "version": "0.12.3"
+    },
+    {
+      "bytes": 9979,
+      "file": "libpathrs-crates/hermit-abi-0.1.19.crate",
+      "name": "hermit-abi",
+      "sha256": "62b467343b94ba476dcb2500d242dadbb39557df889310ac77c5d99100aaac33",
+      "source": "https://static.crates.io/crates/hermit-abi/hermit-abi-0.1.19.crate",
+      "version": "0.1.19"
+    },
+    {
+      "bytes": 54653,
+      "file": "libpathrs-crates/indexmap-1.9.3.crate",
+      "name": "indexmap",
+      "sha256": "bd070e393353796e801d209ad339e89596eb4c8d430d18ede6a1cced8fafbd99",
+      "source": "https://static.crates.io/crates/indexmap/indexmap-1.9.3.crate",
+      "version": "1.9.3"
+    },
+    {
+      "bytes": 17184,
+      "file": "libpathrs-crates/indoc-2.0.7.crate",
+      "name": "indoc",
+      "sha256": "79cf5c93f93228cf8efb3ba362535fb11199ac548a09ce117c9b1adc3030d706",
+      "source": "https://static.crates.io/crates/indoc/indoc-2.0.7.crate",
+      "version": "2.0.7"
+    },
+    {
+      "bytes": 7548,
+      "file": "libpathrs-crates/is_terminal_polyfill-1.70.2.crate",
+      "name": "is_terminal_polyfill",
+      "sha256": "a6cb138bb79a146c1bd460005623e142ef0181e3d0219cb493e02f7d08a35695",
+      "source": "https://static.crates.io/crates/is_terminal_polyfill/is_terminal_polyfill-1.70.2.crate",
+      "version": "1.70.2"
+    },
+    {
+      "bytes": 164131,
+      "file": "libpathrs-crates/itertools-0.15.0.crate",
+      "name": "itertools",
+      "sha256": "8b4baf93f58d4425749ca49a51c50ebab072c5df6994d08fed93541c331481dc",
+      "source": "https://static.crates.io/crates/itertools/itertools-0.15.0.crate",
+      "version": "0.15.0"
+    },
+    {
+      "bytes": 816918,
+      "file": "libpathrs-crates/libc-0.2.183.crate",
+      "name": "libc",
+      "sha256": "b5b646652bf6661599e1da8901b3b9522896f01e736bad5f723fe7a3a27f899d",
+      "source": "https://static.crates.io/crates/libc/libc-0.2.183.crate",
+      "version": "0.2.183"
+    },
+    {
+      "bytes": 3006116,
+      "file": "libpathrs-crates/linux-raw-sys-0.12.1.crate",
+      "name": "linux-raw-sys",
+      "sha256": "32a66949e030da00e8c7d4434b251670a91556f4144941d37452769c25d58a53",
+      "source": "https://static.crates.io/crates/linux-raw-sys/linux-raw-sys-0.12.1.crate",
+      "version": "0.12.1"
+    },
+    {
+      "bytes": 51515,
+      "file": "libpathrs-crates/log-0.4.29.crate",
+      "name": "log",
+      "sha256": "5e5032e24019045c762d3c0f28f5b6b8bbf38563a65908389bf7978758920897",
+      "source": "https://static.crates.io/crates/log/log-0.4.29.crate",
+      "version": "0.4.29"
+    },
+    {
+      "bytes": 99165,
+      "file": "libpathrs-crates/memchr-2.8.3.crate",
+      "name": "memchr",
+      "sha256": "cf8baf1c55e62ffcace7a9f06f4bd9cd3f0c4beb022d3b367256b91b87513d98",
+      "source": "https://static.crates.io/crates/memchr/memchr-2.8.3.crate",
+      "version": "2.8.3"
+    },
+    {
+      "bytes": 33456,
+      "file": "libpathrs-crates/once_cell-1.20.3.crate",
+      "name": "once_cell",
+      "sha256": "945462a4b81e43c4e3ba96bd7b49d834c6f61198356aa858733bc4acf3cbe62e",
+      "source": "https://static.crates.io/crates/once_cell/once_cell-1.20.3.crate",
+      "version": "1.20.3"
+    },
+    {
+      "bytes": 7448,
+      "file": "libpathrs-crates/once_cell_polyfill-1.70.2.crate",
+      "name": "once_cell_polyfill",
+      "sha256": "384b8ab6d37215f3c5301a95a4accb5d64aa607f1fcb26a11b5303878451b4fe",
+      "source": "https://static.crates.io/crates/once_cell_polyfill/once_cell_polyfill-1.70.2.crate",
+      "version": "1.70.2"
+    },
+    {
+      "bytes": 10992,
+      "file": "libpathrs-crates/open-enum-0.3.0.crate",
+      "name": "open-enum",
+      "sha256": "9807f1199cf84ec7cc801a79e5ee9aa5178e4762c6b9c7066c30b3cabdcd911e",
+      "source": "https://static.crates.io/crates/open-enum/open-enum-0.3.0.crate",
+      "version": "0.3.0"
+    },
+    {
+      "bytes": 6249,
+      "file": "libpathrs-crates/open-enum-derive-0.3.0.crate",
+      "name": "open-enum-derive",
+      "sha256": "894ae443e59fecf7173ab3b963473f44193fa71b3c8953c61a5bd5f30880bb88",
+      "source": "https://static.crates.io/crates/open-enum-derive/open-enum-derive-0.3.0.crate",
+      "version": "0.3.0"
+    },
+    {
+      "bytes": 27643,
+      "file": "libpathrs-crates/os_str_bytes-6.6.1.crate",
+      "name": "os_str_bytes",
+      "sha256": "e2355d85b9a3786f481747ced0e0ff2ba35213a1f9bd406ed906554d7af805a1",
+      "source": "https://static.crates.io/crates/os_str_bytes/os_str_bytes-6.6.1.crate",
+      "version": "6.6.1"
+    },
+    {
+      "bytes": 18374,
+      "file": "libpathrs-crates/paste-1.0.15.crate",
+      "name": "paste",
+      "sha256": "57c0d7b74b563b49d38dae00a0c37d4d6de9b432382b2892f0574ddcae73fd0a",
+      "source": "https://static.crates.io/crates/paste/paste-1.0.15.crate",
+      "version": "1.0.15"
+    },
+    {
+      "bytes": 4514,
+      "file": "libpathrs-crates/path-clean-1.0.1.crate",
+      "name": "path-clean",
+      "sha256": "17359afc20d7ab31fdb42bb844c8b3bb1dabd7dcf7e68428492da7f16966fcef",
+      "source": "https://static.crates.io/crates/path-clean/path-clean-1.0.1.crate",
+      "version": "1.0.1"
+    },
+    {
+      "bytes": 22522,
+      "file": "libpathrs-crates/ppv-lite86-0.2.21.crate",
+      "name": "ppv-lite86",
+      "sha256": "85eae3c4ed2f50dcfe72643da4befc30deadb458a9b590d720cde2f2b1e97da9",
+      "source": "https://static.crates.io/crates/ppv-lite86/ppv-lite86-0.2.21.crate",
+      "version": "0.2.21"
+    },
+    {
+      "bytes": 78952,
+      "file": "libpathrs-crates/pretty_assertions-1.4.1.crate",
+      "name": "pretty_assertions",
+      "sha256": "3ae130e2f271fbc2ac3a40fb1d07180839cdbbe443c7a27e1e3c13c5cac0116d",
+      "source": "https://static.crates.io/crates/pretty_assertions/pretty_assertions-1.4.1.crate",
+      "version": "1.4.1"
+    },
+    {
+      "bytes": 53886,
+      "file": "libpathrs-crates/proc-macro2-1.0.101.crate",
+      "name": "proc-macro2",
+      "sha256": "89ae43fd86e4158d6db51ad8e2b80f313af9cc74f5c0e03ccb87de09998732de",
+      "source": "https://static.crates.io/crates/proc-macro2/proc-macro2-1.0.101.crate",
+      "version": "1.0.101"
+    },
+    {
+      "bytes": 31408,
+      "file": "libpathrs-crates/quote-1.0.41.crate",
+      "name": "quote",
+      "sha256": "ce25767e7b499d1b604768e7cde645d14cc8584231ea6b295e9c9eb22c02e1d1",
+      "source": "https://static.crates.io/crates/quote/quote-1.0.41.crate",
+      "version": "1.0.41"
+    },
+    {
+      "bytes": 64532,
+      "file": "libpathrs-crates/r-efi-5.3.0.crate",
+      "name": "r-efi",
+      "sha256": "69cdb34c158ceb288df11e18b4bd39de994f6657d83847bdffdbd7f346754b0f",
+      "source": "https://static.crates.io/crates/r-efi/r-efi-5.3.0.crate",
+      "version": "5.3.0"
+    },
+    {
+      "bytes": 99930,
+      "file": "libpathrs-crates/rand-0.9.2.crate",
+      "name": "rand",
+      "sha256": "6db2770f06117d490610c7488547d543617b21bfa07796d7a12f6f1bd53850d1",
+      "source": "https://static.crates.io/crates/rand/rand-0.9.2.crate",
+      "version": "0.9.2"
+    },
+    {
+      "bytes": 18258,
+      "file": "libpathrs-crates/rand_chacha-0.9.0.crate",
+      "name": "rand_chacha",
+      "sha256": "d3022b5f1df60f26e1ffddd6c66e8aa15de382ae63b3a0c1bfc0e4d3e3f325cb",
+      "source": "https://static.crates.io/crates/rand_chacha/rand_chacha-0.9.0.crate",
+      "version": "0.9.0"
+    },
+    {
+      "bytes": 24129,
+      "file": "libpathrs-crates/rand_core-0.9.5.crate",
+      "name": "rand_core",
+      "sha256": "76afc826de14238e6e8c374ddcc1fa19e374fd8dd986b0d2af0d02377261d83c",
+      "source": "https://static.crates.io/crates/rand_core/rand_core-0.9.5.crate",
+      "version": "0.9.5"
+    },
+    {
+      "bytes": 425241,
+      "file": "libpathrs-crates/rustix-1.1.4.crate",
+      "name": "rustix",
+      "sha256": "b6fe4565b9518b83ef4f91bb47ce29620ca828bd32cb7e408f0062e9930ba190",
+      "source": "https://static.crates.io/crates/rustix/rustix-1.1.4.crate",
+      "version": "1.1.4"
+    },
+    {
+      "bytes": 21013,
+      "file": "libpathrs-crates/rustversion-1.0.23.crate",
+      "name": "rustversion",
+      "sha256": "cf54715a573b99ac80df0bc206da022bcd442c974952c7b9720069370852e21f",
+      "source": "https://static.crates.io/crates/rustversion/rustversion-1.0.23.crate",
+      "version": "1.0.23"
+    },
+    {
+      "bytes": 11619,
+      "file": "libpathrs-crates/scopeguard-1.2.0.crate",
+      "name": "scopeguard",
+      "sha256": "94143f37725109f92c262ed2cf5e59bce7498c01bcc1502d7b9afe439a4e9f49",
+      "source": "https://static.crates.io/crates/scopeguard/scopeguard-1.2.0.crate",
+      "version": "1.2.0"
+    },
+    {
+      "bytes": 83652,
+      "file": "libpathrs-crates/serde-1.0.228.crate",
+      "name": "serde",
+      "sha256": "9a8e94ea7f378bd32cbbd37198a4a91436180c5bb472411e48b5ec2e2124ae9e",
+      "source": "https://static.crates.io/crates/serde/serde-1.0.228.crate",
+      "version": "1.0.228"
+    },
+    {
+      "bytes": 63111,
+      "file": "libpathrs-crates/serde_core-1.0.228.crate",
+      "name": "serde_core",
+      "sha256": "41d385c7d4ca58e59fc732af25c3983b67ac852c1a25000afe1175de458b67ad",
+      "source": "https://static.crates.io/crates/serde_core/serde_core-1.0.228.crate",
+      "version": "1.0.228"
+    },
+    {
+      "bytes": 59605,
+      "file": "libpathrs-crates/serde_derive-1.0.228.crate",
+      "name": "serde_derive",
+      "sha256": "d540f220d3187173da220f885ab66608367b6574e925011a9353e4badda91d79",
+      "source": "https://static.crates.io/crates/serde_derive/serde_derive-1.0.228.crate",
+      "version": "1.0.228"
+    },
+    {
+      "bytes": 12627,
+      "file": "libpathrs-crates/serde_repr-0.1.20.crate",
+      "name": "serde_repr",
+      "sha256": "175ee3e80ae9982737ca543e96133087cbd9a485eecc3bc4de9c1a37b47ea59c",
+      "source": "https://static.crates.io/crates/serde_repr/serde_repr-0.1.20.crate",
+      "version": "0.1.20"
+    },
+    {
+      "bytes": 18480,
+      "file": "libpathrs-crates/static_assertions-1.1.0.crate",
+      "name": "static_assertions",
+      "sha256": "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f",
+      "source": "https://static.crates.io/crates/static_assertions/static_assertions-1.1.0.crate",
+      "version": "1.1.0"
+    },
+    {
+      "bytes": 11355,
+      "file": "libpathrs-crates/strsim-0.10.0.crate",
+      "name": "strsim",
+      "sha256": "73473c0e59e6d5812c5dfe2a064a6444949f089e20eec9a2e5506596494e4623",
+      "source": "https://static.crates.io/crates/strsim/strsim-0.10.0.crate",
+      "version": "0.10.0"
+    },
+    {
+      "bytes": 14266,
+      "file": "libpathrs-crates/strsim-0.11.1.crate",
+      "name": "strsim",
+      "sha256": "7da8b5736845d9f2fcb837ea5d9e2628564b3b043a70948a3f0b778838c5fb4f",
+      "source": "https://static.crates.io/crates/strsim/strsim-0.11.1.crate",
+      "version": "0.11.1"
+    },
+    {
+      "bytes": 237611,
+      "file": "libpathrs-crates/syn-1.0.109.crate",
+      "name": "syn",
+      "sha256": "72b64191b275b66ffe2469e8af2c1cfe3bafa67b529ead792a6d0160888b4237",
+      "source": "https://static.crates.io/crates/syn/syn-1.0.109.crate",
+      "version": "1.0.109"
+    },
+    {
+      "bytes": 301514,
+      "file": "libpathrs-crates/syn-2.0.106.crate",
+      "name": "syn",
+      "sha256": "ede7c438028d4436d71104916910f5bb611972c5cfd7f89b8300a8186e6fada6",
+      "source": "https://static.crates.io/crates/syn/syn-2.0.106.crate",
+      "version": "2.0.106"
+    },
+    {
+      "bytes": 112345,
+      "file": "libpathrs-crates/syscalls-0.8.1.crate",
+      "name": "syscalls",
+      "sha256": "81c645a4de0d803ced6ef0388a2646aa1ef8467173b5d59a2c33c88de4ab76e7",
+      "source": "https://static.crates.io/crates/syscalls/syscalls-0.8.1.crate",
+      "version": "0.8.1"
+    },
+    {
+      "bytes": 44780,
+      "file": "libpathrs-crates/tempfile-3.27.0.crate",
+      "name": "tempfile",
+      "sha256": "32497e9a4c7b38532efcdebeef879707aa9f794296a4f0244f6f69e9bc8574bd",
+      "source": "https://static.crates.io/crates/tempfile/tempfile-3.27.0.crate",
+      "version": "3.27.0"
+    },
+    {
+      "bytes": 18773,
+      "file": "libpathrs-crates/termcolor-1.4.1.crate",
+      "name": "termcolor",
+      "sha256": "06794f8f6c5c898b3275aebefa6b8a1cb24cd2c6c79397ab15774837a0bc5755",
+      "source": "https://static.crates.io/crates/termcolor/termcolor-1.4.1.crate",
+      "version": "1.4.1"
+    },
+    {
+      "bytes": 56012,
+      "file": "libpathrs-crates/textwrap-0.16.1.crate",
+      "name": "textwrap",
+      "sha256": "23d434d3f8967a09480fb04132ebe0a3e088c173e6d0ee7897abbdf4eab0f8b9",
+      "source": "https://static.crates.io/crates/textwrap/textwrap-0.16.1.crate",
+      "version": "0.16.1"
+    },
+    {
+      "bytes": 22198,
+      "file": "libpathrs-crates/thiserror-1.0.69.crate",
+      "name": "thiserror",
+      "sha256": "b6aaf5339b578ea85b50e080feb250a3e8ae8cfcdff9a461c9ec2904bc923f52",
+      "source": "https://static.crates.io/crates/thiserror/thiserror-1.0.69.crate",
+      "version": "1.0.69"
+    },
+    {
+      "bytes": 28857,
+      "file": "libpathrs-crates/thiserror-2.0.17.crate",
+      "name": "thiserror",
+      "sha256": "f63587ca0f12b72a0600bcba1d40081f830876000bb46dd2337a3051618f4fc8",
+      "source": "https://static.crates.io/crates/thiserror/thiserror-2.0.17.crate",
+      "version": "2.0.17"
+    },
+    {
+      "bytes": 18365,
+      "file": "libpathrs-crates/thiserror-impl-1.0.69.crate",
+      "name": "thiserror-impl",
+      "sha256": "4fee6c4efc90059e10f81e6d42c60a18f76588c3d74cb83a0b242a2b6c7504c1",
+      "source": "https://static.crates.io/crates/thiserror-impl/thiserror-impl-1.0.69.crate",
+      "version": "1.0.69"
+    },
+    {
+      "bytes": 21344,
+      "file": "libpathrs-crates/thiserror-impl-2.0.17.crate",
+      "name": "thiserror-impl",
+      "sha256": "3ff15c8ecd7de3849db632e14d18d2571fa09dfc5ed93479bc4485c7a517c913",
+      "source": "https://static.crates.io/crates/thiserror-impl/thiserror-impl-2.0.17.crate",
+      "version": "2.0.17"
+    },
+    {
+      "bytes": 47743,
+      "file": "libpathrs-crates/unicode-ident-1.0.18.crate",
+      "name": "unicode-ident",
+      "sha256": "5a5f39404a5da50712a4c1eecf25e90dd62b613502b7e925fd4e4d19b5c96512",
+      "source": "https://static.crates.io/crates/unicode-ident/unicode-ident-1.0.18.crate",
+      "version": "1.0.18"
+    },
+    {
+      "bytes": 13499,
+      "file": "libpathrs-crates/utf8parse-0.2.2.crate",
+      "name": "utf8parse",
+      "sha256": "06abde3611657adf66d383f00b093d7faecc7fa57071cce2578660c9f1010821",
+      "source": "https://static.crates.io/crates/utf8parse/utf8parse-0.2.2.crate",
+      "version": "0.2.2"
+    },
+    {
+      "bytes": 129778,
+      "file": "libpathrs-crates/wasip2-1.0.2+wasi-0.2.9.crate",
+      "name": "wasip2",
+      "sha256": "9517f9239f02c069db75e65f174b3da828fe5f5b945c4dd26bd25d89c03ebcf5",
+      "source": "https://static.crates.io/crates/wasip2/wasip2-1.0.2+wasi-0.2.9.crate",
+      "version": "1.0.2+wasi-0.2.9"
+    },
+    {
+      "bytes": 1200382,
+      "file": "libpathrs-crates/winapi-0.3.9.crate",
+      "name": "winapi",
+      "sha256": "5c839a674fcd7a98952e593242ea400abe93992746761e38641405d28b00f419",
+      "source": "https://static.crates.io/crates/winapi/winapi-0.3.9.crate",
+      "version": "0.3.9"
+    },
+    {
+      "bytes": 2918815,
+      "file": "libpathrs-crates/winapi-i686-pc-windows-gnu-0.4.0.crate",
+      "name": "winapi-i686-pc-windows-gnu",
+      "sha256": "ac3b87c63620426dd9b991e5ce0329eff545bccbbb34f3be09ff6fb6ab51b7b6",
+      "source": "https://static.crates.io/crates/winapi-i686-pc-windows-gnu/winapi-i686-pc-windows-gnu-0.4.0.crate",
+      "version": "0.4.0"
+    },
+    {
+      "bytes": 13368,
+      "file": "libpathrs-crates/winapi-util-0.1.11.crate",
+      "name": "winapi-util",
+      "sha256": "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22",
+      "source": "https://static.crates.io/crates/winapi-util/winapi-util-0.1.11.crate",
+      "version": "0.1.11"
+    },
+    {
+      "bytes": 2947998,
+      "file": "libpathrs-crates/winapi-x86_64-pc-windows-gnu-0.4.0.crate",
+      "name": "winapi-x86_64-pc-windows-gnu",
+      "sha256": "712e227841d057c1ee1cd2fb22fa7e5a5461ae8e48fa2ca79ec42cfc1931183f",
+      "source": "https://static.crates.io/crates/winapi-x86_64-pc-windows-gnu/winapi-x86_64-pc-windows-gnu-0.4.0.crate",
+      "version": "0.4.0"
+    },
+    {
+      "bytes": 6133,
+      "file": "libpathrs-crates/windows-link-0.2.1.crate",
+      "name": "windows-link",
+      "sha256": "f0805222e57f7521d6a62e36fa9163bc891acd422f971defe97d64e70d0a4fe5",
+      "source": "https://static.crates.io/crates/windows-link/windows-link-0.2.1.crate",
+      "version": "0.2.1"
+    },
+    {
+      "bytes": 2517186,
+      "file": "libpathrs-crates/windows-sys-0.61.2.crate",
+      "name": "windows-sys",
+      "sha256": "ae137229bcbd6cdf0f7b80a31df61766145077ddf49416a728b02cb3921ff3fc",
+      "source": "https://static.crates.io/crates/windows-sys/windows-sys-0.61.2.crate",
+      "version": "0.61.2"
+    },
+    {
+      "bytes": 68035,
+      "file": "libpathrs-crates/wit-bindgen-0.51.0.crate",
+      "name": "wit-bindgen",
+      "sha256": "d7249219f66ced02969388cf2bb044a09756a083d0fab1e566056b04d9fbcaa5",
+      "source": "https://static.crates.io/crates/wit-bindgen/wit-bindgen-0.51.0.crate",
+      "version": "0.51.0"
+    },
+    {
+      "bytes": 75497,
+      "file": "libpathrs-crates/yansi-1.0.1.crate",
+      "name": "yansi",
+      "sha256": "cfe53a6657fd280eaa890a3bc59152892ffa3e30101319d168b781ed6529b049",
+      "source": "https://static.crates.io/crates/yansi/yansi-1.0.1.crate",
+      "version": "1.0.1"
+    },
+    {
+      "bytes": 254858,
+      "file": "libpathrs-crates/zerocopy-0.8.40.crate",
+      "name": "zerocopy",
+      "sha256": "a789c6e490b576db9f7e6b6d661bcc9799f7c0ac8352f56ea20193b2681532e5",
+      "source": "https://static.crates.io/crates/zerocopy/zerocopy-0.8.40.crate",
+      "version": "0.8.40"
+    },
+    {
+      "bytes": 97724,
+      "file": "libpathrs-crates/zerocopy-derive-0.8.40.crate",
+      "name": "zerocopy-derive",
+      "sha256": "f65c489a7071a749c849713807783f70672b28094011623e200cb86dcb835953",
+      "source": "https://static.crates.io/crates/zerocopy-derive/zerocopy-derive-0.8.40.crate",
+      "version": "0.8.40"
+    }
+  ],
+  "status": "source inputs reviewed; redistribution clearance pending",
+  "verification": "archive hashes observed; crate checksums verified against provided Cargo.lock; signatures are not verified by this script"
+}

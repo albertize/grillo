@@ -72,6 +72,7 @@ type Volume struct {
 	ReadOnly      bool       `json:"readOnly"`
 	AccessMode    AccessMode `json:"accessMode"`
 	CapacityBytes int64      `json:"capacityBytes,omitempty"`
+	Filesystem    string     `json:"filesystem,omitempty"` // ext4 means Source is a bounded raw image
 	Owner         Owner      `json:"owner"`
 	CreatedAt     time.Time  `json:"createdAt"`
 }
@@ -102,7 +103,8 @@ type Manager struct {
 	volumesDir string
 	leasesDir  string
 
-	mu sync.Mutex
+	mu    sync.Mutex
+	block *blockStore
 }
 
 // Open prepares a volume store rooted at dir.
@@ -150,11 +152,20 @@ func (m *Manager) Create(ctx context.Context, volume Volume, op string) (Volume,
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if err := ctx.Err(); err != nil {
+		return Volume{}, err
+	}
 	if existing, err := m.load(volume.ID); err == nil {
+		if m.block != nil {
+			return m.existingBlockRequest(existing, volume, op)
+		}
 		if op == "" || existing.Owner.Operation == op {
 			return existing, nil
 		}
 		return Volume{}, fmt.Errorf("%w: volume %q already exists", ErrBusy, volume.ID)
+	}
+	if m.block != nil && volume.Kind != KindBind {
+		return m.createBlock(ctx, volume, op)
 	}
 	volume.Owner.Operation = op
 	dir := m.volumeDir(volume.ID)
@@ -184,7 +195,7 @@ func (m *Manager) Create(ctx context.Context, volume Volume, op string) (Volume,
 }
 
 func (m *Manager) validate(volume *Volume, op string) error {
-	if volume.ID == "" || strings.ContainsAny(volume.ID, "/\\ ") {
+	if !safeStorageID(volume.ID) {
 		return fmt.Errorf("%w: invalid volume id %q", ErrInvalid, volume.ID)
 	}
 	if volume.Owner.Application == "" {
@@ -213,14 +224,29 @@ func (m *Manager) validate(volume *Volume, op string) error {
 
 // Attach leases a volume to a sandbox and returns the resolved mount.
 func (m *Manager) Attach(ctx context.Context, volumeID, sandboxID string, readOnly bool, uid, gid int, op string) (Attachment, error) {
-	if sandboxID == "" {
-		return Attachment{}, fmt.Errorf("%w: missing sandbox id", ErrInvalid)
+	if !safeStorageID(sandboxID) {
+		return Attachment{}, fmt.Errorf("%w: invalid sandbox id", ErrInvalid)
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if m.block != nil {
+		lock, err := m.block.lock(ctx)
+		if err != nil {
+			return Attachment{}, err
+		}
+		defer lock.Close()
+	}
 	volume, err := m.load(volumeID)
 	if err != nil {
 		return Attachment{}, err
+	}
+	if volume.Filesystem != "" {
+		if m.block == nil {
+			return Attachment{}, fmt.Errorf("%w: bounded-volume configuration required", ErrUnsupported)
+		}
+		if _, err := m.existingBlock(volume, ""); err != nil {
+			return Attachment{}, err
+		}
 	}
 	if volume.ReadOnly && !readOnly {
 		return Attachment{}, fmt.Errorf("%w: %q", ErrReadOnly, volumeID)
@@ -275,6 +301,9 @@ func checkAccess(volume Volume, leases []Lease, sandboxID string, readOnly bool)
 // Detach releases a sandbox's lease on a volume. Detaching an absent lease
 // succeeds.
 func (m *Manager) Detach(ctx context.Context, volumeID, sandboxID string) error {
+	if !safeStorageID(volumeID) || !safeStorageID(sandboxID) {
+		return ErrInvalid
+	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	err := os.Remove(m.leasePath(volumeID, sandboxID))
@@ -286,6 +315,9 @@ func (m *Manager) Detach(ctx context.Context, volumeID, sandboxID string) error 
 
 // ReleaseSandbox detaches every volume leased to a sandbox.
 func (m *Manager) ReleaseSandbox(ctx context.Context, sandboxID string) error {
+	if !safeStorageID(sandboxID) {
+		return ErrInvalid
+	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	entries, err := os.ReadDir(m.leasesDir)
@@ -331,6 +363,13 @@ func (m *Manager) Reconcile(exists func(sandboxID string) bool) error {
 func (m *Manager) Delete(ctx context.Context, volumeID string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if m.block != nil {
+		lock, err := m.block.lock(ctx)
+		if err != nil {
+			return err
+		}
+		defer lock.Close()
+	}
 	volume, err := m.load(volumeID)
 	if err != nil {
 		return err
@@ -344,6 +383,14 @@ func (m *Manager) Delete(ctx context.Context, volumeID string) error {
 	}
 	if len(leases) > 0 {
 		return fmt.Errorf("%w: volume %q has %d leases", ErrBusy, volumeID, len(leases))
+	}
+	if volume.Filesystem != "" {
+		if m.block == nil || volume.Filesystem != "ext4" || volume.Source != filepath.Join(m.block.dir, volume.ID+".img") {
+			return fmt.Errorf("%w: block store identity required", ErrNotOwned)
+		}
+		if err := os.Remove(volume.Source); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return err
+		}
 	}
 	if err := os.RemoveAll(m.volumeDir(volumeID)); err != nil {
 		return err
@@ -429,7 +476,14 @@ func (m *Manager) leasePath(volumeID, sandboxID string) string {
 	return filepath.Join(m.leasesDir, volumeID, sandboxID+".json")
 }
 
+func safeStorageID(id string) bool {
+	return id != "" && id != "." && id != ".." && len(id) <= 160 && strings.IndexFunc(id, func(r rune) bool { return r <= ' ' || r == '/' || r == '\\' }) < 0
+}
+
 func (m *Manager) load(id string) (Volume, error) {
+	if !safeStorageID(id) {
+		return Volume{}, ErrInvalid
+	}
 	data, err := os.ReadFile(m.recordPath(id))
 	if errors.Is(err, os.ErrNotExist) {
 		return Volume{}, fmt.Errorf("%w: %q", ErrNotFound, id)
@@ -440,6 +494,9 @@ func (m *Manager) load(id string) (Volume, error) {
 	var volume Volume
 	if err := json.Unmarshal(data, &volume); err != nil {
 		return Volume{}, fmt.Errorf("storage: decode volume %q: %w", id, err)
+	}
+	if volume.ID != id || !safeStorageID(volume.ID) {
+		return Volume{}, fmt.Errorf("%w: inconsistent volume identity", ErrInvalid)
 	}
 	return volume, nil
 }

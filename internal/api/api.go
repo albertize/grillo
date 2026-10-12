@@ -182,7 +182,7 @@ func (s *Server) handleApply(w http.ResponseWriter, r *http.Request) {
 		_, err := s.opts.Core.Apply(ctx, app)
 		return err
 	})
-	writeJSON(w, http.StatusAccepted, map[string]string{"operationId": operation.ID})
+	s.writeAccepted(w, operation)
 }
 
 func (s *Server) handleApplications(w http.ResponseWriter, r *http.Request) {
@@ -207,7 +207,7 @@ func (s *Server) handleRestart(w http.ResponseWriter, r *http.Request) {
 	operation := s.ops.Start("restart", id, func(ctx context.Context) error {
 		return s.opts.Core.Restart(ctx, id)
 	})
-	writeJSON(w, http.StatusAccepted, map[string]string{"operationId": operation.ID})
+	s.writeAccepted(w, operation)
 }
 
 func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
@@ -312,7 +312,7 @@ func (s *Server) handleDown(w http.ResponseWriter, r *http.Request) {
 		_, err := s.opts.Core.Down(ctx, id, removeVolumes)
 		return err
 	})
-	writeJSON(w, http.StatusAccepted, map[string]string{"operationId": operation.ID})
+	s.writeAccepted(w, operation)
 }
 
 func (s *Server) handleOperation(w http.ResponseWriter, r *http.Request) {
@@ -447,6 +447,7 @@ type Operations struct {
 	cancels map[string]context.CancelFunc
 	next    uint64
 	base    context.Context
+	closed  bool
 }
 
 // NewOperations returns an empty registry bound to the daemon lifetime.
@@ -455,14 +456,33 @@ func NewOperations() *Operations {
 }
 
 // Start runs fn in the background. A disconnected client does not cancel it.
+// A nil result means admission was refused; fn is never invoked in that case.
+// Limits are per daemon, with no waiting queue. Finished records are evicted
+// oldest-first; active operations are never evicted.
 func (o *Operations) Start(kind, application string, fn func(context.Context) error) *Operation {
 	o.mu.Lock()
+	if o.closed || len(o.cancels) >= 8 {
+		o.mu.Unlock()
+		return nil
+	}
+	if len(o.ops) >= 256 {
+		var oldest *Operation
+		for id, candidate := range o.ops {
+			if _, active := o.cancels[id]; !active && (oldest == nil || candidate.StartedAt.Before(oldest.StartedAt)) {
+				oldest = candidate
+			}
+		}
+		if oldest != nil {
+			delete(o.ops, oldest.ID)
+		}
+	}
 	o.next++
 	id := fmt.Sprintf("op-%d", o.next)
 	operation := &Operation{ID: id, Kind: kind, Application: application, State: "running", StartedAt: time.Now().UTC()}
-	ctx, cancel := context.WithCancel(o.base)
+	ctx, cancel := context.WithTimeout(o.base, time.Hour)
 	o.ops[id] = operation
 	o.cancels[id] = cancel
+	accepted := *operation
 	o.mu.Unlock()
 
 	go func() {
@@ -482,7 +502,16 @@ func (o *Operations) Start(kind, application string, fn func(context.Context) er
 		delete(o.cancels, id)
 		cancel()
 	}()
-	return operation
+	return &accepted
+}
+
+func (s *Server) writeAccepted(w http.ResponseWriter, operation *Operation) {
+	if operation == nil {
+		w.Header().Set("Retry-After", "1")
+		writeJSON(w, http.StatusTooManyRequests, Error{Code: "busy", Message: "operation capacity exhausted or daemon shutting down; retry later", Retryable: true})
+		return
+	}
+	writeJSON(w, http.StatusAccepted, map[string]string{"operationId": operation.ID})
 }
 
 // Get returns an operation.
@@ -510,6 +539,7 @@ func (o *Operations) Cancel(id string) bool {
 // CancelAll cancels every running operation (daemon shutdown).
 func (o *Operations) CancelAll() {
 	o.mu.Lock()
+	o.closed = true
 	cancels := make([]context.CancelFunc, 0, len(o.cancels))
 	for _, cancel := range o.cancels {
 		cancels = append(cancels, cancel)

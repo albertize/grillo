@@ -19,6 +19,7 @@ ADRs explain consequential decisions and preserve the reasoning behind them. Use
 | [0011](0011-browser-terminal-adapter.md) | Authenticated browser Pod Terminal adapter | Proposed |
 | [0013](0013-xterm-browser-terminal.md) | xterm-compatible interactive browser terminal | Proposed |
 | [0012](0012-compose-startup-dependency-gates.md) | Compose startup dependency and health gates | Proposed |
+| [0014](0014-fixed-size-block-volume-quotas.md) | Opt-in fixed-size block volume quotas | Proposed |
 
 The implementation plan still contains **provisional choices**, not evidence that a
 backend has passed its feasibility gate. An ADR without required hardware

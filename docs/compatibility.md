@@ -24,13 +24,23 @@ under Permissive; see [host evidence/support boundaries](host-support.md) for th
 partial scope, missing checks and Enforcing blocker. No distribution support
 promise follows from these functional observations.
 
+New non-bind volumes can opt into experimental fixed-size ext4 storage with
+`grillod --volume-image-bytes N`; default directory volumes and binds are still
+unbounded for guest writes. This mode requires reviewed mke2fs 1.47.3, rejects
+implicit legacy migration/backing changes/resizing, and treats declared capacity
+as raw geometry, not usable payload. [ADR 0014](adr/0014-fixed-size-block-volume-quotas.md)
+and [real ENOSPC evidence](experiments/t24-pinned-cache-block-quota-sources.md)
+record scope and crash/repair limits; native RUN workspace enforcement remains
+pending. Explicit-digest OCI cache seeding is verified offline reuse, not a fresh
+online pull; mutable tags are not silently reused offline.
+
 ## Compose (F2 subset)
 
 | Concept | State | Notes |
 | --- | --- | --- |
 | `image`, `command`, `entrypoint`, `environment`, `env_file` | Supported | `.env` then host environment; `environment` overrides `env_file` |
 | `${VAR}` interpolation | Supported | default/required/alternative forms; `$$` escape |
-| `ports`, `expose` | Supported | long/short syntax; TCP |
+| `ports`, `expose` | Supported | long/short syntax; TCP; host publication caps 128 connections/listener and a five-minute connection lifetime (reconnect required) |
 | `volumes` (named, ephemeral, bind) | Supported | project-relative binds resolve against the Compose file |
 | `healthcheck` | Degraded | health/readiness status, **no liveness restart**; unhealthy endpoints are removed (local behavior), `start_period` is an initial delay; `NONE` / `disable: true` disables; command strings and CMD/CMD-SHELL arrays; whole-second durations only, no `start_interval` or inherited image healthcheck |
 | `depends_on` | Supported subset | deterministic startup order; short syntax / `service_started`, and `service_healthy` with a declared healthcheck, all replicas; startup-only, cancelable two-minute gate. `service_completed_successfully`, `restart: true`, `required: false`, missing/zero-replica dependencies and cycles are rejected |

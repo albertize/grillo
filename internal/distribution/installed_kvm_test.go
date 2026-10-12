@@ -26,6 +26,7 @@ import (
 
 	"github.com/albertize/grillo/internal/api"
 	"github.com/albertize/grillo/internal/guest"
+	"github.com/albertize/grillo/internal/oci"
 	linux "github.com/albertize/grillo/internal/platform/linux"
 	"golang.org/x/sys/unix"
 )
@@ -151,6 +152,30 @@ func TestKVMInstalledRuntime(t *testing.T) {
 		}
 		env = append(env, variable.name+"="+dir)
 	}
+	if seed := os.Getenv("GRILLO_TEST_SEED_CAS"); seed != "" {
+		// Explicit digest-verified fixture mode; this is NOT a fresh online pull.
+		source, err := oci.OpenCAS(seed)
+		if err != nil {
+			t.Fatal(err)
+		}
+		// The XDG cache root must already be private before CAS creates its
+		// content-addressed descendants; never chmod a preexisting user root.
+		if err := os.Mkdir(filepath.Join(work, "c/grillo"), 0700); err != nil {
+			t.Fatal(err)
+		}
+		destination, err := oci.OpenCAS(filepath.Join(work, "c/grillo/oci"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		ref, err := oci.ParseReference("docker.io/library/busybox:1.37@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := oci.CopyPinned(ctx, source, destination, ref, oci.Platform{OS: "linux", Architecture: "amd64"}); err != nil {
+			t.Fatal("verified fixture transfer", err)
+		}
+		t.Log("MODE: digest-verified preseeded OCI cache; not fresh registry-pull evidence")
+	}
 	socket := filepath.Join(work, "r/grillo/grillod.sock")
 	client := api.NewClient(socket)
 	var daemon linux.ProcessID
@@ -270,6 +295,13 @@ func TestKVMInstalledRuntime(t *testing.T) {
 	env = append(env, "GRILLO_DEMO_PORT="+strconv.Itoa(port))
 	compose := filepath.Join(prefix, "share/grillo/examples/hello-compose/compose.yaml")
 	run("plan", compose)
+	measure := os.Getenv("GRILLO_TEST_RESOURCE_CAMPAIGN") == "1"
+	var collector *installedResources
+	var readyStart time.Time
+	if measure {
+		readyStart = time.Now()
+		collector = startInstalledResources(t, work)
+	}
 	run("up", compose) // actual on-demand installed daemon startup
 	daemon, err = installedDaemonIdentity(socket)
 	if err != nil {
@@ -292,6 +324,26 @@ func TestKVMInstalledRuntime(t *testing.T) {
 	}
 	captureVM("hello-compose")
 	probeInstalledHTTP(t, ctx, "http://127.0.0.1:"+strconv.Itoa(port)+"/", "grillo-compose-ok")
+	if measure {
+		phase := "fresh-cache-compose"
+		if os.Getenv("GRILLO_TEST_SEED_CAS") != "" {
+			phase = "seeded-cas-fresh-rootfs-compose"
+		}
+		finishInstalledResources(t, collector, work, phase, readyStart)
+		downStart := time.Now()
+		run("down", "hello-compose")
+		t.Logf("TEARDOWN_SAMPLE cold_us=%d", time.Since(downStart).Microseconds())
+		readyStart = time.Now()
+		collector = startInstalledResources(t, work)
+		run("up", compose)
+		captureVM("hello-compose")
+		probeInstalledHTTP(t, ctx, "http://127.0.0.1:"+strconv.Itoa(port)+"/", "grillo-compose-ok")
+		phase = "warm-cache-compose"
+		if os.Getenv("GRILLO_TEST_SEED_CAS") != "" {
+			phase = "seeded-cas-warm-rootfs-compose"
+		}
+		finishInstalledResources(t, collector, work, phase, readyStart)
+	}
 	probeInstalledUI(t, ctx, cli, cwd, env)
 	probeInstalledHTTP(t, ctx, "http://127.0.0.1:"+strconv.Itoa(port)+"/", "grillo-compose-ok")
 	run("ps")

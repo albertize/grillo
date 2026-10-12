@@ -16,6 +16,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"sort"
@@ -53,6 +54,10 @@ func run() error {
 	casBytes := flag.Int64("oci-cache-bytes", oci.DefaultCASCacheBytes, "aggregate CAS logical-byte quota; no automatic eviction")
 	rootfsBytes := flag.Int64("rootfs-cache-bytes", 32<<30, "aggregate runtime rootfs logical-byte quota")
 	cacheEntries := flag.Int64("cache-entries", oci.DefaultCacheEntries, "entry quota per CAS/rootfs cache")
+	volumeBytes := flag.Int64("volume-image-bytes", 0, "opt-in default fixed ext4 image bytes for new non-bind volumes; zero preserves directory storage")
+	volumeReserved := flag.Int64("volume-reserved-bytes", 64<<30, "maximum total block-image geometry bytes; no automatic deletion")
+	volumeImages := flag.Int("volume-images", 256, "maximum block image count, including interrupted stages")
+	formatter := flag.String("mke2fs", "", "trusted mke2fs 1.47.3 binary for bounded volumes (default PATH)")
 	showVersion := flag.Bool("version", false, "print shared build identity as JSON without starting the daemon")
 	kernel := flag.String("kernel", os.Getenv("GRILLO_GUEST_KERNEL"), "guest kernel (default: installed prefix)")
 	initramfs := flag.String("initramfs", os.Getenv("GRILLO_GUEST_INITRAMFS"), "guest initramfs (default: installed prefix)")
@@ -69,8 +74,8 @@ func run() error {
 	if *showVersion {
 		return json.NewEncoder(os.Stdout).Encode(buildinfo.Current())
 	}
-	if *casBytes < 0 || *rootfsBytes < 0 || *cacheEntries < 0 {
-		return fmt.Errorf("cache quotas must not be negative")
+	if *casBytes < 0 || *rootfsBytes < 0 || *cacheEntries < 0 || *volumeBytes < 0 || *volumeReserved < 0 || *volumeImages <= 0 {
+		return fmt.Errorf("cache/volume quotas must not be negative and volume-images must be positive")
 	}
 	if err := validateRuntimeUID(os.Geteuid()); err != nil {
 		return err
@@ -148,6 +153,20 @@ func run() error {
 		return err
 	}
 	volumes, err := storage.Open(filepath.Join(layout.Data, "volumes"))
+	if *volumeBytes > 0 {
+		path := *formatter
+		if path == "" {
+			path, err = exec.LookPath("mke2fs")
+			if err != nil {
+				return fmt.Errorf("bounded volumes require explicitly provisioned mke2fs 1.47.3")
+			}
+		}
+		path, err = filepath.Abs(path)
+		if err != nil {
+			return err
+		}
+		volumes, err = storage.OpenBounded(filepath.Join(layout.Data, "volumes"), storage.BlockOptions{Formatter: path, DefaultBytes: *volumeBytes, MaxReservedBytes: *volumeReserved, MaxImages: *volumeImages})
+	}
 	if err != nil {
 		return err
 	}

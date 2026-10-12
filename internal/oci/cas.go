@@ -14,6 +14,8 @@ import (
 	"path/filepath"
 	"sync"
 	"time"
+
+	"golang.org/x/sys/unix"
 )
 
 // CAS errors.
@@ -92,11 +94,20 @@ func (c *CAS) Open(digest string) (io.ReadCloser, error) {
 	if err != nil {
 		return nil, err
 	}
-	f, err := os.Open(path)
+	fd, err := unix.Open(path, unix.O_RDONLY|unix.O_CLOEXEC|unix.O_NOFOLLOW|unix.O_NONBLOCK, 0)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil, ErrNotFound
 	}
-	return f, err
+	if err != nil {
+		return nil, err
+	}
+	f := os.NewFile(uintptr(fd), path)
+	info, err := f.Stat()
+	if err != nil || !info.Mode().IsRegular() {
+		f.Close()
+		return nil, fmt.Errorf("oci: blob must be a regular no-follow file")
+	}
+	return f, nil
 }
 
 // Read returns a stored blob's bytes.

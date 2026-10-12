@@ -1,0 +1,103 @@
+{
+  "status": "observations only; final repeated gate BLOCKED by registry HTTP 429",
+  "resource_batch": "30 PASS iterations before later Unix-listener read/admission changes; not current full-budget acceptance",
+  "resource_scope": "owned test process-tree sampled RSS; whole test work-directory bytes including staged payload; registry pulls; no page-cache flush",
+  "resources": {
+    "fresh-cache-compose": {
+      "allocated_bytes": {
+        "samples": 30,
+        "median": 582893568,
+        "p95": 582893568
+      },
+      "idle_cpu_user_hz_ticks": {
+        "samples": 30,
+        "median": 3,
+        "p95": 5
+      },
+      "idle_interval_us": {
+        "samples": 30,
+        "median": 1036096,
+        "p95": 1043046
+      },
+      "idle_rss_bytes": {
+        "samples": 30,
+        "median": 222576640,
+        "p95": 226766848
+      },
+      "logical_bytes": {
+        "samples": 30,
+        "median": 581730160,
+        "p95": 581730161
+      },
+      "ready_us": {
+        "samples": 30,
+        "median": 3278895,
+        "p95": 3584612
+      },
+      "rss_samples": {
+        "samples": 30,
+        "median": 33,
+        "p95": 36
+      },
+      "sampled_peak_rss_bytes": {
+        "samples": 30,
+        "median": 231759872,
+        "p95": 236249088
+      }
+    },
+    "warm-cache-compose": {
+      "allocated_bytes": {
+        "samples": 30,
+        "median": 582893568,
+        "p95": 582893568
+      },
+      "idle_cpu_user_hz_ticks": {
+        "samples": 30,
+        "median": 3,
+        "p95": 5
+      },
+      "idle_interval_us": {
+        "samples": 30,
+        "median": 1038461,
+        "p95": 1047523
+      },
+      "idle_rss_bytes": {
+        "samples": 30,
+        "median": 224407552,
+        "p95": 226443264
+      },
+      "logical_bytes": {
+        "samples": 30,
+        "median": 581730161,
+        "p95": 581730161
+      },
+      "ready_us": {
+        "samples": 30,
+        "median": 1769030,
+        "p95": 2073159
+      },
+      "rss_samples": {
+        "samples": 30,
+        "median": 18,
+        "p95": 21
+      },
+      "sampled_peak_rss_bytes": {
+        "samples": 30,
+        "median": 228540416,
+        "p95": 234557440
+      }
+    }
+  },
+  "network": {
+    "DNSLoopbackUDP_ns_per_op": {
+      "samples": 30,
+      "median": 7244.0,
+      "p95": 8063.0
+    },
+    "ProxyLoopbackTCP_ns_per_op": {
+      "samples": 30,
+      "median": 15584.0,
+      "p95": 17300.0
+    }
+  }
+}

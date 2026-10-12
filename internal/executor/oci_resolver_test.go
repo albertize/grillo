@@ -9,9 +9,11 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 
+	imagestore "github.com/albertize/grillo/internal/image"
 	"github.com/albertize/grillo/internal/model"
 	"github.com/albertize/grillo/internal/oci"
 )
@@ -41,6 +43,31 @@ func (f *fakePuller) Unpack(_ oci.PulledImage, root string, _ oci.UnpackOptions)
 		return err
 	}
 	return f.unpackErr
+}
+
+func TestLocalLabelCannotOverrideRequestedDigest(t *testing.T) {
+	cas, err := oci.OpenCAS(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	store, err := imagestore.Open(t.TempDir(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wanted := "sha256:" + strings.Repeat("b", 64)
+	for _, reference := range []string{"busybox:1.37", "busybox:1.37@" + wanted} {
+		if _, err := store.Import(oci.PulledImage{ManifestDigest: "sha256:" + strings.Repeat("a", 64)}, imagestore.Meta{Reference: reference}); err != nil {
+			t.Fatal(err)
+		}
+		request := model.ImageRef{Reference: reference}
+		if reference == "busybox:1.37" {
+			request.Digest = wanted
+		}
+		resolver := &OCIResolver{Store: store, CAS: cas}
+		if _, ok, err := resolver.local(request); err != nil || ok {
+			t.Fatal("mutable record overrode digest", ok, err)
+		}
+	}
 }
 
 func TestOCIResolverCachesByManifestDigest(t *testing.T) {

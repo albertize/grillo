@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 
 	"golang.org/x/sys/unix"
@@ -42,7 +43,7 @@ func (s *Server) Listen(socketPath string) (net.Listener, error) {
 	if uid == 0 {
 		uid = uint32(os.Getuid())
 	}
-	return &peerListener{Listener: listener, uid: uid}, nil
+	return &peerListener{Listener: listener, uid: uid, slots: make(chan struct{}, 128)}, nil
 }
 
 // Serve runs the API on socketPath until ctx is canceled.
@@ -55,6 +56,7 @@ func (s *Server) Serve(ctx context.Context, socketPath string) error {
 		Handler:           s.Handler(),
 		BaseContext:       func(net.Listener) context.Context { return ctx },
 		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       15 * time.Second,
 		IdleTimeout:       60 * time.Second,
 	}
 	go func() {
@@ -62,7 +64,9 @@ func (s *Server) Serve(ctx context.Context, socketPath string) error {
 		s.ops.CancelAll()
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
-		_ = server.Shutdown(shutdownCtx)
+		if err := server.Shutdown(shutdownCtx); err != nil {
+			_ = server.Close()
+		}
 	}()
 	err = server.Serve(listener)
 	_ = os.Remove(socketPath)
@@ -74,7 +78,8 @@ func (s *Server) Serve(ctx context.Context, socketPath string) error {
 
 type peerListener struct {
 	net.Listener
-	uid uint32
+	uid   uint32
+	slots chan struct{}
 }
 
 // Accept rejects connections from any other UID.
@@ -94,8 +99,26 @@ func (l *peerListener) Accept() (net.Conn, error) {
 			_ = conn.Close()
 			continue
 		}
-		return conn, nil
+		select {
+		case l.slots <- struct{}{}:
+			return &admittedConn{Conn: conn, release: func() { <-l.slots }}, nil
+		default:
+			// Refuse before parsing headers, allocating bodies or starting work.
+			_ = conn.Close()
+		}
 	}
+}
+
+type admittedConn struct {
+	net.Conn
+	once    sync.Once
+	release func()
+}
+
+func (c *admittedConn) Close() error {
+	err := c.Conn.Close()
+	c.once.Do(c.release)
+	return err
 }
 
 func peerUID(conn *net.UnixConn) (uint32, error) {

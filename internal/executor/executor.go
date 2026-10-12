@@ -598,8 +598,17 @@ func (e *Executor) buildSpecs(ctx context.Context, application string, app model
 		}
 		tag := "vol-" + name
 		target := "/run/grillo/volumes/" + name
-		spec.Shares = append(spec.Shares, sandbox.Share{Tag: tag, HostPath: source, ReadOnly: readOnly})
-		guestSpec.Shares = append(guestSpec.Shares, guestproto.ShareSpec{Tag: tag, Target: target, ReadOnly: readOnly})
+		if e.cfg.Volumes.BlockStorageEnabled() && volume.Kind != model.VolumeBind {
+			if len(spec.Disks) >= 26 {
+				return sandbox.Spec{}, guestproto.SandboxSpec{}, fmt.Errorf("executor: bounded block-volume limit is 26 per Pod")
+			}
+			device := fmt.Sprintf("/dev/vd%c", 'a'+len(spec.Disks))
+			spec.Disks = append(spec.Disks, sandbox.Disk{Path: source, ReadOnly: readOnly, Format: "raw"})
+			guestSpec.Shares = append(guestSpec.Shares, guestproto.ShareSpec{Source: device, Target: target, FSType: "ext4", ReadOnly: readOnly})
+		} else {
+			spec.Shares = append(spec.Shares, sandbox.Share{Tag: tag, HostPath: source, ReadOnly: readOnly})
+			guestSpec.Shares = append(guestSpec.Shares, guestproto.ShareSpec{Tag: tag, Target: target, ReadOnly: readOnly})
+		}
 		volumeTargets[name] = target
 	}
 

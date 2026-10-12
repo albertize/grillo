@@ -1,5 +1,10 @@
 # T24 — payload notice/provenance hardening and host support boundaries
 
+The [2026-10-12 continuation](t24-pinned-cache-block-quota-sources.md) now records
+additional source/signature/graph/ELF correspondence inputs and failing current
+runc/Helm binary scans. It does not convert the scoped evidence below into full
+corresponding-source/notices or redistribution/security clearance.
+
 **Status: local bounded delivery PASS; T24/D0 remain BLOCKED overall.**
 Dependencies verified: T23/T24's established embedded UI, runtime-only image and
 Stage/installed-prefix contracts, earlier license inventory and partial user-run

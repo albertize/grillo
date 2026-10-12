@@ -74,6 +74,19 @@ func (r *OCIResolver) local(image model.ImageRef) (oci.PulledImage, bool, error)
 	if err != nil || !ok {
 		return oci.PulledImage{}, false, err
 	}
+	ref, err := oci.ParseReference(image.Reference)
+	if err != nil {
+		return oci.PulledImage{}, false, err
+	}
+	requested := ref.Digest
+	if image.Digest != "" {
+		requested = image.Digest
+	}
+	if requested != "" && requested != record.ManifestDigest {
+		// An index pin must be resolved through its verified index; a mutable
+		// local label cannot override an explicit requested digest.
+		return oci.PulledImage{}, false, nil
+	}
 	pulled, err := oci.LoadPulled(r.CAS, record.ManifestDigest)
 	if err != nil {
 		return oci.PulledImage{}, false, err

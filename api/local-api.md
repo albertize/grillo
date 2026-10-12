@@ -140,8 +140,23 @@ Workload output deliberately printed by an application is not secret-redacted.
 `POST /v1/applications` and `down` return `202 Accepted` with an `operationId`.
 The operation runs on the daemon's lifetime context, so **a disconnected client
 does not cancel accepted work**. Cancellation is explicit
-(`POST /v1/operations/{id}/cancel`) or happens on daemon shutdown. An operation
-is `running`, `succeeded`, `failed`, or `canceled`.
+(`POST /v1/operations/{id}/cancel`), on daemon shutdown, or at the one-hour
+operation deadline. An operation is `running`, `succeeded`, `failed`, or `canceled`.
+
+Per-daemon admission allows at most **8 active asynchronous mutations** across
+apply/down/restart/build/prune, without a waiting queue. Saturation returns `429`,
+code `busy`, `retryable: true`, and `Retry-After: 1`; refused work has no operation
+ID and no callback/effects. Cancellation releases capacity only when the callback
+actually returns. Shutdown closes admission. The registry retains at most **256
+records**; oldest finished records expire first and then return `404`. Running
+records are never evicted. Registry/history is in-memory, not durable audit data.
+
+The Unix listener admits at most **128 connections**, refusing excess connections
+before request parsing. Headers have a 5-second budget and the whole HTTP request
+read (including its body) has a 15-second budget. Idle keep-alive expires after
+60 seconds. These read budgets do not terminate SSE responses; upgraded exec
+sessions retain their separate frame/session deadlines. Slow-body tests and real
+interactive CLI/KVM gates cover this distinction.
 
 ## Streams and cursors
 

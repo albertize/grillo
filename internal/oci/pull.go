@@ -44,7 +44,10 @@ func (p *Puller) maxBlobBytes() int64 {
 // Pull resolves ref (following an index to the target platform), fetches the
 // manifest, config, and layers into the CAS, and verifies every digest and size.
 func (p *Puller) Pull(ctx context.Context, ref Reference) (PulledImage, error) {
-	data, mediaType, err := p.Registry.FetchManifest(ctx, ref)
+	if p == nil || p.CAS == nil {
+		return PulledImage{}, fmt.Errorf("oci: pull requires a CAS")
+	}
+	data, mediaType, err := p.manifest(ctx, ref)
 	if err != nil {
 		return PulledImage{}, err
 	}
@@ -60,9 +63,17 @@ func (p *Puller) Pull(ctx context.Context, ref Reference) (PulledImage, error) {
 		child := ref
 		child.Tag = ""
 		child.Digest = descriptor.Digest
-		data, _, err = p.Registry.FetchManifest(ctx, child)
+		// Retain the verified index too: it binds the requested pin to the
+		// selected platform manifest during subsequent offline resolution.
+		if err := p.CAS.PutBytes("sha256:"+sha256Hex(data), data); err != nil {
+			return PulledImage{}, err
+		}
+		data, _, err = p.manifest(ctx, child)
 		if err != nil {
 			return PulledImage{}, err
+		}
+		if int64(len(data)) != descriptor.Size {
+			return PulledImage{}, ErrSizeMismatch
 		}
 		ref = child
 	}
@@ -76,6 +87,9 @@ func (p *Puller) Pull(ctx context.Context, ref Reference) (PulledImage, error) {
 	}
 	if err := p.CAS.PutBytes(manifestDigest, data); err != nil {
 		return PulledImage{}, err
+	}
+	if manifest.Config.Size > DefaultMaxManifestBytes {
+		return PulledImage{}, fmt.Errorf("oci: config exceeds metadata byte limit")
 	}
 	if err := p.fetchBlob(ctx, ref, manifest.Config.Digest, manifest.Config.Size); err != nil {
 		return PulledImage{}, fmt.Errorf("oci: config %s: %w", manifest.Config.Digest, err)
@@ -158,7 +172,13 @@ func (p *Puller) layerDiffID(layer Descriptor, budget *unpackBudget) (string, er
 }
 
 func (p *Puller) fetchBlob(ctx context.Context, ref Reference, digest string, size int64) error {
+	if p.CAS.Has(digest) {
+		return p.verifyBlob(ctx, digest, size)
+	}
 	return p.CAS.Fetch(ctx, digest, func(ctx context.Context) (io.ReadCloser, int64, error) {
+		if p.Registry == nil {
+			return nil, 0, fmt.Errorf("%w: offline image is incomplete", ErrNotFound)
+		}
 		body, length, err := p.Registry.OpenBlob(ctx, ref, digest)
 		if err != nil {
 			return nil, 0, err
@@ -177,7 +197,7 @@ func (p *Puller) readBlob(digest string) ([]byte, error) {
 		return nil, err
 	}
 	defer f.Close()
-	return io.ReadAll(f)
+	return readLimited(f, DefaultMaxManifestBytes)
 }
 
 func sha256Hex(data []byte) string {

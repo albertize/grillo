@@ -56,10 +56,33 @@ proxies run in that namespace; readiness controls eligible endpoints. Host
 publishing uses loopback listeners and basic Ingress fallback routes. Applications
 are isolated even when they reuse logical names/addresses.
 
+The host TCP publication primitive admits **128 simultaneous connections per
+listener**, immediately closing excess peers without a worker queue. Its
+connections have a **five-minute total read/write lifetime**; applications using
+long-lived TCP sessions must reconnect. Both copy directions preserve half-close
+responses and finish before shutdown returns. These are operational limits, not
+unlimited TCP-session compatibility or guest-network benchmark claims.
+
 virtiofsd exposes declared filesystem shares. Managed/PVC storage has owner-bound
 leases and explicit retention; repeated down is safe and does not delete bind
 paths. Unsupported multi-VM writable sharing is rejected. Host-originated
 virtiofs notifications are degraded, so file watchers need polling.
+
+`grillod --volume-image-bytes N` opts new non-bind volumes into fixed raw ext4
+images mounted in the guest through virtio-blk. Private, interprocess admission
+bounds total image geometry and image count; actual filesystem ENOSPC bounds
+guest data writes. Default 0 retains directory mode. No host mount/sudo,
+automatic resize/migration or bind quota is implied. The reviewed mke2fs 1.47.3
+formatter is only required in this mode; usable payload is smaller than geometry.
+[ADR 0014](adr/0014-fixed-size-block-volume-quotas.md) records crash/repair and
+compatibility limits. Native RUN workspaces remain writable virtiofs and require
+separate real enforcement; CAS/rootfs logical quotas are not that enforcement.
+
+Explicit digest OCI references can reuse only a verified cached index/manifest
+and config/layer graph, including blob digest/size checks. Mutable tags still
+contact the registry; local mutable labels cannot replace a requested digest.
+Config/local metadata is limited to 8 MiB. Seeded installed tests clearly
+separate cache reuse from fresh online registry measurements.
 
 The selected backend is QEMU/virtiofsd ([ADR 0005](adr/0005-platform-qemu-virtiofsd.md));
 Firecracker was evaluated but cannot provide the required live shared-filesystem

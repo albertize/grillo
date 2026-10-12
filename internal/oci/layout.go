@@ -156,7 +156,7 @@ func layoutBlobPath(dir, digest string) (string, error) {
 // the CAS. It lets locally built images be used as build bases or run without a
 // registry round trip.
 func LoadPulled(cas *CAS, manifestDigest string) (PulledImage, error) {
-	manifestData, err := cas.Read(manifestDigest)
+	manifestData, err := readStoredMetadata(cas, manifestDigest)
 	if err != nil {
 		return PulledImage{}, err
 	}
@@ -164,13 +164,35 @@ func LoadPulled(cas *CAS, manifestDigest string) (PulledImage, error) {
 	if err != nil {
 		return PulledImage{}, err
 	}
-	configData, err := cas.Read(manifest.Config.Digest)
+	if manifest.Config.Size > DefaultMaxManifestBytes {
+		return PulledImage{}, fmt.Errorf("oci: config exceeds metadata byte limit")
+	}
+	configData, err := readStoredMetadata(cas, manifest.Config.Digest)
 	if err != nil {
 		return PulledImage{}, err
+	}
+	if int64(len(configData)) != manifest.Config.Size {
+		return PulledImage{}, ErrSizeMismatch
 	}
 	config, err := ParseImageConfig(configData)
 	if err != nil {
 		return PulledImage{}, err
 	}
 	return PulledImage{Manifest: manifest, ManifestDigest: manifestDigest, Config: config}, nil
+}
+
+func readStoredMetadata(cas *CAS, digest string) ([]byte, error) {
+	file, err := cas.Open(digest)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+	data, err := readLimited(file, DefaultMaxManifestBytes)
+	if err != nil {
+		return nil, err
+	}
+	if "sha256:"+sha256Hex(data) != digest {
+		return nil, ErrBlobCorrupt
+	}
+	return data, nil
 }

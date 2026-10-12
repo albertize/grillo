@@ -18,8 +18,18 @@ scans do not clear stdlib vulnerabilities. [Actual pinned Go 1.26.9 local rebuil
 passed advisory/check/fuzz/browser/KVM gates at that pin. The current pin is
 **Go 1.27.2**, matching the user's installed upstream toolchain; `make check`
 passes locally. Bounded [Chrome/browser Terminal and dependency KVM gates](experiments/t24-browser-terminal-compose-dependencies.md)
-now pass on 1.27.2; the full hardening/advisory/fuzz campaigns have not been rerun.
-Hosted rerun and external-tool/old-running-process security remain separate.
+now pass on 1.27.2. The new [autonomous local campaign](experiments/t24-autonomous-local-campaign.md)
+records current advisory/check/race, five 5-minute fuzz targets and sequential
+KVM gates PASS, plus new API/TCP admission and resource collectors. Its final
+30-repeat resource gate failed on registry HTTP 429 (earlier batch PASS); that
+failure is retained. The [continuation](experiments/t24-pinned-cache-block-quota-sources.md)
+now records a real live fixture pull, verified digest-only offline reuse, actual
+opt-in ext4 volume ENOSPC/persistence and 30-repeat seeded local budgets PASS.
+Legacy/bind volume writes and native RUN workspaces remain unbounded; full
+load/performance/source/release acceptance remains BLOCKED. New binary advisory
+scans FAIL (runc 14, Helm 15 reported vulnerabilities); the clean Grillo source
+scan does not clear those artifacts. Hosted rerun/independent-host acceptance
+remain unavailable.
 
 Container stdout/stderr now reaches the bounded guest ring and host spool, with
 explicit guest-retention gaps; [real pipeline evidence](experiments/t24-guest-logs.md).
@@ -62,7 +72,7 @@ See [compatibility](compatibility.md) and [console limits](ui.md#explicit-mvp-li
 | T21 | Helm rendering and OCI charts | DONE | Real Helm package/template, local/OCI equivalence, explicit HTTPS fetch, verified atomic cache, stable offline plans, archive/corruption/concurrency/dependency restrictions; `docs/experiments/t21-helm-renderer.md` |
 | T22 | Helm gate and compatibility reporting | DONE | Full direct-runtime scenario C plus actual CLI/daemon chart gate PASS; unsupported provisioning blocked; compiler registry/counts and consumer/PVC semantics verified |
 | T23 | Web console and secure bridge | DONE | React/PatternFly (ADR 0008), metadata-only views, bounded logs/SSE/captured Exec; [interactive Pod Terminal + Chrome/KVM](experiments/t24-browser-terminal-compose-dependencies.md) now PASS; original Firefox evidence remains historical, full terminal emulation/data limits explicit |
-| T24 | F3 MVP gate and hardening | BLOCKED | [100 verified boots](experiments/t24-closure-campaign.md) PASS; [Pinned Go 1.26.9 local gates PASS](experiments/t24-go126-toolchain.md); old hosted advisory FAIL/rerun pending, clean-host, delivery and full budgets/quota/load/provenance remain |
+| T24 | F3 MVP gate and hardening | BLOCKED | [100 verified boots](experiments/t24-closure-campaign.md) PASS; [current volume/seeded-budget/source evidence](experiments/t24-pinned-cache-block-quota-sources.md); external binary advisory FAIL, workspace/full load/source clearance and hosted/clean-host gates remain |
 | T25 | StatefulSet and Job | TODO | T24 |
 | T26 | Extended Tier 1/Tier 2 parity and TLS | TODO | T25 |
 | T27 | Measured optimization and packaging | TODO | T24; T26 for complete F4 |
@@ -89,31 +99,42 @@ subsequent edit or that the whole product is release-ready.
 
 ## Latest delivery
 
-- **Task:** T24/D0 — README entrypoint and leaf-pattern wordmark banner, documentation slice.
-- **Status:** DONE for README/banner delivery; T24/D0 overall remain BLOCKED.
-- **Dependencies verified:** Current source setup guide, compatibility/progress
-  and console evidence; supplied leaf-G icon, cricket illustration and UI snapshot.
-- **Files and contracts changed:** `README.md`, `media/grillo-banner{.source.svg,.svg,.png}`,
-  `media/README.md`, this record and [history](history/implementation-log.md).
-  No runtime/build/API changes; staged environment setup and original media retained.
-- **Decisions/ADRs:** No new architecture decision. Self-contained petrol banner
-  with the supplied leaf-G, outlined Red Hat Display wordmark and original faint
-  leaf motif replaces the separate header icon/title. Existing OFL notice linked;
-  no reference artwork copied. Editable SVG and 2x PNG included. Supplied console
-  snapshot and cricket illustration remain separate; no benchmark claim.
-- **Tests run:** Existing installed Inkscape SVG/PNG export PASS; PNG visually
-  inspected. Python XML/PNG validation PASS (1024x256 vector, 2048x512 raster,
-  internal references, no external resources/script or live text in published SVG).
-  README/link/alt/H1/fence and diff checks PASS; Bash setup retained.
-- **Tests NOT run and why:** `make check`, browser/KVM and benchmarks not rerun for
-  documentation-only changes. Hosted GitHub rendering not verified locally.
-- **Integration/benchmark evidence:** None new. README links actual existing
-  terminal/runtime evidence rather than treating the supplied image as a new gate.
-- **Known limitations:** Experimental Linux/amd64/KVM status, no supported release,
-  host-policy/compatibility/security boundaries and T24/D0 blockers preserved.
-- **Next task:** Review hosted README/banner rendering when published; continue prior
-  Firefox/terminal/accessibility and T24/D0 hardening work. Prior terminal delivery
-  and failed trials remain in history and its linked report.
+- **Task:** T24 — digest-pinned OCI reuse, real opt-in volume quotas, local budgets and corresponding-source inputs.
+- **Status:** BLOCKED overall; bounded delivered contracts have local evidence,
+  not complete workspace/load/security/source/release acceptance.
+- **Dependencies verified:** T09 CAS/registry, T10 storage leases, guest block mounts,
+  T18 native workspace boundary and T23 installed Compose/Helm/UI contracts;
+  reviewed formatter, current rebuilt guest/binaries and real KVM available.
+- **Files and contracts changed:** `internal/oci`, resolver digest fidelity,
+  `internal/storage`/executor virtio-blk mapping and daemon flags; provisioning,
+  source-inventory/local-budget scripts, positive/negative/failure/race/KVM tests,
+  Make targets, architecture/compatibility/testing/acceptance docs and receipts.
+- **Decisions/ADRs:** [ADR 0014](adr/0014-fixed-size-block-volume-quotas.md) Proposed;
+  no automatic host mounts/sudo/migration/bind deletion or default quota claim.
+  Mutable tags stay online; seeded measurements are explicitly identified.
+- **Tests run:** `make check vulncheck test-t24-volume-load test-t24-volume-quota`
+  PASS; final routine/advisory/KVM rerun and five 10-second fuzz targets PASS.
+  Three successful rebuilt 30-repeat seeded installed batches, including
+  `make test-t24-resource-budget`, PASS without KVM skips. Source checksums and
+  actual signatures passed within stated scope. External binary advisory scans
+  **FAIL**, reporting 14 runc and 15 Helm vulnerabilities. Initial seeded daemon
+  permission failure and receipt-parser failure are preserved in the report.
+- **Tests NOT run and why:** Hosted/independent-host receipts unavailable; native
+  workspace path, full crash/repair/guest-network/peak/load acceptance and exact
+  build/source/notices redistribution gates remain incomplete. No fresh-online
+  30-pull budget is substituted by seed reuse.
+- **Integration/benchmark evidence:** [Continuation report](experiments/t24-pinned-cache-block-quota-sources.md),
+  [candidate local budgets](experiments/t24-seeded-resource-budgets.json),
+  [19 source inputs/83 crates](experiments/t24-component-source-inputs.json).
+- **Known limitations:** Legacy/bind/RUN writes are unbounded; usable volume payload
+  is below geometry; sparse allocation and no journal/repair gate; observed RSS
+  not instantaneous peak/PSS; fuzz stalls; source inputs are not legal clearance;
+  external binary findings prevent security acceptance. Failed owned state retained.
+- **Next task:** Complete real bounded native COPY/RUN/export/staging workspaces;
+  deliberately rebuild/replace reviewed runc/Helm to address findings and collect
+  exact build lineage, then broader load/source/host gates. No T25 or release
+  publication. The user subsequently authorized commit/push of this delivery;
+  that authorization does not close the remaining acceptance gates.
 
 ## Updating progress
 

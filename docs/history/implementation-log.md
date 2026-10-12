@@ -6,6 +6,65 @@ superseded summaries. They are not current support claims; use
 [current progress](../progress.md) and [compatibility](../compatibility.md).
 
 
+## Archived T24 autonomous campaign (superseded by 2026-10-12 continuation)
+
+- **Task:** T24 — autonomous local admission, resource/security campaign and acceptance preparation.
+- **Status:** BLOCKED; six requested work areas and T24/D0 overall are not complete.
+- **Dependencies verified:** T23, CAS/rootfs quotas, verified runtime-only guest,
+  installed prefix and prior license inventory contracts.
+- **Files and contracts changed:** API operation/history/connection bounds,
+  TCP publication admission/lifetime/shutdown; positive/negative/slow-input/race
+  tests; real installed resource collector and loopback benchmarks; Make targets;
+  API/architecture/compatibility/testing docs, [acceptance checklist](../t24-acceptance.md),
+  current inventories/evidence and history.
+- **Decisions/ADRs:** No new dependency/backend/ADR in that delivery. Explicit
+  per-daemon/per-listener budgets; no unbounded queues, fake volume enforcement
+  or release clearance.
+- **Tests run:** `make check`, advisory/npm scans, 5x5-minute fuzz, repeated
+  cache/admission race campaigns and sequential rebuilt KVM gates PASS. First
+  30-repeat installed resource batch PASS; final rebuilt repeat FAIL on registry
+  HTTP 429 and failed-resolution cleanup. `-failfast` added to prevent repeated
+  failing artifact copies; full results in the linked report.
+- **Tests NOT run and why:** Hosted rerun and complete clean external-host
+  receipts unavailable; full guest/volume/workspace quotas, load/peak-disk budgets
+  and corresponding-source/release gates not implemented/cleared.
+- **Integration/benchmark evidence:** [Local campaign](../experiments/t24-autonomous-local-campaign.md),
+  100 verified boots, earlier 30 fresh/warm application observations and final
+  isolated 30-repeat loopback benchmarks; no full budget acceptance.
+- **Known limitations at that delivery:** Fuzz stalls, sampled RSS not instantaneous
+  peaks/PSS; online rate limits; failed test-owned state retained; missing actual
+  volume-write enforcement and guest/Helm source/provenance inputs.
+- **Next task then:** Real volume/workspace enforcement and complete budgets;
+  deliberate registry provisioning, exact sources and hosted/external acceptance.
+  [Continuation](../experiments/t24-pinned-cache-block-quota-sources.md) now adds
+  opt-in volume enforcement, seeded budgets and source inputs while retaining
+  these failed gates and the remaining workspace/security/release blockers.
+
+## Archived README/banner delivery
+
+- **Task:** T24/D0 — README entrypoint and leaf-pattern wordmark banner, documentation slice.
+- **Status:** DONE for README/banner delivery; T24/D0 overall remain BLOCKED.
+- **Dependencies verified:** Current source setup guide, compatibility/progress
+  and console evidence; supplied leaf-G icon, cricket illustration and UI snapshot.
+- **Files and contracts changed:** `README.md`, `media/grillo-banner{.source.svg,.svg,.png}`,
+  `media/README.md`, progress and history. No runtime/build/API changes;
+  staged environment setup and original media retained.
+- **Decisions/ADRs:** No new architecture decision. Self-contained petrol banner
+  with supplied leaf-G, outlined Red Hat Display wordmark and original faint
+  leaf motif; existing OFL notice linked, no reference artwork copied.
+  Editable SVG and 2x PNG included; no benchmark claim.
+- **Tests run:** Existing installed Inkscape SVG/PNG export PASS; PNG visually
+  inspected. Python XML/PNG validation PASS (1024x256 vector, 2048x512 raster,
+  internal references, no external resources/script or live published text).
+  README/link/alt/H1/fence and diff checks PASS; Bash setup retained.
+- **Tests NOT run:** `make check`, browser/KVM and benchmarks not rerun for
+  documentation-only changes; hosted GitHub rendering not verified locally.
+- **Evidence/limitations:** None new; linked existing terminal/runtime evidence.
+  Experimental Linux/amd64/KVM, no supported release; host-policy/compatibility/
+  security boundaries and T24/D0 blockers preserved.
+- **Next task:** Review hosted README/banner rendering; continue terminal/
+  accessibility and T24/D0 hardening. Failed prior terminal trials preserved.
+
 ## Archived xterm-compatible browser terminal delivery
 
 - **Task:** T23/T24 — xterm-compatible interactive browser terminal.

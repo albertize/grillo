@@ -27,6 +27,8 @@ test-scripts:
 	bash scripts/payload_test.sh
 	PYTHONDONTWRITEBYTECODE=1 python3 scripts/go_toolchain_test.py
 	PYTHONDONTWRITEBYTECODE=1 python3 scripts/prepare_env_test.py
+	PYTHONDONTWRITEBYTECODE=1 python3 scripts/source_inventory_test.py
+	PYTHONDONTWRITEBYTECODE=1 python3 scripts/t24_resource_budget_test.py
 
 race:
 	CGO_ENABLED=1 $(GO) test -race ./...
@@ -180,6 +182,41 @@ test-installed-runtime: runtime-guest
 .PHONY: test-t24-verified-lifecycle
 test-t24-verified-lifecycle: runtime-guest
 	GRILLO_TEST_GUEST_SELECTION='$(RUNTIME_SELECTION)' $(GO) test -tags kvm -count=1 -v -timeout 600s -run '^TestKVMVerifiedRuntimeLifecycle$$' ./internal/backend/qemu/
+
+# T24 real application resource samples. Fresh private cache per test, followed
+# by warm-cache restart. Does not flush host page caches or fetch registry images.
+T24_SEED_CAS ?=
+T24_FIXTURE_OUTPUT ?=
+.PHONY: test-t24-resources bench-t24-network test-t24-admission prepare-t24-fixture
+# Explicit one-time Docker Hub provisioning, never an automatic test prerequisite.
+prepare-t24-fixture: check-go
+	@test -n '$(T24_FIXTURE_OUTPUT)' || { echo 'Provide a new T24_FIXTURE_OUTPUT; this target explicitly contacts Docker Hub.'; exit 1; }
+	$(GO) run ./scripts/t24-fixture -out '$(T24_FIXTURE_OUTPUT)'
+test-t24-resources: runtime-guest
+	@test -n '$(HELM_BINARY)' -a -n '$(HELM_SHA256)' || { echo 'Provide an explicit trusted HELM_BINARY and HELM_SHA256.'; exit 1; }
+	GRILLO_TEST_RESOURCE_CAMPAIGN=1 GRILLO_TEST_SEED_CAS='$(T24_SEED_CAS)' GRILLO_TEST_HELM_BINARY='$(HELM_BINARY)' GRILLO_TEST_HELM_SHA256='$(HELM_SHA256)' GRILLO_TEST_GUEST_SELECTION='$(RUNTIME_SELECTION)' $(GO) test -tags kvm -count=30 -failfast -v -timeout 900s -run '^TestKVMInstalledRuntime$$' ./internal/distribution/
+
+bench-t24-network: check-go
+	GOMAXPROCS=2 $(GO) test ./internal/network -run '^$$' -bench '^Benchmark(DNSLoopbackUDP|ProxyLoopbackTCP)$$' -benchtime=500ms -count=30 -timeout 180s
+
+test-t24-admission: check-go
+	$(GO) test -race -count=30 -timeout 180s -run 'TestOperations|TestAPIAdmission|TestAPIConnectionAdmission|TestProxyAdmission|TestProxyPreserves|TestProxyWholeDeadline' ./internal/api ./internal/network
+
+# Candidate local seeded-CAS budgets; retain a unique complete process receipt.
+.PHONY: test-t24-resource-budget
+test-t24-resource-budget:
+	@test -n '$(T24_SEED_CAS)' || { echo 'T24_SEED_CAS is required for the seeded budget profile'; exit 1; }
+	@log=$$(mktemp /tmp/grillo-t24-budget.XXXXXX); echo "Resource receipt: $$log"; \
+	  $(MAKE) --no-print-directory test-t24-resources >"$$log" 2>&1 || { tail -20 "$$log"; exit 1; }; \
+	  PYTHONDONTWRITEBYTECODE=1 python3 scripts/t24-resource-budget.py --log "$$log"
+
+# Real fixed-geometry ext4 ENOSPC/persistence through the production executor.
+.PHONY: test-t24-volume-quota test-t24-volume-load
+test-t24-volume-quota: t07-guest
+	$(GO) test -tags kvm -count=1 -v -timeout 180s -run '^TestKVMBoundedVolumeENOSPCPersistence$$' ./internal/executor/
+
+test-t24-volume-load: check-go
+	$(GO) test -race -count=30 -timeout 180s -run '^TestBlock' ./internal/storage/
 
 # D0 portable inventory gate with a rebuilt development fixture, not a release guest.
 .PHONY: test-d0-manifest
