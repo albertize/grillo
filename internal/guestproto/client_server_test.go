@@ -52,12 +52,17 @@ func testHandler() Handler {
 
 func newPair(t *testing.T, handler Handler) *Client {
 	t.Helper()
+	return newPairCapabilities(t, handler, []Capability{CapExec, CapProbe})
+}
+
+func newPairCapabilities(t *testing.T, handler Handler, capabilities []Capability) *Client {
+	t.Helper()
 	serverConn, clientConn := net.Pipe()
 	cfg := HandshakeConfig{
 		Sandbox:      "sbx-1",
 		Key:          testKey(1),
 		Agent:        "agent",
-		Capabilities: []Capability{CapExec, CapProbe},
+		Capabilities: capabilities,
 	}
 	srvCh := make(chan *Server, 1)
 	go func() {

@@ -25,6 +25,58 @@ func TestUnpackFiniteDefaultsAndInvalidLimits(t *testing.T) {
 	}
 }
 
+func TestUnpackEnclosingBudgetRunsBeforePayloadAndWhiteouts(t *testing.T) {
+	denied := errors.New("enclosing operation denied entry")
+	for _, name := range []string{"nested/file", ".wh.keep"} {
+		t.Run(name, func(t *testing.T) {
+			root := t.TempDir()
+			if err := os.WriteFile(filepath.Join(root, "keep"), []byte("keep"), 0600); err != nil {
+				t.Fatal(err)
+			}
+			layer := buildTar(t, tarEntry{name: name, typeflag: tar.TypeReg, mode: 0600, body: []byte("abc")})
+			called := false
+			err := UnpackLayer(root, bytes.NewReader(layer), false, UnpackOptions{BeforeEntry: func(got string, size int64) error {
+				called = true
+				if got != name || size != 3 {
+					t.Fatalf("reservation: %q %d", got, size)
+				}
+				return denied
+			}})
+			if !called || !errors.Is(err, denied) {
+				t.Fatal("reservation error lost", err)
+			}
+			entries, err := os.ReadDir(root)
+			if err != nil || len(entries) != 1 || entries[0].Name() != "keep" {
+				t.Fatal("rejected entry changed tree", err)
+			}
+		})
+	}
+}
+
+func TestUnpackEnclosingBudgetPersistsAcrossImages(t *testing.T) {
+	layer := buildTar(t, tarEntry{name: "file", typeflag: tar.TypeReg, mode: 0600, body: []byte("abc")})
+	puller, image := quotaTestImage(t, layer)
+	remaining := int64(3)
+	denied := errors.New("aggregate budget exhausted")
+	opts := UnpackOptions{BeforeEntry: func(_ string, payload int64) error {
+		if payload > remaining {
+			return denied
+		}
+		remaining -= payload
+		return nil
+	}}
+	if err := puller.Unpack(image, t.TempDir(), opts); err != nil {
+		t.Fatal("first image", err)
+	}
+	root := t.TempDir()
+	if err := puller.Unpack(image, root, opts); !errors.Is(err, denied) {
+		t.Fatal("budget reset between images", err)
+	}
+	if entries, _ := os.ReadDir(root); len(entries) != 0 {
+		t.Fatal("over-budget second image created payload")
+	}
+}
+
 func TestUnpackDefaultRejectsOversizedHeaderWithoutAllocatingPayload(t *testing.T) {
 	var layer bytes.Buffer
 	writer := tar.NewWriter(&layer)

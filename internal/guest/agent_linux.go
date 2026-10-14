@@ -35,7 +35,8 @@ type Agent struct {
 	dnsMu sync.Mutex
 	dns   interface{ Close() error }
 
-	buildSeq uint64
+	buildSeq  uint64
+	buildBusy bool
 }
 
 type containerState struct {
@@ -84,6 +85,8 @@ func (a *Agent) Handle(ctx context.Context, req guestproto.Message, stream *gues
 		return a.restart(ctx, req)
 	case guestproto.TypeRun:
 		return a.run(ctx, req, stream)
+	case guestproto.TypeExport:
+		return a.export(ctx, req, stream)
 	default:
 		return nil, guestproto.Errorf(guestproto.CodeUnsupported, "message type %s", req.Type)
 	}
@@ -109,6 +112,11 @@ func (a *Agent) start(ctx context.Context, req guestproto.Message) (any, *guestp
 	a.sandbox = *sr.Sandbox
 	if err := MountShares(a.sandbox.Shares); err != nil {
 		return nil, guestproto.Errorf(guestproto.CodeInternal, "%v", err)
+	}
+	if a.sandbox.BuildSeed != nil {
+		if err := populateBuildSeed(ctx, a.sandbox); err != nil {
+			return nil, guestproto.Errorf(guestproto.CodeInternal, "populate block build root: %v", err)
+		}
 	}
 	var networkReaper *Reaper
 	if runtime, ok := a.Runtime.(*Runc); ok {
@@ -176,7 +184,7 @@ func (a *Agent) start(ctx context.Context, req guestproto.Message) (any, *guestp
 
 // run executes one build command against a mounted share. The share target is
 // chosen by the agent, not the caller, so a build cannot chroot elsewhere.
-func (a *Agent) run(ctx context.Context, req guestproto.Message, stream *guestproto.Stream) (any, *guestproto.Error) {
+func (a *Agent) run(ctx context.Context, req guestproto.Message, stream *guestproto.Stream) (result any, perr *guestproto.Error) {
 	var rr guestproto.RunRequest
 	if err := guestproto.UnmarshalPayload(req.Payload, &rr); err != nil {
 		return nil, guestproto.Errorf(guestproto.CodeBadRequest, "%v", err)
@@ -185,14 +193,29 @@ func (a *Agent) run(ctx context.Context, req guestproto.Message, stream *guestpr
 		return nil, guestproto.Errorf(guestproto.CodeBadRequest, "run requires a share and a command")
 	}
 	a.mu.Lock()
+	if !a.started || !a.sandbox.Build || a.buildBusy {
+		a.mu.Unlock()
+		return nil, guestproto.Errorf(guestproto.CodeBusy, "build sandbox is unavailable or busy")
+	}
 	target, ok := a.buildShareTarget(rr.Share)
 	sandbox := a.sandbox
 	a.buildSeq++
 	seq := a.buildSeq
+	if ok {
+		a.buildBusy = true
+	}
 	a.mu.Unlock()
 	if !ok {
 		return nil, guestproto.Errorf(guestproto.CodeBadRequest, "unknown build share %q", rr.Share)
 	}
+	retainBusy := false
+	defer func() {
+		a.mu.Lock()
+		if !retainBusy {
+			a.buildBusy = false
+		}
+		a.mu.Unlock()
+	}()
 	name := fmt.Sprintf("grillo-build-%d", seq)
 	spec := guestproto.ContainerSpec{
 		Name:       name,
@@ -207,7 +230,15 @@ func (a *Agent) run(ctx context.Context, req guestproto.Message, stream *guestpr
 	if err := WriteBundle(bundle, spec, sandbox); err != nil {
 		return nil, guestproto.Errorf(guestproto.CodeInternal, "%v", err)
 	}
-	defer func() { _ = a.Runtime.Delete(ctx, name, true) }()
+	defer func() {
+		cleanupCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := a.Runtime.Delete(cleanupCtx, name, true); err != nil {
+			retainBusy = true
+			result = nil
+			perr = guestproto.Errorf(guestproto.CodeInternal, "build RUN cleanup failed; recreate the build sandbox")
+		}
+	}()
 	var stdout, stderr io.Writer = io.Discard, io.Discard
 	if stream != nil {
 		stdout = stream

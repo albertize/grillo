@@ -4,14 +4,17 @@ package build
 
 import (
 	"archive/tar"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
+	"syscall"
 	"time"
 )
 
@@ -35,62 +38,88 @@ func (e fileEntry) equal(other fileEntry) bool {
 // snapshotTree records every regular file, directory, and symlink under root.
 // Special files are rejected because they cannot be represented safely in an
 // OCI layer.
-func snapshotTree(root string) (map[string]fileEntry, error) {
+func snapshotTreeContext(ctx context.Context, root string, maxEntries int64) (map[string]fileEntry, error) {
 	entries := map[string]fileEntry{}
-	err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		if path == root {
-			return nil
-		}
-		rel, err := filepath.Rel(root, path)
-		if err != nil {
-			return err
-		}
-		rel = filepath.ToSlash(rel)
-		info, err := os.Lstat(path)
-		if err != nil {
-			return err
-		}
-		entry := fileEntry{mode: int64(info.Mode().Perm()) | specialBits(info.Mode()), modTime: info.ModTime()}
-		switch {
-		case info.Mode()&os.ModeSymlink != 0:
-			entry.isLink = true
-			target, err := os.Readlink(path)
-			if err != nil {
-				return err
-			}
-			entry.link = target
-		case info.IsDir():
-			entry.isDir = true
-		case info.Mode().IsRegular():
-			entry.size = info.Size()
-			sum, err := hashFile(path)
-			if err != nil {
-				return err
-			}
-			entry.hash = sum
-		default:
-			return fmt.Errorf("build: %s is a special file and cannot be captured in an image", rel)
-		}
-		entries[rel] = entry
-		return nil
-	})
-	return entries, err
-}
-
-func hashFile(path string) (string, error) {
-	f, err := os.Open(path)
+	confined, err := os.OpenRoot(root)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
-	defer f.Close()
-	hasher := sha256.New()
-	if _, err := io.Copy(hasher, f); err != nil {
-		return "", err
+	defer confined.Close()
+	var walk func(string) error
+	walk = func(dir string) error {
+		if strings.Count(filepath.ToSlash(dir), "/") >= maxWorkspaceDepth {
+			return ErrWorkspaceLimit
+		}
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		f, err := confined.Open(dir)
+		if err != nil {
+			return err
+		}
+		defer f.Close()
+		for {
+			if err := ctx.Err(); err != nil {
+				return err
+			}
+			batch, readErr := f.ReadDir(128)
+			for _, d := range batch {
+				if int64(len(entries)) >= maxEntries {
+					return ErrWorkspaceLimit
+				}
+				rel := filepath.Join(dir, d.Name())
+				info, err := confined.Lstat(rel)
+				if err != nil {
+					return err
+				}
+				entry := fileEntry{mode: int64(info.Mode().Perm()) | specialBits(info.Mode()), modTime: info.ModTime()}
+				switch {
+				case info.Mode()&os.ModeSymlink != 0:
+					entry.isLink = true
+					entry.link, err = confined.Readlink(rel)
+					if err != nil {
+						return err
+					}
+				case info.IsDir():
+					entry.isDir = true
+				case info.Mode().IsRegular():
+					entry.size = info.Size()
+					file, err := confined.OpenFile(rel, os.O_RDONLY|syscall.O_NONBLOCK|syscall.O_NOFOLLOW, 0)
+					if err != nil {
+						return err
+					}
+					opened, statErr := file.Stat()
+					if statErr != nil || !opened.Mode().IsRegular() || !os.SameFile(info, opened) || opened.Size() != info.Size() {
+						file.Close()
+						return errors.New("build: snapshot file changed while opening")
+					}
+					hasher := sha256.New()
+					_, copyErr := io.CopyN(hasher, contextReader{ctx, file}, info.Size())
+					file.Close()
+					if copyErr != nil {
+						return copyErr
+					}
+					entry.hash = "sha256:" + hex.EncodeToString(hasher.Sum(nil))
+				default:
+					return fmt.Errorf("build: %s is a special file and cannot be captured in an image", rel)
+				}
+				entries[filepath.ToSlash(rel)] = entry
+				if entry.isDir {
+					if err := walk(rel); err != nil {
+						return err
+					}
+				}
+			}
+			if readErr == io.EOF {
+				return nil
+			}
+			if readErr != nil {
+				return readErr
+			}
+		}
 	}
-	return "sha256:" + hex.EncodeToString(hasher.Sum(nil)), nil
+	err = walk(".")
+	return entries, err
 }
 
 func specialBits(mode os.FileMode) int64 {
@@ -116,8 +145,8 @@ type fileOwner struct {
 // writeDiffLayer writes a tar layer containing only the changes between base and
 // the current tree rooted at root: added and modified entries, and whiteouts
 // for deletions. It returns the number of tar entries written.
-func writeDiffLayer(base map[string]fileEntry, root string, owners map[string]fileOwner, w io.Writer) (int, error) {
-	current, err := snapshotTree(root)
+func writeDiffLayerContext(ctx context.Context, base map[string]fileEntry, root string, owners map[string]fileOwner, w io.Writer) (int, error) {
+	current, err := snapshotTreeContext(ctx, root, DefaultMaxHostEntries)
 	if err != nil {
 		return 0, err
 	}
@@ -150,9 +179,17 @@ func writeDiffLayer(base map[string]fileEntry, root string, owners map[string]fi
 		return changed[i] < changed[j]
 	})
 
+	confined, err := os.OpenRoot(root)
+	if err != nil {
+		return 0, err
+	}
+	defer confined.Close()
 	tw := tar.NewWriter(w)
 	written := 0
 	writeEntry := func(header *tar.Header) error {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		if owners != nil {
 			if owner, ok := owners[header.Name]; ok {
 				header.Uid, header.Gid = owner.uid, owner.gid
@@ -217,11 +254,16 @@ func writeDiffLayer(base map[string]fileEntry, root string, owners map[string]fi
 			if err := writeEntry(header); err != nil {
 				return written, err
 			}
-			file, err := os.Open(filepath.Join(root, filepath.FromSlash(rel)))
+			file, err := confined.OpenFile(filepath.FromSlash(rel), os.O_RDONLY|syscall.O_NONBLOCK|syscall.O_NOFOLLOW, 0)
 			if err != nil {
 				return written, err
 			}
-			if _, err := io.Copy(tw, file); err != nil {
+			info, err := file.Stat()
+			if err != nil || !info.Mode().IsRegular() || info.Size() != entry.size {
+				file.Close()
+				return written, errors.New("build: layer file changed while opening")
+			}
+			if _, err := io.CopyN(tw, contextReader{ctx, file}, entry.size); err != nil {
 				file.Close()
 				return written, err
 			}

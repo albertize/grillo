@@ -6,6 +6,118 @@ superseded summaries. They are not current support claims; use
 [current progress](../progress.md) and [compatibility](../compatibility.md).
 
 
+## Archived T24 agent-owned build export (2026-10-14)
+
+- **Task:** T24 — agent-owned bounded build export and private host snapshot extraction.
+- **Status:** BLOCKED overall; software transfer/extraction prerequisite delivered,
+  block-backed native RUN integration and complete F3/D0 acceptance remain open.
+- **Dependencies verified:** T06 framing/authentication/deadlines, T18/T18b native
+  build/guest runner and cumulative host-write budgets. `/dev/kvm` remains absent.
+- **Files and contracts changed:** `internal/guestproto`, guest agent/export and
+  agent capability advertisement, host snapshot receiver/validator, positive,
+  negative, failure/non-reading-peer tests and documentation. Existing host-write
+  changes remain in the uncommitted checkout.
+- **Decisions/ADRs:** [ADR 0016](../adr/0016-agent-owned-build-export.md) Proposed;
+  optional `build-export` in protocol 1.1, known build-share selection, explicit
+  stream bounds/receipt validation and private budgeted staging. No workload tar,
+  new dependency, host mount or default block-workspace claim.
+- **Tests run:** `go test ./internal/guestproto ./internal/guest ./internal/build`
+  PASS; cache permission failure and authorized rerun retained in
+  [evidence](../experiments/t24-agent-owned-build-export.md). Two `make check` runs
+  PASS (frontend, format, vet, unit/race/scripts, host/agent builds, module audit).
+  Archive fuzz smoke PASS (5 executions in 6 seconds, limited coverage);
+  `make fmt`, Markdown fences/195 local links and `git diff --check` PASS.
+- **Tests NOT run and why:** `make test-builder-kvm`: missing `/dev/kvm`; no
+  guest-initramfs rebuild or hardware claim. No external runc/Helm replacement,
+  advisory rerun, benchmark or independent-host gate in this bounded delivery.
+- **Integration/benchmark evidence:** Authenticated in-memory transport and host
+  extraction tests only; existing
+  [volume/budget/source report](../experiments/t24-pinned-cache-block-quota-sources.md)
+  retains prior real KVM results and unresolved external binary findings.
+- **Known limitations:** Native RUN is still writable virtiofs and does not yet
+  use the export receiver. Block-image population/attachment, COPY/RUN state and
+  metadata adoption, per-step cleanup and hardware acceptance remain open.
+  Snapshot is not atomic against external host edits; root metadata/privilege-bit
+  parity and arbitrary stalled local filesystem I/O deadlines are not claimed.
+- **Next task:** Wire per-step fixed-size block RUN and metadata-aware snapshot
+  adoption; rebuild guest plus binaries and verify real ENOSPC, interleaved
+  COPY/RUN, cancellation/cleanup and failed publication on KVM. Then address
+  runc/Helm lineage/findings and wider load/source/host gates. No T25 or release.
+
+## Archived T24 native host-write budgets (2026-10-14)
+
+- **Task:** T24 — cumulative native host-write budgets and bounded host traversal/staging.
+- **Status:** BLOCKED overall; host-side contracts delivered, guest RUN enforcement
+  and complete F3/D0 acceptance remain open.
+- **Dependencies verified:** T09 OCI extraction/CAS, T18 native COPY/multi-stage
+  builder, T18b guest runner and T23 daemon integration. Existing volume quotas
+  do not enforce native RUN writes. `/dev/kvm` is absent in this environment.
+- **Files and contracts changed:** `internal/build`, OCI enclosing entry
+  reservations, positive/negative/failure tests, architecture/compatibility/testing
+  documentation and [delivery evidence](../experiments/t24-native-host-write-budgets.md).
+- **Decisions/ADRs:** [ADR 0015](../adr/0015-native-host-write-budgets.md) Proposed;
+  per-build defaults of 4 GiB cumulative host writes and 100,000 conservative
+  path-entry charges. No new dependency, host mount, helper or daemon flag.
+- **Tests run:** `go test ./internal/build ./internal/oci` PASS with new regressions;
+  initial sandbox cache permission failure and successful authorized rerun recorded.
+  Two `make check` runs PASS, including root WORKDIR handling. Final deterministic
+  layer-boundary test verified by `go test -race ./internal/build ./internal/oci` PASS.
+  `make fmt`, changed-document Markdown fences/179 local links and `git diff --check` PASS.
+- **Tests NOT run and why:** `make test-builder-kvm`: missing `/dev/kvm`.
+  No advisory rerun, external runc/Helm replacement, benchmark or independent-host
+  gate in this bounded host-builder delivery.
+- **Integration/benchmark evidence:** Host-only unit/race/routine evidence;
+  prior KVM/budget/source evidence remains in the
+  [continuation report](../experiments/t24-pinned-cache-block-quota-sources.md).
+- **Known limitations:** RUN virtiofs writes remain unbounded; policy is per build,
+  not aggregate concurrent admission, physical free-space reservation or a hard
+  timeout on arbitrary stalled filesystem I/O. Intermediate verified CAS blobs
+  may remain after failed builds. Prior external binary findings, full load,
+  crash/repair/source/release and hosted/clean-host gates remain unresolved.
+- **Next task:** Real block-backed native RUN with interleaved COPY coherence and
+  bounded trusted authenticated export/extraction, then rebuilt guest/KVM evidence.
+  Address reviewed runc/Helm findings and exact build lineage before wider
+  load/source/host acceptance. No T25 or release publication.
+
+## Archived T24 pinned-cache/block-volume continuation (2026-10-12)
+
+- **Task:** T24 — digest-pinned OCI reuse, real opt-in volume quotas, local budgets and corresponding-source inputs.
+- **Status:** BLOCKED overall; bounded delivered contracts have local evidence,
+  not complete workspace/load/security/source/release acceptance.
+- **Dependencies verified:** T09 CAS/registry, T10 storage leases, guest block mounts,
+  T18 native workspace boundary and T23 installed Compose/Helm/UI contracts;
+  reviewed formatter, current rebuilt guest/binaries and real KVM available.
+- **Files and contracts changed:** `internal/oci`, resolver digest fidelity,
+  `internal/storage`/executor virtio-blk mapping and daemon flags; provisioning,
+  source-inventory/local-budget scripts, positive/negative/failure/race/KVM tests,
+  Make targets, architecture/compatibility/testing/acceptance docs and receipts.
+- **Decisions/ADRs:** [ADR 0014](../adr/0014-fixed-size-block-volume-quotas.md) Proposed;
+  no automatic host mounts/sudo/migration/bind deletion or default quota claim.
+  Mutable tags stay online; seeded measurements are explicitly identified.
+- **Tests run:** `make check vulncheck test-t24-volume-load test-t24-volume-quota`
+  PASS; final routine/advisory/KVM rerun and five 10-second fuzz targets PASS.
+  Three successful rebuilt 30-repeat seeded installed batches, including
+  `make test-t24-resource-budget`, PASS without KVM skips. Source checksums and
+  actual signatures passed within stated scope. External binary advisory scans
+  **FAIL**, reporting 14 runc and 15 Helm vulnerabilities. Initial seeded daemon
+  permission failure and receipt-parser failure are preserved in the report.
+- **Tests NOT run and why:** Hosted/independent-host receipts unavailable; native
+  workspace path, full crash/repair/guest-network/peak/load acceptance and exact
+  build/source/notices redistribution gates remain incomplete. No fresh-online
+  30-pull budget is substituted by seed reuse.
+- **Integration/benchmark evidence:** [Continuation report](../experiments/t24-pinned-cache-block-quota-sources.md),
+  [candidate local budgets](../experiments/t24-seeded-resource-budgets.json),
+  [19 source inputs/83 crates](../experiments/t24-component-source-inputs.json).
+- **Known limitations:** Legacy/bind/RUN writes are unbounded; usable volume payload
+  is below geometry; sparse allocation and no journal/repair gate; observed RSS
+  not instantaneous peak/PSS; fuzz stalls; source inputs are not legal clearance;
+  external binary findings prevent security acceptance. Failed owned state retained.
+- **Next task:** Complete real bounded native COPY/RUN/export/staging workspaces;
+  deliberately rebuild/replace reviewed runc/Helm to address findings and collect
+  exact build lineage, then broader load/source/host gates. No T25 or release
+  publication. The user subsequently authorized commit/push of this delivery;
+  that authorization does not close the remaining acceptance gates.
+
 ## Archived T24 autonomous campaign (superseded by 2026-10-12 continuation)
 
 - **Task:** T24 — autonomous local admission, resource/security campaign and acceptance preparation.

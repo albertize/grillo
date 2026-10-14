@@ -5,6 +5,7 @@ package build
 import (
 	"context"
 
+	"github.com/albertize/grillo/internal/guestproto"
 	"github.com/albertize/grillo/internal/oci"
 )
 
@@ -21,7 +22,10 @@ type RunStep struct {
 	User    string
 	// Network requests that the sandbox can reach the network (for package
 	// installs). When false the sandbox should be offline.
-	Network bool
+	Network      bool
+	budget       *workspaceBudget
+	owners       map[string]fileOwner
+	rootMetadata *guestproto.BuildRootMetadata
 }
 
 // Runner executes RUN steps inside a sandbox that shares the build root. One

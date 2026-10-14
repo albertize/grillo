@@ -36,6 +36,8 @@ const (
 	TypeRestarted     MessageType = "restarted"
 	TypeRun           MessageType = "run"
 	TypeRunResult     MessageType = "run_result"
+	TypeExport        MessageType = "export"
+	TypeExportResult  MessageType = "export_result"
 	TypeLogs          MessageType = "logs"
 	TypeLogsResult    MessageType = "logs_result"
 	TypeMetrics       MessageType = "metrics"
@@ -45,7 +47,7 @@ const (
 func (t MessageType) isResponse() bool {
 	switch t {
 	case TypeHelloAck, TypeAuth, TypeAuthOK, TypeError, TypePong,
-		TypeStarted, TypeStopped, TypeStatusResult, TypeProbeResult, TypeExecResult, TypeRestarted, TypeRunResult, TypeLogsResult, TypeMetricsResult:
+		TypeStarted, TypeStopped, TypeStatusResult, TypeProbeResult, TypeExecResult, TypeRestarted, TypeRunResult, TypeExportResult, TypeLogsResult, TypeMetricsResult:
 		return true
 	default:
 		return false

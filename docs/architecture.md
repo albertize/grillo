@@ -75,8 +75,34 @@ guest data writes. Default 0 retains directory mode. No host mount/sudo,
 automatic resize/migration or bind quota is implied. The reviewed mke2fs 1.47.3
 formatter is only required in this mode; usable payload is smaller than geometry.
 [ADR 0014](adr/0014-fixed-size-block-volume-quotas.md) records crash/repair and
-compatibility limits. Native RUN workspaces remain writable virtiofs and require
-separate real enforcement; CAS/rootfs logical quotas are not that enforcement.
+compatibility limits. Default native RUN workspaces remain writable virtiofs.
+The opt-in block path below is software-integrated but lacks real hardware
+acceptance; CAS/rootfs logical quotas alone are not guest-write enforcement.
+
+Native builds now share a per-build host-write budget across context/stage
+copies, base-image extraction and compressed layer staging: 4 GiB cumulative
+writes and 100,000 conservative path-entry charges by default. Reservations run
+before effects, including overwrites. Context copies and snapshot/layer reads
+use rooted filesystem access with bounded scans and cancellation checks.
+[ADR 0015](adr/0015-native-host-write-budgets.md) records the host-only scope;
+default guest RUN writes and host-wide admission remain outside that policy.
+
+The optional guest `build-export` capability generates full build snapshots in
+agent code, with bounded tar streams and authenticated completion receipts.
+RUN/export are serialized; failed RUN cleanup blocks subsequent build operations.
+The host receiver validates and extracts into private, budgeted staging.
+[ADR 0016](adr/0016-agent-owned-build-export.md) records the original primitive.
+
+`grillod --build-workspace-bytes N` selects a fresh raw ext4 disk per native RUN,
+with read-only seed input, agent population and verified snapshot adoption after
+guest cleanup. Numeric ownership/root metadata and special modes are kept in
+private build staging without host chown. Image geometry/archive staging are
+budgeted; RUN output is capped at 4 MiB. Offline builds use a backend without the
+build-network launcher. Native builds serialize per daemon; retained/interrupted
+workspaces block further admission and require explicit review. This does not
+reserve physical host free space or coordinate unrelated daemons.
+[ADR 0017](adr/0017-opt-in-block-build-workspaces.md) records the opt-in scope,
+missing KVM/crash gates and default legacy behavior.
 
 Explicit digest OCI references can reuse only a verified cached index/manifest
 and config/layer graph, including blob digest/size checks. Mutable tags still

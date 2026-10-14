@@ -1,9 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
-// Package build integrates Grillo with an external OCI image builder. Grillo
-// never interprets a Dockerfile or .dockerignore itself; that work is delegated
-// to the builder, which keeps the integration modular and avoids reimplementing
-// BuildKit.
+// Package build implements the native Dockerfile subset builder and an explicit
+// optional external OCI builder. Native RUN steps execute in a build guest.
 package build
 
 import (
@@ -26,8 +24,8 @@ var (
 
 // Request describes a single build.
 type Request struct {
-	// ContextDir is the build context. Dockerfile and .dockerignore inside it
-	// are interpreted by the builder, never by Grillo.
+	// ContextDir is the build context. The selected builder interprets its
+	// Dockerfile and .dockerignore.
 	ContextDir string `json:"contextDir"`
 	// Dockerfile is the containerfile path, relative to the context unless
 	// absolute. Empty uses the builder default.

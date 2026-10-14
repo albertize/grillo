@@ -3,6 +3,7 @@
 package build
 
 import (
+	"archive/tar"
 	"compress/gzip"
 	"context"
 	"crypto/sha256"
@@ -12,12 +13,15 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/albertize/grillo/internal/dockerfile"
+	"github.com/albertize/grillo/internal/guestproto"
 	"github.com/albertize/grillo/internal/image"
 	"github.com/albertize/grillo/internal/oci"
 )
@@ -33,15 +37,21 @@ type NativeBuilder struct {
 	ScratchDir   string
 	Platform     oci.Platform
 	MaxBlobBytes int64
-	Now          func() time.Time
+	// Host limits cover cumulative writes and conservative path-entry charges.
+	// Zero selects finite defaults; guest RUN writes remain outside this policy.
+	MaxHostWriteBytes int64
+	MaxHostEntries    int64
+	Now               func() time.Time
 }
 
 type stageState struct {
-	rootfs     string
-	baseLayers []oci.Descriptor
-	diffIDs    []string
-	config     oci.ImageConfig
-	envSet     bool
+	rootfs           string
+	rootMetadata     guestproto.BuildRootMetadata
+	baseRootMetadata guestproto.BuildRootMetadata
+	baseLayers       []oci.Descriptor
+	diffIDs          []string
+	config           oci.ImageConfig
+	envSet           bool
 
 	cmd        []string
 	entrypoint []string
@@ -70,10 +80,11 @@ type buildContext struct {
 	scratch  string
 	progress Progress
 	now      time.Time
+	budget   *workspaceBudget
 }
 
 // Build implements Builder.
-func (b *NativeBuilder) Build(ctx context.Context, request Request, progress Progress) (Result, error) {
+func (b *NativeBuilder) Build(ctx context.Context, request Request, progress Progress) (result Result, err error) {
 	if b.CAS == nil || b.Store == nil {
 		return Result{}, errors.New("build: native builder requires a CAS and an image store")
 	}
@@ -83,6 +94,10 @@ func (b *NativeBuilder) Build(ctx context.Context, request Request, progress Pro
 	if err := request.Validate(); err != nil {
 		return Result{}, err
 	}
+	budget, err := newWorkspaceBudget(ctx, b.MaxHostWriteBytes, b.MaxHostEntries)
+	if err != nil {
+		return Result{}, err
+	}
 	dockerfilePath := request.Dockerfile
 	if dockerfilePath == "" {
 		dockerfilePath = "Dockerfile"
@@ -90,7 +105,7 @@ func (b *NativeBuilder) Build(ctx context.Context, request Request, progress Pro
 	if !filepath.IsAbs(dockerfilePath) {
 		dockerfilePath = filepath.Join(request.ContextDir, dockerfilePath)
 	}
-	data, err := os.ReadFile(dockerfilePath)
+	data, err := readBuildMetadata(ctx, dockerfilePath)
 	if err != nil {
 		return Result{}, fmt.Errorf("build: read %s: %w", dockerfilePath, err)
 	}
@@ -114,10 +129,26 @@ func (b *NativeBuilder) Build(ctx context.Context, request Request, progress Pro
 	if err != nil {
 		return Result{}, err
 	}
-	defer os.RemoveAll(scratch)
-	if b.Runner != nil {
-		defer b.Runner.Close()
-	}
+	preserveScratch := false
+	removedScratch := false
+	defer func() {
+		if b.Runner != nil {
+			if closeErr := b.Runner.Close(); closeErr != nil {
+				preserveScratch = true
+				err = errors.Join(err, closeErr)
+				result = Result{}
+			}
+			if keeper, ok := b.Runner.(interface{ PreserveScratch() bool }); ok && keeper.PreserveScratch() {
+				preserveScratch = true
+			}
+		}
+		if !preserveScratch && !removedScratch {
+			if removeErr := os.RemoveAll(scratch); removeErr != nil {
+				err = errors.Join(err, removeErr)
+				result = Result{}
+			}
+		}
+	}()
 
 	args := map[string]string{}
 	for key, value := range parsed.GlobalArgs {
@@ -129,13 +160,20 @@ func (b *NativeBuilder) Build(ctx context.Context, request Request, progress Pro
 	build := &buildContext{
 		request:  request,
 		parsed:   parsed,
-		ignore:   loadIgnore(request.ContextDir),
+		ignore:   dockerfile.ParseIgnore(nil),
 		args:     args,
 		roots:    map[string]*stageState{},
 		scratch:  scratch,
 		progress: progress,
 		now:      now,
+		budget:   budget,
 	}
+
+	ignoreData, err := readBuildMetadata(ctx, filepath.Join(request.ContextDir, ".dockerignore"))
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return Result{}, fmt.Errorf("build: read .dockerignore: %w", err)
+	}
+	build.ignore = dockerfile.ParseIgnore(ignoreData)
 
 	prior, hadPrior, err := b.Store.Get(request.Reference)
 	if err != nil {
@@ -194,6 +232,17 @@ func (b *NativeBuilder) Build(ctx context.Context, request Request, progress Pro
 		return Result{}, err
 	}
 	pulled := oci.PulledImage{ManifestDigest: manifestDigest, Manifest: parsedManifest, Config: parsedConfig}
+	if b.Runner != nil {
+		if closeErr := b.Runner.Close(); closeErr != nil {
+			preserveScratch = true
+			return Result{}, closeErr
+		}
+	}
+	if err := os.RemoveAll(scratch); err != nil {
+		preserveScratch = true
+		return Result{}, fmt.Errorf("build: cleanup before publication: %w", err)
+	}
+	removedScratch = true
 	record, err := b.Store.Import(pulled, image.Meta{
 		Reference: request.Reference,
 		Source:    image.SourceBuild,
@@ -220,6 +269,9 @@ func (b *NativeBuilder) platform() oci.Platform {
 }
 
 func (b *NativeBuilder) buildStage(ctx context.Context, build *buildContext, stage dockerfile.Stage, index int) (*stageState, error) {
+	if err := build.budget.reserve(fmt.Sprintf("stage-%d/rootfs", index), 0); err != nil {
+		return nil, err
+	}
 	stageDir := filepath.Join(build.scratch, fmt.Sprintf("stage-%d", index))
 	rootfs := filepath.Join(stageDir, "rootfs")
 	if err := os.MkdirAll(rootfs, 0o755); err != nil {
@@ -233,7 +285,8 @@ func (b *NativeBuilder) buildStage(ctx context.Context, build *buildContext, sta
 		state.env = buildEnvOf(state.config)
 		state.envSet = true
 	}
-	state.snapshot, err = snapshotTree(rootfs)
+	state.baseRootMetadata = state.rootMetadata
+	state.snapshot, err = snapshotTreeContext(ctx, rootfs, DefaultMaxHostEntries)
 	if err != nil {
 		return nil, err
 	}
@@ -248,7 +301,7 @@ func (b *NativeBuilder) buildStage(ctx context.Context, build *buildContext, sta
 		})
 	}
 	// Commit this stage's changes so a later FROM can reuse its layers.
-	layer, diffID, err := b.commitLayer(build.scratch, fmt.Sprintf("stage-%d", index), state.snapshot, state.rootfs, state.owners)
+	layer, diffID, err := b.commitLayer(build, fmt.Sprintf("stage-%d", index), state.snapshot, state.rootfs, state.owners, state.rootMetadata, state.baseRootMetadata)
 	if err != nil {
 		return nil, err
 	}
@@ -260,13 +313,17 @@ func (b *NativeBuilder) buildStage(ctx context.Context, build *buildContext, sta
 }
 
 func (b *NativeBuilder) resolveStageBase(ctx context.Context, build *buildContext, stage dockerfile.Stage, rootfs string) (*stageState, error) {
-	state := &stageState{rootfs: rootfs, labels: map[string]string{}, exposed: map[string]struct{}{}, owners: map[string]fileOwner{}}
+	state := &stageState{rootfs: rootfs, rootMetadata: guestproto.BuildRootMetadata{Mode: 0755}, labels: map[string]string{}, exposed: map[string]struct{}{}, owners: map[string]fileOwner{}}
 	switch {
 	case stage.Base == "scratch":
 		return state, nil
 	}
 	if source, ok := findStage(build, stage.Base); ok {
-		if err := copyTree(source.rootfs, rootfs, copyOptions{}); err != nil {
+		state.rootMetadata = source.rootMetadata
+		for name, owner := range source.owners {
+			state.owners[name] = owner
+		}
+		if err := copyTree(source.rootfs, rootfs, copyOptions{ctx: ctx, budget: build.budget, destRoot: rootfs, sourceOwners: source.owners, destOwners: state.owners}); err != nil {
 			return nil, err
 		}
 		state.baseLayers = append([]oci.Descriptor{}, source.baseLayers...)
@@ -291,7 +348,16 @@ func (b *NativeBuilder) resolveStageBase(ctx context.Context, build *buildContex
 	if err != nil {
 		return nil, err
 	}
-	if err := b.Images.Unpack(pulled, rootfs, oci.UnpackOptions{Context: ctx}); err != nil {
+	capture := captureOwners(state.owners)
+	if err := b.Images.Unpack(pulled, rootfs, oci.UnpackOptions{Context: ctx, BeforeEntry: build.budget.reserve, BeforeHeader: func(h *tar.Header) error {
+		if err := capture(h); err != nil {
+			return err
+		}
+		if path.Clean(h.Name) == "." && h.Typeflag == tar.TypeDir {
+			state.rootMetadata = guestproto.BuildRootMetadata{UID: uint32(h.Uid), GID: uint32(h.Gid), Mode: uint32(h.Mode) & 07777}
+		}
+		return nil
+	}, MapOwner: func(_, _ int) (int, int) { return -1, -1 }}); err != nil {
 		return nil, err
 	}
 	state.baseLayers = append([]oci.Descriptor{}, pulled.Manifest.Layers...)
@@ -361,7 +427,15 @@ func (b *NativeBuilder) applyInstruction(ctx context.Context, build *buildContex
 			dir = filepath.Join(state.workdir, dir)
 		}
 		state.workdir = dir
-		if err := os.MkdirAll(filepath.Join(state.rootfs, filepath.FromSlash(strings.TrimPrefix(dir, "/"))), 0o755); err != nil {
+		if err := build.budget.reserve(dir, 0); err != nil {
+			return false, err
+		}
+		root, err := os.OpenRoot(state.rootfs)
+		if err != nil {
+			return false, err
+		}
+		defer root.Close()
+		if err := root.MkdirAll(filepath.Clean(filepath.FromSlash(strings.TrimPrefix(dir, "/"))), 0o755); err != nil {
 			return false, err
 		}
 		return true, nil
@@ -410,13 +484,16 @@ func (b *NativeBuilder) applyRun(ctx context.Context, build *buildContext, state
 		command = []string{"sh", "-c", expand(instruction.Args, build.envOf(state))}
 	}
 	return b.Runner.Run(ctx, RunStep{
-		RootfsDir: state.rootfs,
-		Command:   command,
-		Shell:     !instruction.IsJSON,
-		Env:       append([]string{}, state.env...),
-		WorkDir:   state.workdir,
-		User:      state.user,
-		Network:   build.request.Network != "none",
+		RootfsDir:    state.rootfs,
+		Command:      command,
+		Shell:        !instruction.IsJSON,
+		Env:          append([]string{}, state.env...),
+		WorkDir:      state.workdir,
+		User:         state.user,
+		Network:      build.request.Network != "none",
+		budget:       build.budget,
+		owners:       state.owners,
+		rootMetadata: &state.rootMetadata,
 	}, build.progress)
 }
 
@@ -432,8 +509,9 @@ func (b *NativeBuilder) applyCopy(ctx context.Context, build *buildContext, stat
 		return errors.New("build: ADD from a URL is not supported by the native builder")
 	}
 	var (
-		sourceRoot string
-		ignore     *dockerfile.Ignore
+		sourceOwners map[string]fileOwner
+		sourceRoot   string
+		ignore       *dockerfile.Ignore
 	)
 	if flags.from != "" {
 		root, err := b.stageOrImageRoot(ctx, build, flags.from)
@@ -441,6 +519,11 @@ func (b *NativeBuilder) applyCopy(ctx context.Context, build *buildContext, stat
 			return err
 		}
 		sourceRoot = root
+		if source, ok := findStage(build, flags.from); ok {
+			sourceOwners = source.owners
+		} else if source := build.roots["external:"+flags.from]; source != nil {
+			sourceOwners = source.owners
+		}
 	} else {
 		sourceRoot = build.request.ContextDir
 		ignore = build.ignore
@@ -472,14 +555,11 @@ func (b *NativeBuilder) applyCopy(ctx context.Context, build *buildContext, stat
 				state.owners[filepath.ToSlash(rel)] = *owner
 			}
 		}
-		if mode != 0 && !info.IsDir() {
-			return os.Chmod(path, mode)
-		}
 		return nil
 	}
 	multi := len(sources) > 1 || strings.HasSuffix(dest, "/")
 	for _, source := range sources {
-		matches, err := filepath.Glob(filepath.Join(sourceRoot, filepath.FromSlash(source)))
+		matches, err := copyMatches(ctx, sourceRoot, source, build.budget.entries)
 		if err != nil {
 			return err
 		}
@@ -499,7 +579,7 @@ func (b *NativeBuilder) applyCopy(ctx context.Context, build *buildContext, stat
 			if !info.IsDir() && (multi || isDir(target)) {
 				dst = filepath.Join(target, filepath.Base(match))
 			}
-			if err := copyTree(match, dst, copyOptions{base: sourceRoot, ignore: ignore, onEntry: record}); err != nil {
+			if err := copyTree(match, dst, copyOptions{ctx: ctx, budget: build.budget, destRoot: state.rootfs, base: sourceRoot, ignore: ignore, onEntry: record, mode: mode, sourceOwners: sourceOwners, destOwners: state.owners}); err != nil {
 				return err
 			}
 		}
@@ -515,30 +595,52 @@ func (b *NativeBuilder) stageOrImageRoot(ctx context.Context, build *buildContex
 	if err != nil {
 		return "", err
 	}
+	if err := build.budget.reserve("from-"+sanitize(name), 0); err != nil {
+		return "", err
+	}
 	dir := filepath.Join(build.scratch, "from-"+sanitize(name))
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return "", err
 	}
-	if err := b.Images.Unpack(pulled, dir, oci.UnpackOptions{Context: ctx}); err != nil {
+	external := &stageState{rootfs: dir, owners: map[string]fileOwner{}}
+	if err := b.Images.Unpack(pulled, dir, oci.UnpackOptions{Context: ctx, BeforeEntry: build.budget.reserve, BeforeHeader: captureOwners(external.owners), MapOwner: func(_, _ int) (int, int) { return -1, -1 }}); err != nil {
 		return "", err
 	}
+	build.roots["external:"+name] = external
 	return dir, nil
 }
 
-func (b *NativeBuilder) commitLayer(scratch, name string, base map[string]fileEntry, rootfs string, owners map[string]fileOwner) (*oci.Descriptor, string, error) {
-	tmp, err := os.CreateTemp(scratch, name+"-*.tar.gz")
+func (b *NativeBuilder) commitLayer(build *buildContext, name string, base map[string]fileEntry, rootfs string, owners map[string]fileOwner, metadata ...guestproto.BuildRootMetadata) (*oci.Descriptor, string, error) {
+	if err := build.budget.reserve(name+".tar.gz", 0); err != nil {
+		return nil, "", err
+	}
+	tmp, err := os.CreateTemp(build.scratch, name+"-*.tar.gz")
 	if err != nil {
 		return nil, "", err
 	}
 	defer os.Remove(tmp.Name())
 	gzHash := sha256.New()
-	gz, err := gzip.NewWriterLevel(io.MultiWriter(tmp, gzHash), gzip.BestSpeed)
+	limit := b.MaxBlobBytes
+	if limit <= 0 {
+		limit = oci.DefaultMaxBlobBytes
+	}
+	bounded := &workspaceWriter{budget: build.budget, writer: io.MultiWriter(tmp, gzHash), remaining: limit}
+	gz, err := gzip.NewWriterLevel(bounded, gzip.BestSpeed)
 	if err != nil {
 		tmp.Close()
 		return nil, "", err
 	}
 	diffHash := sha256.New()
-	written, err := writeDiffLayer(base, rootfs, owners, io.MultiWriter(diffHash, gz))
+	rootChanged := len(metadata) == 2 && metadata[0] != metadata[1]
+	if rootChanged {
+		m := metadata[0]
+		tw := tar.NewWriter(io.MultiWriter(diffHash, gz))
+		if err := tw.WriteHeader(&tar.Header{Name: ".", Typeflag: tar.TypeDir, Mode: int64(m.Mode), Uid: int(m.UID), Gid: int(m.GID)}); err != nil {
+			tmp.Close()
+			return nil, "", err
+		}
+	}
+	written, err := writeDiffLayerContext(build.budget.ctx, base, rootfs, owners, io.MultiWriter(diffHash, gz))
 	if err != nil {
 		tmp.Close()
 		return nil, "", err
@@ -547,7 +649,7 @@ func (b *NativeBuilder) commitLayer(scratch, name string, base map[string]fileEn
 		tmp.Close()
 		return nil, "", err
 	}
-	if written == 0 {
+	if written == 0 && !rootChanged {
 		tmp.Close()
 		return nil, "", nil
 	}
@@ -675,12 +777,29 @@ func checkSupported(parsed *dockerfile.File) error {
 	return nil
 }
 
-func loadIgnore(contextDir string) *dockerfile.Ignore {
-	data, err := os.ReadFile(filepath.Join(contextDir, ".dockerignore"))
+// Build metadata is untrusted and bounded before parsing.
+func readBuildMetadata(ctx context.Context, name string) ([]byte, error) {
+	f, err := os.OpenFile(name, os.O_RDONLY|syscall.O_NONBLOCK, 0)
 	if err != nil {
-		return dockerfile.ParseIgnore(nil)
+		return nil, err
 	}
-	return dockerfile.ParseIgnore(data)
+	defer f.Close()
+	info, err := f.Stat()
+	if err != nil {
+		return nil, err
+	}
+	if !info.Mode().IsRegular() {
+		return nil, errors.New("build: metadata must be a regular file")
+	}
+	const limit = 1 << 20
+	data, err := io.ReadAll(io.LimitReader(contextReader{ctx, f}, limit+1))
+	if err != nil {
+		return nil, err
+	}
+	if len(data) > limit {
+		return nil, errors.New("build: metadata exceeds 1 MiB")
+	}
+	return data, nil
 }
 
 func digestOf(data []byte) string {
@@ -911,4 +1030,29 @@ func sanitize(name string) string {
 			return '_'
 		}
 	}, name)
+}
+
+// captureOwners records archive identities without changing host ownership.
+func captureOwners(owners map[string]fileOwner) func(*tar.Header) error {
+	return func(h *tar.Header) error {
+		name := path.Clean(h.Name)
+		base := path.Base(name)
+		if strings.HasPrefix(base, ".wh.") {
+			target := path.Join(path.Dir(name), strings.TrimPrefix(base, ".wh."))
+			if base == ".wh..wh..opq" {
+				target = path.Dir(name)
+			}
+			for key := range owners {
+				if key == target || strings.HasPrefix(key, target+"/") || target == "." {
+					delete(owners, key)
+				}
+			}
+			return nil
+		}
+		if h.Uid < 0 || h.Gid < 0 || uint64(h.Uid) > uint64(^uint32(0)) || uint64(h.Gid) > uint64(^uint32(0)) {
+			return errors.New("build: invalid image ownership")
+		}
+		owners[name] = fileOwner{uid: h.Uid, gid: h.Gid}
+		return nil
+	}
 }

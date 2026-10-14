@@ -99,6 +99,8 @@ Message types:
 | `status` / `status_result` | host → guest → host | guest/container state |
 | `probe` / `probe_result` | host → guest → host | health probe |
 | `exec` / `exec_result` | host → guest → host | run a command with streams |
+| `run` / `run_result` | host → guest → host | run a build step in a mounted share |
+| `export` / `export_result` | host → guest → host | agent-owned bounded full build snapshot |
 | `logs` / `logs_result` | host → guest → host | bounded retained container stdout/stderr batch |
 | `metrics` / `metrics_result` | host → guest → host | nullable guest/cgroup counters |
 
@@ -140,10 +142,45 @@ versions match and replies with the lower minor version. A different major is a
 `version_mismatch` error. The negotiated version is fixed for the connection.
 
 Capabilities the guest may advertise: `exec`, `tty`, `resize`, `stdin`,
-`probe`, `files`, `application-dns`, `logs`, `metrics`. A client must not send a message the guest did not advertise.
+`probe`, `files`, `application-dns`, `logs`, `metrics`, `build-export`, `block-build`. A client must not send a message the guest did not advertise.
 The additive `DNSConfig.server` IPv4 field selects the private application
 namespace resolver instead of a guest-local static resolver. Bridged executors
 require `application-dns` and reject old agents with a rebuild instruction.
+
+### Build snapshot export
+
+The additive `build-export` capability uses protocol 1.1 framing and authentication.
+Clients reject old agents without it; no silent export fallback is available.
+`export` carries `session`, `share`, `maxBytes` and `maxEntries`. The share must
+be an agent-mounted tag in a started build sandbox. Byte limits are mandatory
+(1 KiB–8 GiB of complete uncompressed tar), as are entry limits (1–100,000).
+Only stdout frames for that session carry archive bytes; other stream/session
+frames fail. `export_result` carries `bytes`, `entries` and lowercase hex `sha256`
+for the complete tar, including trailer. The host validates counts/checksum and
+then independently validates and extracts the archive into private staging.
+
+The agent serializes RUN/export. Failed RUN cleanup overrides success and blocks
+further build operations until sandbox recreation. Export has a five-minute
+guest ceiling plus the request deadline; host calls use the existing 30-second
+default unless their context has a deadline. Cancellation interrupts socket
+writes by closing the connection, and failed transfers cannot reuse it. No
+hard deadline for a stalled local filesystem writer is claimed. Snapshots reject
+special files and reserved `.wh.*` names; they preserve numeric owners and opaque
+symlink metadata. Export uses agent Go code, never a workload executable.
+
+The opt-in block RUN path now uses this primitive. `export_result.root` optionally
+reports numeric `uid`, `gid` and `mode`; block builds require it. Mode is bounded
+to 07777. `block-build` advertises `SandboxSpec.buildSeed`: source/target tags,
+archive `bytes`, `entries` and `sha256`. The source must be read-only virtiofs,
+the target writable ext4 on `/dev/vda`, with disjoint target paths. The agent
+verifies `root.tar` from the source share and populates only a fresh target before
+reporting ready. Old guests fail explicitly. Native block RUN limits aggregate
+stdout/stderr to 4 MiB; RUN rejects mismatched sessions/streams/completion types.
+Hardware acceptance of this integration remains blocked.
+See [ADR 0016](../docs/adr/0016-agent-owned-build-export.md) and
+[original software evidence](../docs/experiments/t24-agent-owned-build-export.md),
+then [ADR 0017](../docs/adr/0017-opt-in-block-build-workspaces.md) and
+[block integration evidence](../docs/experiments/t24-opt-in-block-build-workspaces.md).
 
 ### Security notes
 

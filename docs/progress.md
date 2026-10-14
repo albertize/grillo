@@ -25,7 +25,14 @@ KVM gates PASS, plus new API/TCP admission and resource collectors. Its final
 failure is retained. The [continuation](experiments/t24-pinned-cache-block-quota-sources.md)
 now records a real live fixture pull, verified digest-only offline reuse, actual
 opt-in ext4 volume ENOSPC/persistence and 30-repeat seeded local budgets PASS.
-Legacy/bind volume writes and native RUN workspaces remain unbounded; full
+The [host-write continuation](experiments/t24-native-host-write-budgets.md) now
+bounds cumulative native host copies/imports/layer staging with finite defaults.
+The [agent export prerequisite](experiments/t24-agent-owned-build-export.md) now
+adds authenticated bounded snapshots and private host extraction. The
+[opt-in block integration](experiments/t24-opt-in-block-build-workspaces.md) now
+wires per-step disks, agent population and COPY/RUN snapshot adoption in software.
+Its real workspace KVM gate is BLOCKED because `/dev/kvm` is unavailable here.
+Legacy/bind volume writes and default native RUN remain unbounded; full
 load/performance/source/release acceptance remains BLOCKED. New binary advisory
 scans FAIL (runc 14, Helm 15 reported vulnerabilities); the clean Grillo source
 scan does not clear those artifacts. Hosted rerun/independent-host acceptance
@@ -72,7 +79,7 @@ See [compatibility](compatibility.md) and [console limits](ui.md#explicit-mvp-li
 | T21 | Helm rendering and OCI charts | DONE | Real Helm package/template, local/OCI equivalence, explicit HTTPS fetch, verified atomic cache, stable offline plans, archive/corruption/concurrency/dependency restrictions; `docs/experiments/t21-helm-renderer.md` |
 | T22 | Helm gate and compatibility reporting | DONE | Full direct-runtime scenario C plus actual CLI/daemon chart gate PASS; unsupported provisioning blocked; compiler registry/counts and consumer/PVC semantics verified |
 | T23 | Web console and secure bridge | DONE | React/PatternFly (ADR 0008), metadata-only views, bounded logs/SSE/captured Exec; [interactive Pod Terminal + Chrome/KVM](experiments/t24-browser-terminal-compose-dependencies.md) now PASS; original Firefox evidence remains historical, full terminal emulation/data limits explicit |
-| T24 | F3 MVP gate and hardening | BLOCKED | [100 verified boots](experiments/t24-closure-campaign.md) PASS; [current volume/seeded-budget/source evidence](experiments/t24-pinned-cache-block-quota-sources.md); external binary advisory FAIL, workspace/full load/source clearance and hosted/clean-host gates remain |
+| T24 | F3 MVP gate and hardening | BLOCKED | [100 verified boots](experiments/t24-closure-campaign.md) PASS; [volume/seeded-budget/source evidence](experiments/t24-pinned-cache-block-quota-sources.md), [host budgets](experiments/t24-native-host-write-budgets.md), [opt-in build integration](experiments/t24-opt-in-block-build-workspaces.md); external binary advisory FAIL, workspace/full load/source clearance and hosted/clean-host gates remain |
 | T25 | StatefulSet and Job | TODO | T24 |
 | T26 | Extended Tier 1/Tier 2 parity and TLS | TODO | T25 |
 | T27 | Measured optimization and packaging | TODO | T24; T26 for complete F4 |
@@ -99,42 +106,48 @@ subsequent edit or that the whole product is release-ready.
 
 ## Latest delivery
 
-- **Task:** T24 — digest-pinned OCI reuse, real opt-in volume quotas, local budgets and corresponding-source inputs.
-- **Status:** BLOCKED overall; bounded delivered contracts have local evidence,
-  not complete workspace/load/security/source/release acceptance.
-- **Dependencies verified:** T09 CAS/registry, T10 storage leases, guest block mounts,
-  T18 native workspace boundary and T23 installed Compose/Helm/UI contracts;
-  reviewed formatter, current rebuilt guest/binaries and real KVM available.
-- **Files and contracts changed:** `internal/oci`, resolver digest fidelity,
-  `internal/storage`/executor virtio-blk mapping and daemon flags; provisioning,
-  source-inventory/local-budget scripts, positive/negative/failure/race/KVM tests,
-  Make targets, architecture/compatibility/testing/acceptance docs and receipts.
-- **Decisions/ADRs:** [ADR 0014](adr/0014-fixed-size-block-volume-quotas.md) Proposed;
-  no automatic host mounts/sudo/migration/bind deletion or default quota claim.
-  Mutable tags stay online; seeded measurements are explicitly identified.
-- **Tests run:** `make check vulncheck test-t24-volume-load test-t24-volume-quota`
-  PASS; final routine/advisory/KVM rerun and five 10-second fuzz targets PASS.
-  Three successful rebuilt 30-repeat seeded installed batches, including
-  `make test-t24-resource-budget`, PASS without KVM skips. Source checksums and
-  actual signatures passed within stated scope. External binary advisory scans
-  **FAIL**, reporting 14 runc and 15 Helm vulnerabilities. Initial seeded daemon
-  permission failure and receipt-parser failure are preserved in the report.
-- **Tests NOT run and why:** Hosted/independent-host receipts unavailable; native
-  workspace path, full crash/repair/guest-network/peak/load acceptance and exact
-  build/source/notices redistribution gates remain incomplete. No fresh-online
-  30-pull budget is substituted by seed reuse.
-- **Integration/benchmark evidence:** [Continuation report](experiments/t24-pinned-cache-block-quota-sources.md),
-  [candidate local budgets](experiments/t24-seeded-resource-budgets.json),
-  [19 source inputs/83 crates](experiments/t24-component-source-inputs.json).
-- **Known limitations:** Legacy/bind/RUN writes are unbounded; usable volume payload
-  is below geometry; sparse allocation and no journal/repair gate; observed RSS
-  not instantaneous peak/PSS; fuzz stalls; source inputs are not legal clearance;
-  external binary findings prevent security acceptance. Failed owned state retained.
-- **Next task:** Complete real bounded native COPY/RUN/export/staging workspaces;
-  deliberately rebuild/replace reviewed runc/Helm to address findings and collect
-  exact build lineage, then broader load/source/host gates. No T25 or release
-  publication. The user subsequently authorized commit/push of this delivery;
-  that authorization does not close the remaining acceptance gates.
+- **Task:** T24 — opt-in per-step block native RUN, guest seed population and snapshot adoption.
+- **Status:** BLOCKED overall; block path wired and software/formatter checks pass,
+  actual workspace ENOSPC/coherence/cleanup KVM acceptance remains unverified.
+- **Dependencies verified:** T06 bounded authenticated protocol, T09 OCI/CAS,
+  T10 ext4/virtio-blk contracts, T18/T18b native builder/runner, T23 daemon and
+  preceding host-budget/export contracts. `/dev/kvm` remains absent.
+- **Files and contracts changed:** Native block runner/boot selection, daemon
+  opt-in flag/admission, guest block seed/root metadata, OCI metadata/mode
+  callbacks, COPY/RUN and publication cleanup; unit/failure/protocol tests,
+  fail-closed hardware target and documentation. Includes the preceding
+  host-budget/export deliveries; the user authorized commit and push of these
+  changes. Recorded checks ran before that commit.
+- **Decisions/ADRs:** [ADR 0017](adr/0017-opt-in-block-build-workspaces.md) Proposed;
+  `--build-workspace-bytes N` (zero retains legacy virtiofs), reviewed existing
+  mke2fs formats empty images; agent imports read-only tar seed. The actual
+  formatter tar-population probe failed without libarchive; no new dependency
+  or silent fallback was introduced.
+- **Tests run:** Focused build/guest/protocol/OCI/daemon tests PASS, including
+  actual formatter, COPY/RUN/owner/root-mode contracts, failure cleanup/retention,
+  output bounds and native admission. Final `make check` PASS, hardware-tagged
+  test compilation PASS with no execution, `make fmt`, Markdown fences/214 local
+  links and `git diff --check` PASS. See
+  [evidence](experiments/t24-opt-in-block-build-workspaces.md).
+  Initial selected-backend compile failure was corrected and retained.
+  `make test-t24-build-workspace` FAIL/BLOCKED (exit 2): readable/writable KVM
+  unavailable; stopped before guest rebuild.
+- **Tests NOT run and why:** Real guest rebuild and workspace VM body: missing
+  `/dev/kvm`. No KVM pass/skip, benchmark, fresh advisory scan,
+  runc/Helm replacement or clean-host receipt is claimed.
+- **Integration/benchmark evidence:** Software orchestration and real formatting
+  only; prior [volume/budget/source evidence](experiments/t24-pinned-cache-block-quota-sources.md)
+  remains historical and does not prove the new workspace path.
+- **Known limitations:** Default RUN remains unbounded virtiofs; opt-in block
+  mode lacks real hardware, crash/repair/recovery, full metadata/load/performance
+  acceptance. Images are sparse/no-journal, geometry is not usable payload or
+  physical free-space reservation. Per-daemon admission is not host-wide policy;
+  custom flags are not persisted by CLI on-demand startup. Retained state needs
+  explicit operator review; prior external binary/source/release gates remain open.
+- **Next task:** Rebuild agent guest and run `make test-t24-build-workspace` on a
+  provisioned KVM host; resolve real failures before quota acceptance, then
+  crash/load/metadata gates and reviewed runc/Helm rebuild/lineage/advisories.
+  No T25 or release publication.
 
 ## Updating progress
 

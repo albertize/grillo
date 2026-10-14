@@ -30,9 +30,25 @@ unbounded for guest writes. This mode requires reviewed mke2fs 1.47.3, rejects
 implicit legacy migration/backing changes/resizing, and treats declared capacity
 as raw geometry, not usable payload. [ADR 0014](adr/0014-fixed-size-block-volume-quotas.md)
 and [real ENOSPC evidence](experiments/t24-pinned-cache-block-quota-sources.md)
-record scope and crash/repair limits; native RUN workspace enforcement remains
+record scope and crash/repair limits; native block RUN hardware acceptance remains
 pending. Explicit-digest OCI cache seeding is verified offline reuse, not a fresh
 online pull; mutable tags are not silently reused offline.
+
+Native host staging defaults to 4 GiB cumulative writes and 100,000 conservative
+path-entry charges per build, covering copies, imported bases and compressed
+layer staging. Repeated writes and stages count; Dockerfile/dockerignore inputs
+are each limited to 1 MiB. Quota failures block image-reference publication.
+[Host-write evidence](experiments/t24-native-host-write-budgets.md) does not
+establish a guest RUN quota or an aggregate concurrent-build limit.
+The optional [agent build-export capability](experiments/t24-agent-owned-build-export.md)
+now feeds the opt-in native block workspace path. `grillod --build-workspace-bytes N`
+uses a new ext4 image per RUN, requires `block-build` plus `build-export`, and
+keeps subsequent COPY/RUN state through validated export/adoption. Default zero
+still uses unbounded writable virtiofs. The
+[block integration report](experiments/t24-opt-in-block-build-workspaces.md) has
+software/formatter evidence, with its real KVM gate BLOCKED. Geometry is not
+usable payload or physical free-space reservation. Older guests reject the
+feature explicitly; crash/load/full metadata compatibility remain incomplete.
 
 ## Compose (F2 subset)
 

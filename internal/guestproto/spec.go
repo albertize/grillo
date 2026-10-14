@@ -3,9 +3,11 @@
 package guestproto
 
 import (
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"net/netip"
+	"path"
 	"strings"
 )
 
@@ -23,7 +25,18 @@ type SandboxSpec struct {
 	Containers  []ContainerSpec `json:"containers"`
 	// Build marks a sandbox created for a build: it mounts shares and runs
 	// commands on demand instead of starting workload containers.
-	Build bool `json:"build,omitempty"`
+	Build     bool           `json:"build,omitempty"`
+	BuildSeed *BuildSeedSpec `json:"buildSeed,omitempty"`
+}
+
+// BuildSeedSpec selects a read-only archive share and a writable ext4 build
+// root. Only the agent populates that filesystem; no workload tool is used.
+type BuildSeedSpec struct {
+	SourceTag string `json:"sourceTag"`
+	TargetTag string `json:"targetTag"`
+	Bytes     int64  `json:"bytes"`
+	Entries   int64  `json:"entries"`
+	SHA256    string `json:"sha256"`
 }
 
 // NetworkConfig is the sandbox interface configuration applied by the agent.
@@ -156,6 +169,32 @@ func (s SandboxSpec) Validate() error {
 	}
 	if s.Build && len(s.Shares) == 0 {
 		return errors.New("guestproto: build sandbox has no shares")
+	}
+	if seed := s.BuildSeed; seed != nil {
+		if !s.Build || seed.SourceTag == "" || seed.TargetTag == "" || seed.Bytes < 1024 || seed.Bytes > MaxExportBytes || seed.Entries < 1 || seed.Entries > MaxExportEntries || len(seed.SHA256) != 64 || seed.SourceTag == seed.TargetTag {
+			return errors.New("guestproto: invalid block build seed")
+		}
+		if decoded, err := hex.DecodeString(seed.SHA256); err != nil || len(decoded) != 32 || strings.ToLower(seed.SHA256) != seed.SHA256 {
+			return errors.New("guestproto: invalid block seed checksum")
+		}
+		var source, target bool
+		var sourcePath, targetPath string
+		for _, share := range s.Shares {
+			if share.Tag == seed.SourceTag {
+				sourcePath = path.Clean(share.Target)
+				source = share.ReadOnly && (share.FSType == "" || share.FSType == "virtiofs")
+			}
+			if share.Tag == seed.TargetTag {
+				targetPath = path.Clean(share.Target)
+				target = !share.ReadOnly && share.FSType == "ext4" && share.Source == "/dev/vda"
+			}
+		}
+		if sourcePath == targetPath || strings.HasPrefix(sourcePath, targetPath+"/") || strings.HasPrefix(targetPath, sourcePath+"/") || targetPath == "/" || sourcePath == "/" {
+			return errors.New("guestproto: block seed/target paths must be separate")
+		}
+		if !source || !target {
+			return errors.New("guestproto: block build needs read-only seed and writable ext4 target")
+		}
 	}
 	return nil
 }

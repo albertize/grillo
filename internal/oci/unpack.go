@@ -40,6 +40,15 @@ type UnpackOptions struct {
 	MaxArchiveBytes int64
 	// Context checks cancellation between reads/entries, not within blocked I/O.
 	Context context.Context
+	// BeforeEntry optionally reserves an enclosing operation's aggregate budget
+	// before filesystem effects. Payload is the declared regular-file size, zero
+	// for other entries. A rejection aborts extraction without writing the entry.
+	BeforeEntry func(name string, payload int64) error
+	// BeforeHeader optionally captures numeric metadata before extraction effects.
+	BeforeHeader func(*tar.Header) error
+	// PreserveMode preserves special permission bits for private build staging or
+	// guest population. Ordinary image extraction keeps clearing privilege bits.
+	PreserveMode bool
 }
 
 // DiffID returns the SHA-256 of the uncompressed layer content.
@@ -108,6 +117,20 @@ func (e *extractor) entry(header *tar.Header, body io.Reader) error {
 	}
 	if err := e.count(); err != nil {
 		return err
+	}
+	if e.opts.BeforeHeader != nil {
+		if err := e.opts.BeforeHeader(header); err != nil {
+			return err
+		}
+	}
+	if e.opts.BeforeEntry != nil {
+		var payload int64
+		if header.Typeflag == tar.TypeReg || header.Typeflag == tar.TypeRegA {
+			payload = header.Size
+		}
+		if err := e.opts.BeforeEntry(header.Name, payload); err != nil {
+			return err
+		}
 	}
 	name := header.Name
 	if name == "" {
@@ -213,8 +236,16 @@ func (e *extractor) regular(target string, header *tar.Header, body io.Reader) e
 func (e *extractor) applyMeta(target string, header *tar.Header) error {
 	// Clear setuid/setgid: extracted content must not gain privilege.
 	perm := os.FileMode(header.Mode) & os.ModePerm
-	if err := os.Chmod(target, perm); err != nil {
-		return err
+	if e.opts.PreserveMode {
+		if header.Mode&04000 != 0 {
+			perm |= os.ModeSetuid
+		}
+		if header.Mode&02000 != 0 {
+			perm |= os.ModeSetgid
+		}
+		if header.Mode&01000 != 0 {
+			perm |= os.ModeSticky
+		}
 	}
 	uid, gid := header.Uid, header.Gid
 	if e.opts.MapOwner != nil {
@@ -225,7 +256,8 @@ func (e *extractor) applyMeta(target string, header *tar.Header) error {
 	if err := os.Lchown(target, uid, gid); err != nil && !errors.Is(err, syscall.EPERM) {
 		return err
 	}
-	return nil
+	// Chown may clear set-ID bits; apply the selected mode afterward.
+	return os.Chmod(target, perm)
 }
 
 // join validates a layer name and returns an absolute path under root. The

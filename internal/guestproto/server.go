@@ -280,6 +280,12 @@ func (st *Stream) Input() <-chan Frame { return st.input }
 // Session reports the stream's session ID.
 func (st *Stream) Session() uint32 { return st.session }
 
+// CloseOnCancel interrupts writes to a non-reading peer when the operation
+// context ends. The caller stops the callback after successful completion.
+func (st *Stream) CloseOnCancel(ctx context.Context) func() bool {
+	return context.AfterFunc(ctx, func() { _ = st.server.Close() })
+}
+
 // WriteStream sends p as one or more data frames of the given stream kind,
 // chunked to the frame limit.
 func (st *Stream) WriteStream(kind StreamKind, p []byte) (int, error) {
@@ -321,6 +327,11 @@ func (st *Stream) Resize(rows, cols uint16) error {
 }
 
 func sessionOf(m Message) uint32 {
+	if m.Type == TypeExport {
+		var req ExportRequest
+		_ = UnmarshalPayload(m.Payload, &req)
+		return req.Session
+	}
 	if m.Type == TypeRun {
 		var req RunRequest
 		_ = UnmarshalPayload(m.Payload, &req)
@@ -350,6 +361,8 @@ func responseTypeFor(t MessageType) MessageType {
 		return TypeRestarted
 	case TypeRun:
 		return TypeRunResult
+	case TypeExport:
+		return TypeExportResult
 	case TypeLogs:
 		return TypeLogsResult
 	case TypeMetrics:

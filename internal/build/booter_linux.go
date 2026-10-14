@@ -9,6 +9,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"sync"
 	"time"
@@ -20,17 +21,18 @@ import (
 // GuestBoot boots a build guest that shares a host directory and speaks the
 // guest protocol. It is the production Boot function for SandboxRunner.
 type GuestBoot struct {
-	Backend      sandbox.Backend
-	Kernel       string
-	Initramfs    string
-	KernelArgs   string
-	GuestKey     []byte
-	FreshKeys    bool
-	VsockCIDBase uint32
-	VsockPort    uint32
-	MemoryMiB    int
-	ShareTag     string
-	ShareTarget  string
+	Backend        sandbox.Backend
+	OfflineBackend sandbox.Backend
+	Kernel         string
+	Initramfs      string
+	KernelArgs     string
+	GuestKey       []byte
+	FreshKeys      bool
+	VsockCIDBase   uint32
+	VsockPort      uint32
+	MemoryMiB      int
+	ShareTag       string
+	ShareTarget    string
 	// Network, when set, gives the build guest outbound connectivity. The
 	// backend used here must have been created with Launch = Network.Launch.
 	Network *BuildNetwork
@@ -46,11 +48,28 @@ type GuestBoot struct {
 
 // Boot boots one build guest sharing rootfsDir.
 func (g *GuestBoot) Boot(ctx context.Context, rootfsDir string) (SandboxClient, func() error, error) {
-	if g.Backend == nil {
+	return g.boot(ctx, rootfsDir, "", nil, true)
+}
+
+// BootBlock attaches a single raw workspace disk and a read-only seed share.
+func (g *GuestBoot) BootBlock(ctx context.Context, disk, input string, seed *guestproto.BuildSeedSpec, network bool) (SandboxClient, func() error, error) {
+	return g.boot(ctx, input, disk, seed, network)
+}
+
+func (g *GuestBoot) boot(ctx context.Context, rootfsDir, disk string, seed *guestproto.BuildSeedSpec, network bool) (SandboxClient, func() error, error) {
+	backend := g.Backend
+	if disk != "" && !network {
+		if g.OfflineBackend != nil {
+			backend = g.OfflineBackend
+		} else if g.Network != nil {
+			return nil, nil, errors.New("build: offline block backend unavailable")
+		}
+	}
+	if backend == nil {
 		return nil, nil, fmt.Errorf("build: guest boot requires a backend")
 	}
 	if g.FreshKeys {
-		if _, ok := g.Backend.(interface {
+		if _, ok := backend.(interface {
 			BootConnection(sandbox.Handle) (uint32, uint32, []byte, error)
 		}); !ok {
 			return nil, nil, fmt.Errorf("build: backend cannot provide boot credentials")
@@ -113,16 +132,30 @@ func (g *GuestBoot) Boot(ctx context.Context, rootfsDir string) (SandboxClient, 
 		Build:  true,
 		Shares: []guestproto.ShareSpec{{Tag: tag, Target: target}},
 	}
+	if disk != "" {
+		if seed == nil {
+			return nil, nil, errors.New("build: missing block seed")
+		}
+		spec.Shares = []sandbox.Share{{Tag: seed.SourceTag, HostPath: rootfsDir, ReadOnly: true}}
+		spec.Disks = []sandbox.Disk{{Path: disk, Format: "raw"}}
+		guestSpec.Shares = []guestproto.ShareSpec{{Tag: seed.SourceTag, Target: "/build-input", ReadOnly: true}, {Tag: seed.TargetTag, Target: target, Source: "/dev/vda", FSType: "ext4"}}
+		guestSpec.BuildSeed = seed
+	}
 	cleanup := func() error {
-		background := context.Background()
-		_ = g.Backend.Stop(background, sandbox.Handle{ID: id}, 5*time.Second)
-		_ = g.Backend.Delete(background, sandbox.Handle{ID: id})
+		background, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+		if err := backend.Stop(background, sandbox.Handle{ID: id}, 5*time.Second); err != nil {
+			return fmt.Errorf("build: stop guest: %w", err)
+		}
+		if err := backend.Delete(background, sandbox.Handle{ID: id}); err != nil {
+			return fmt.Errorf("build: delete guest: %w", err)
+		}
 		if g.Network != nil {
 			g.Network.Release(id)
 		}
 		return nil
 	}
-	if g.Network != nil {
+	if g.Network != nil && network {
 		ip, prefix, gateway, err := g.Network.Prepare(ctx, id)
 		if err != nil {
 			return nil, nil, err
@@ -131,25 +164,38 @@ func (g *GuestBoot) Boot(ctx context.Context, rootfsDir string) (SandboxClient, 
 		guestSpec.Network = &guestproto.NetworkConfig{Interface: "eth0", Address: ip, PrefixLen: prefix, Gateway: gateway}
 		guestSpec.Nameservers = g.Nameservers
 	}
-	if _, err := g.Backend.Create(ctx, spec, sandbox.OperationID("build-"+id)); err != nil {
+	if _, err := backend.Create(ctx, spec, sandbox.OperationID("build-"+id)); err != nil {
+		if g.Network != nil && network {
+			g.Network.Release(id)
+		}
 		return nil, nil, err
 	}
-	if err := g.Backend.Start(ctx, sandbox.Handle{ID: id}); err != nil {
-		_ = cleanup()
+	if err := backend.Start(ctx, sandbox.Handle{ID: id}); err != nil {
+		cleanErr := cleanup()
+		if cleanErr != nil {
+			return nil, cleanup, errors.Join(err, cleanErr)
+		}
 		return nil, nil, err
 	}
 	if g.FreshKeys {
-		provider, ok := g.Backend.(interface {
+		provider, ok := backend.(interface {
 			BootConnection(sandbox.Handle) (uint32, uint32, []byte, error)
 		})
 		if !ok {
-			_ = cleanup()
-			return nil, nil, fmt.Errorf("build: backend cannot provide boot credentials")
+			err := errors.New("build: backend cannot provide boot credentials")
+			cleanErr := cleanup()
+			if cleanErr != nil {
+				return nil, cleanup, errors.Join(err, cleanErr)
+			}
+			return nil, nil, err
 		}
 		var err error
 		spec.VsockCID, spec.VsockPort, spec.GuestKey, err = provider.BootConnection(sandbox.Handle{ID: id})
 		if err != nil {
-			_ = cleanup()
+			cleanErr := cleanup()
+			if cleanErr != nil {
+				return nil, cleanup, errors.Join(err, cleanErr)
+			}
 			return nil, nil, err
 		}
 	}
@@ -166,18 +212,35 @@ func (g *GuestBoot) Boot(ctx context.Context, rootfsDir string) (SandboxClient, 
 	}
 	client, err := dial(ctx, spec.VsockCID, spec.VsockPort)
 	if err != nil {
-		_ = cleanup()
+		cleanErr := cleanup()
+		if cleanErr != nil {
+			return nil, cleanup, errors.Join(err, cleanErr)
+		}
 		return nil, nil, err
+	}
+	if disk != "" {
+		informed, ok := client.(interface {
+			Info() guestproto.HandshakeInfo
+		})
+		if !ok || !informed.Info().Supports(guestproto.CapBlockBuild) || !informed.Info().Supports(guestproto.CapBuildExport) {
+			_ = client.Close()
+			err := errors.New("build: guest lacks block-build/build-export; rebuild guest artifacts")
+			cleanErr := cleanup()
+			if cleanErr != nil {
+				return nil, cleanup, errors.Join(err, cleanErr)
+			}
+			return nil, nil, err
+		}
 	}
 	if _, err := client.Start(ctx, guestproto.StartRequest{Sandbox: guestSpec}); err != nil {
 		_ = client.Close()
-		_ = cleanup()
+		cleanErr := cleanup()
+		if cleanErr != nil {
+			return nil, cleanup, errors.Join(err, cleanErr)
+		}
 		return nil, nil, err
 	}
-	return client, func() error {
-		_ = client.Close()
-		return cleanup()
-	}, nil
+	return client, cleanup, nil
 }
 
 func shortHash(value string) string {

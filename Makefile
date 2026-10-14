@@ -285,6 +285,13 @@ test-compose-dependencies: t07-guest
 test-builder-kvm: t07-guest
 	go test -tags kvm -count=1 -v -timeout 240s -run 'TestKVMBuildGuestRun|TestKVMBuildNativeBuilderRun|TestKVMBuildNativeMultiStage|TestKVMBuildGuestNetwork' ./internal/build/
 
+# T24 opt-in block workspace gate: fail before rebuild when KVM is unavailable.
+.PHONY: test-t24-build-workspace
+test-t24-build-workspace: check-go
+	@test -r /dev/kvm -a -w /dev/kvm || { echo 'BLOCKED: readable/writable /dev/kvm required'; exit 1; }
+	$(MAKE) t07-guest
+	$(GO) test -tags kvm -count=1 -v -timeout 300s -run '^TestKVMNativeBlockWorkspace$$' ./internal/build/
+
 # Full T02/T03 real hardware evidence. No downloads or preexisting volume deletion.
 .PHONY: f0-guest test-f0 t07-guest test-t07 test-t08 test-t10 test-netns test-executor test-netreg test-bridged test-builder test-builder-kvm test-f2 test-k8s test-helm
 f0-guest:

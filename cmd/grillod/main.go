@@ -57,7 +57,8 @@ func run() error {
 	volumeBytes := flag.Int64("volume-image-bytes", 0, "opt-in default fixed ext4 image bytes for new non-bind volumes; zero preserves directory storage")
 	volumeReserved := flag.Int64("volume-reserved-bytes", 64<<30, "maximum total block-image geometry bytes; no automatic deletion")
 	volumeImages := flag.Int("volume-images", 256, "maximum block image count, including interrupted stages")
-	formatter := flag.String("mke2fs", "", "trusted mke2fs 1.47.3 binary for bounded volumes (default PATH)")
+	formatter := flag.String("mke2fs", "", "trusted mke2fs 1.47.3 binary for block volumes/builds (default PATH)")
+	buildWorkspaceBytes := flag.Int64("build-workspace-bytes", 0, "opt-in fixed ext4 geometry per native RUN; zero retains virtiofs")
 	showVersion := flag.Bool("version", false, "print shared build identity as JSON without starting the daemon")
 	kernel := flag.String("kernel", os.Getenv("GRILLO_GUEST_KERNEL"), "guest kernel (default: installed prefix)")
 	initramfs := flag.String("initramfs", os.Getenv("GRILLO_GUEST_INITRAMFS"), "guest initramfs (default: installed prefix)")
@@ -74,7 +75,7 @@ func run() error {
 	if *showVersion {
 		return json.NewEncoder(os.Stdout).Encode(buildinfo.Current())
 	}
-	if *casBytes < 0 || *rootfsBytes < 0 || *cacheEntries < 0 || *volumeBytes < 0 || *volumeReserved < 0 || *volumeImages <= 0 {
+	if *casBytes < 0 || *rootfsBytes < 0 || *cacheEntries < 0 || *volumeBytes < 0 || *volumeReserved < 0 || *volumeImages <= 0 || *buildWorkspaceBytes < 0 {
 		return fmt.Errorf("cache/volume quotas must not be negative and volume-images must be positive")
 	}
 	if err := validateRuntimeUID(os.Geteuid()); err != nil {
@@ -207,6 +208,30 @@ func run() error {
 		ShareTag:     "build",
 		ShareTarget:  "/build",
 	}
+	if *buildWorkspaceBytes != 0 && (*buildWorkspaceBytes < 16<<20 || *buildWorkspaceBytes%4096 != 0) {
+		return errors.New("build workspace bytes must be >=16 MiB and 4096-byte aligned")
+	}
+	buildFormatter := ""
+	if *buildWorkspaceBytes > 0 {
+		buildFormatter = *formatter
+		if buildFormatter == "" {
+			var err error
+			buildFormatter, err = exec.LookPath("mke2fs")
+			if err != nil {
+				return errors.New("block builds require provisioned mke2fs 1.47.3")
+			}
+		}
+		var err error
+		buildFormatter, err = filepath.Abs(buildFormatter)
+		if err != nil {
+			return err
+		}
+		offline, err := qemu.Open(qemu.Config{QEMU: *qemuPath, VirtioFSD: *virtiofsd, Kernel: *kernel, Initramfs: *initramfs, WorkDir: filepath.Join(layout.Data, "build-offline"), ArtifactManifest: *manifestPath, RequirePortableManifest: requirePortableManifest, BootKeyOverlay: true})
+		if err != nil {
+			return err
+		}
+		guestBoot.OfflineBackend = offline
+	}
 	var buildNetwork *build.BuildNetwork
 	if *netnsBinary != "" {
 		if _, err := os.Stat(*netnsBinary); err != nil {
@@ -283,17 +308,19 @@ func run() error {
 	defer cancel()
 
 	runtimeCore := &core{
-		reconciler:   reconciler,
-		persistent:   persistent,
-		exec:         exec,
-		images:       imagesStore,
-		cas:          cas,
-		puller:       puller,
-		boot:         guestBoot,
-		podman:       podmanBuilder,
-		buildScratch: filepath.Join(layout.Cache, "native-build"),
-		apps:         map[string]bool{},
-		desired:      map[string]model.Application{},
+		reconciler:          reconciler,
+		persistent:          persistent,
+		exec:                exec,
+		images:              imagesStore,
+		cas:                 cas,
+		puller:              puller,
+		boot:                guestBoot,
+		podman:              podmanBuilder,
+		buildScratch:        filepath.Join(layout.Cache, "native-build"),
+		buildWorkspaceBytes: *buildWorkspaceBytes,
+		buildFormatter:      buildFormatter,
+		apps:                map[string]bool{},
+		desired:             map[string]model.Application{},
 	}
 	// Recovery is intentionally disruptive: verified old VMMs are stopped,
 	// volume leases are released, then durable non-stopped intent is replayed.
@@ -364,14 +391,18 @@ func readKey(path string) ([]byte, error) {
 
 // core adapts the reconciler and executor to the API contract.
 type core struct {
-	reconciler   *reconcile.Reconciler
-	exec         *executor.Executor
-	images       *image.Store
-	cas          *oci.CAS
-	puller       *oci.Puller
-	boot         *build.GuestBoot
-	podman       *build.PodmanBuilder
-	buildScratch string
+	reconciler          *reconcile.Reconciler
+	exec                *executor.Executor
+	images              *image.Store
+	cas                 *oci.CAS
+	puller              *oci.Puller
+	boot                *build.GuestBoot
+	podman              *build.PodmanBuilder
+	buildScratch        string
+	buildWorkspaceBytes int64
+	buildFormatter      string
+	buildCalls          chan struct{}
+	buildBlocked        error
 
 	// mutationMu covers publication, persistence and effects as one operation.
 	// Serialize globally for now; correctness takes precedence over parallelism.
@@ -542,11 +573,41 @@ func (c *core) Build(ctx context.Context, request build.Request, progress func(s
 		}
 		return c.podman.Build(ctx, request, build.Progress(progress))
 	case "", "native":
+		c.mu.Lock()
+		if c.buildCalls == nil {
+			c.buildCalls = make(chan struct{}, 1)
+		}
+		admission := c.buildCalls
+		c.mu.Unlock()
+		select {
+		case admission <- struct{}{}:
+			defer func() { <-admission }()
+		case <-ctx.Done():
+			return build.Result{}, ctx.Err()
+		}
+		c.mu.Lock()
+		blockedReason := c.buildBlocked
+		c.mu.Unlock()
+		if blockedReason != nil {
+			return build.Result{}, blockedReason
+		}
 		if c.images == nil || c.cas == nil || c.puller == nil {
 			return build.Result{}, errors.New("build: the native builder is not configured")
 		}
 		if err := os.MkdirAll(c.buildScratch, 0o700); err != nil {
 			return build.Result{}, err
+		}
+		scratch, err := os.Open(c.buildScratch)
+		if err != nil {
+			return build.Result{}, err
+		}
+		entries, scanErr := scratch.ReadDir(2)
+		_ = scratch.Close()
+		if scanErr != nil && scanErr != io.EOF {
+			return build.Result{}, scanErr
+		}
+		if len(entries) != 0 {
+			return build.Result{}, errors.New("build: interrupted native workspace state remains; stop owned guests and review/remove retained state explicitly before rebuilding")
 		}
 		runner := &build.SandboxRunner{Share: "build"}
 		if c.boot != nil {
@@ -559,6 +620,20 @@ func (c *core) Build(ctx context.Context, request build.Request, progress func(s
 			Runner:     runner,
 			ScratchDir: c.buildScratch,
 			Platform:   oci.Platform{OS: "linux", Architecture: "amd64"},
+		}
+		if c.buildWorkspaceBytes > 0 {
+			blocked := &build.BlockRunner{Formatter: c.buildFormatter, ImageBytes: c.buildWorkspaceBytes}
+			if c.boot != nil {
+				blocked.Boot = c.boot.BootBlock
+			}
+			native.Runner = blocked
+			result, err := native.Build(ctx, request, build.Progress(progress))
+			if blocked.PreserveScratch() {
+				c.mu.Lock()
+				c.buildBlocked = errors.New("build: native builds blocked after incomplete workspace cleanup; review retained state before restarting")
+				c.mu.Unlock()
+			}
+			return result, err
 		}
 		return native.Build(ctx, request, build.Progress(progress))
 	default:

@@ -234,25 +234,42 @@ func (c *Client) Run(ctx context.Context, req RunRequest, stdout, stderr io.Writ
 	}
 	onFrame := func(fr Frame) error {
 		if fr.Session != req.Session {
-			return nil
+			return fmt.Errorf("%w: unexpected build RUN session", ErrCorrupt)
 		}
 		switch fr.Stream {
 		case StreamStdout:
 			if stdout != nil {
-				_, err := stdout.Write(fr.Data)
+				n, err := stdout.Write(fr.Data)
+				if err == nil && n != len(fr.Data) {
+					err = io.ErrShortWrite
+				}
 				return err
 			}
 		case StreamStderr:
 			if stderr != nil {
-				_, err := stderr.Write(fr.Data)
+				n, err := stderr.Write(fr.Data)
+				if err == nil && n != len(fr.Data) {
+					err = io.ErrShortWrite
+				}
 				return err
 			}
+		case StreamExit:
+			if len(fr.Data) != 0 && len(fr.Data) != 4 {
+				return fmt.Errorf("%w: invalid RUN exit frame", ErrCorrupt)
+			}
+		default:
+			return fmt.Errorf("%w: unexpected RUN stream", ErrCorrupt)
 		}
 		return nil
 	}
 	m, err := c.call(ctx, TypeRun, req, onFrame)
 	if err != nil {
+		_ = c.Close()
 		return RunResult{}, err
+	}
+	if m.Type != TypeRunResult {
+		_ = c.Close()
+		return RunResult{}, fmt.Errorf("%w: invalid RUN completion", ErrCorrupt)
 	}
 	var out RunResult
 	if err := UnmarshalPayload(m.Payload, &out); err != nil {

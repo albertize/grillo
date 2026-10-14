@@ -134,6 +134,23 @@ child-process lock/cancel case. Optional formatter unit tests can SKIP on hosts
 without that pin; the hardware target instead fails on absent prerequisites.
 See [ADR 0014](adr/0014-fixed-size-block-volume-quotas.md) for opt-in scope:
 legacy/bind data and native RUN workspaces are not bounded by this proof.
+Native host-write budget regressions run in `go test ./internal/build ./internal/oci` and `make check`; [evidence](experiments/t24-native-host-write-budgets.md)
+covers admission before writes, multi-stage/overwrite/import accounting,
+cancellation, rooted paths, staging limits and failed publication. These tests
+do not replace `make test-builder-kvm` or prove a quota on guest RUN writes.
+`go test ./internal/guestproto ./internal/guest ./internal/build` covers the
+[agent export prerequisite](experiments/t24-agent-owned-build-export.md), including
+actual authenticated in-memory framing, non-reading-peer cancellation, failed
+RUN cleanup and private bounded snapshot extraction. The opt-in integration adds
+software coverage; rebuilt guest/KVM evidence remains a separate incomplete gate.
+
+`make test-t24-build-workspace` checks accessible KVM before rebuilding the guest,
+then runs the opt-in native block test. It fails on missing hardware/artifacts or
+formatter rather than skipping. The intended real gate checks ext4 ENOSPC/retry,
+COPY/RUN coherence, metadata and owned cleanup; it has not passed here.
+`go test -tags kvm -run '^$' ./internal/build` compiles it without running it.
+[Current evidence](experiments/t24-opt-in-block-build-workspaces.md) separates real
+formatter calls, software fixtures and the missing KVM gate.
 The read-only `scripts/source-inventory.py` (Python 3.11+) hashes deliberately
 provisioned sources/crates, not legal clearance or a fetch/build step.
 

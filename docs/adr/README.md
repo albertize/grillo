@@ -20,6 +20,9 @@ ADRs explain consequential decisions and preserve the reasoning behind them. Use
 | [0013](0013-xterm-browser-terminal.md) | xterm-compatible interactive browser terminal | Proposed |
 | [0012](0012-compose-startup-dependency-gates.md) | Compose startup dependency and health gates | Proposed |
 | [0014](0014-fixed-size-block-volume-quotas.md) | Opt-in fixed-size block volume quotas | Proposed |
+| [0015](0015-native-host-write-budgets.md) | Cumulative host-write budgets for native image builds | Proposed |
+| [0016](0016-agent-owned-build-export.md) | Agent-owned bounded build snapshot export | Proposed |
+| [0017](0017-opt-in-block-build-workspaces.md) | Opt-in per-step block workspaces for native RUN | Proposed |
 
 The implementation plan still contains **provisional choices**, not evidence that a
 backend has passed its feasibility gate. An ADR without required hardware
