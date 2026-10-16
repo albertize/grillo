@@ -150,13 +150,12 @@ func (r *Reaper) deliver(pid int, st ExitStatus) {
 	ch := r.waiters[pid]
 	if ch != nil {
 		delete(r.waiters, pid)
-	}
-	r.mu.Unlock()
-	if ch != nil {
+		r.mu.Unlock()
 		ch <- st
 		return
 	}
-	r.mu.Lock()
+	// Wait must not register between checking waiters and retaining this exit.
+	// Otherwise it waits on a channel that no subsequent delivery can fill.
 	defer r.mu.Unlock()
 	r.retained[pid] = st
 	r.order = append(r.order, pid)

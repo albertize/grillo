@@ -89,6 +89,12 @@ malicious provisioned executables are not isolated by this adapter.
 
 ## Validation and follow-up
 
+Explicit local evaluation of a dependency-patched downstream build is described
+in [ADR 0018](0018-reviewed-external-artifact-candidates.md). It retains upstream
+renderer code and identifies the tree as dirty; it is not an official release
+or an automatic change to this baseline. Source/license and promotion review
+remain open.
+
 T21's acceptance gates are complete within the disclosed restricted subset.
 This ADR remains Proposed pending maintainer review. Run T22's realistic chart
 on the actual workload runtime; these rendering/CLI tests do not claim a KVM

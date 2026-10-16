@@ -57,6 +57,19 @@ recursive cleanup of unknown state, managed volumes or bind paths is added.
 
 ## Evidence and remaining acceptance
 
+The [fault/load continuation](../experiments/t24-workspace-faults-advisory-review.md)
+adds real RUN cancellation, owned VMM SIGKILL and output-limit failures with
+prior-reference preservation, VMM death, scratch cleanup and fresh successful
+builds. Ten sequential race-detector repetitions pass. Persistent-volume
+repair, daemon-crash recovery and whole-host pressure remain unverified.
+
+The [2026-10-16 KVM follow-up](../experiments/t24-block-workspace-kvm.md)
+passes the bounded hardware gate after correcting the dynamically linked
+BusyBox fixture and ENOSPC shell quoting. Published root/output metadata and
+successful scratch cleanup are now asserted. KVM/vsock are accessible outside
+the session sandbox. This supersedes the hardware-unavailable disposition
+below; crash/recovery/load and overall T24 acceptance remain incomplete.
+
 [Delivery report](../experiments/t24-opt-in-block-build-workspaces.md) records real
 formatter calls, software orchestration/import/export/metadata/failure tests,
 routine checks and the missing hardware prerequisite.
@@ -64,11 +77,13 @@ routine checks and the missing hardware prerequisite.
 `make test-t24-build-workspace` requires accessible KVM before rebuilding the
 agent guest. The actual test requires reviewed formatter and artifacts, and
 checks guest ENOSPC/retry, interleaved COPY/RUN and cleanup without a skip.
-The target is BLOCKED here because `/dev/kvm` is absent. Test compilation and
-fake-backend orchestration are not KVM evidence or completed enforcement gates.
+The initial delivery was BLOCKED because `/dev/kvm` was absent inside the session
+sandbox. Later host execution passes the bounded gate as linked above. Test
+compilation and fake-backend orchestration alone are not KVM evidence.
 
-The path remains opt-in and hardware-unverified. Crash/fsck/recovery, full
-metadata/load/performance and independent-host acceptance remain incomplete.
+The path remains opt-in with bounded hardware fault/retry evidence. Daemon/host
+crash, persistent-volume fsck/repair, full metadata/load/performance and
+independent-host acceptance remain incomplete.
 Sparse images do not reserve physical free space; capacity is raw geometry,
 not usable payload. Geometry is a reservation charge, not cumulative guest-write
 traffic. Custom policy is not persisted by CLI on-demand startup. T24/F3/D0

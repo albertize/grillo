@@ -1,5 +1,10 @@
 # T24 continuation: opt-in block native build integration
 
+Follow-up: the [2026-10-16 hardware gate](t24-block-workspace-kvm.md) now PASS
+outside the session sandbox after fixture corrections. The missing-KVM and
+hardware-unverified statements below describe the original delivery environment;
+overall T24/F3/D0 and broader crash/load/release gates remain open.
+
 Date: 2026-10-14. **T24/F3/D0 remain BLOCKED.** The native block path is now wired
 in software; guest-write enforcement is not accepted without its real KVM gate.
 

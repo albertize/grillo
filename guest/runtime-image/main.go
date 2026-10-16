@@ -25,6 +25,8 @@ func main() {
 	flag.StringVar(&cfg.Kernel, "kernel", "", "prepared guest bzImage")
 	flag.StringVar(&cfg.KernelVersion, "kernel-version", "", "pinned source kernel version")
 	flag.StringVar(&cfg.Inputs, "inputs", "", "provisioned runc and pinned BusyBox/library inputs directory")
+	flag.StringVar(&cfg.RuncVersion, "runc-version", "", "explicit reviewed runc build version; requires -runc-sha256")
+	flag.StringVar(&cfg.RuncSHA256, "runc-sha256", "", "explicit reviewed runc SHA-256; requires -runc-version")
 	flag.StringVar(&cfg.Store, "store", "", "content-identity runtime guest store")
 	flag.StringVar(&cfg.Version, "version", "dev", "Grillo build version")
 	flag.StringVar(&cfg.Commit, "commit", "unknown", "source commit")

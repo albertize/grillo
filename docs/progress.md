@@ -31,12 +31,29 @@ The [agent export prerequisite](experiments/t24-agent-owned-build-export.md) now
 adds authenticated bounded snapshots and private host extraction. The
 [opt-in block integration](experiments/t24-opt-in-block-build-workspaces.md) now
 wires per-step disks, agent population and COPY/RUN snapshot adoption in software.
-Its real workspace KVM gate is BLOCKED because `/dev/kvm` is unavailable here.
+Its [real workspace KVM gate](experiments/t24-block-workspace-kvm.md) now PASS
+outside the session sandbox after fixture corrections; KVM/vsock devices are
+available on the host but hidden inside the sandbox.
 Legacy/bind volume writes and default native RUN remain unbounded; full
-load/performance/source/release acceptance remains BLOCKED. New binary advisory
-scans FAIL (runc 14, Helm 15 reported vulnerabilities); the clean Grillo source
-scan does not clear those artifacts. Hosted rerun/independent-host acceptance
-remain unavailable.
+load/performance/source/release acceptance remains BLOCKED. The
+[fault/load continuation](experiments/t24-workspace-faults-advisory-review.md)
+passes actual RUN cancellation, owned VMM SIGKILL and output exhaustion with
+fresh-disk retries in ten sequential race-detector repetitions. Fresh binary
+advisory scans still FAIL (runc 14, Helm 15); a Helm source comparison reports
+eight called advisories from three modules and does not clear the original
+binary. Hosted rerun/complete independent clean-host acceptance remain pending;
+[partial second-host evidence](experiments/d0-second-host-fedora44.md) exists.
+The [isolated candidate campaign](experiments/t24-external-candidates.md) now
+builds patched runc/Helm with explicit source/native inputs, passes source/binary
+called-vulnerability scans (Helm retains one module-only advisory), real installed
+and isolated workspace gates, and 30/30 seeded resource budgets. Originals and
+normal selection remain unchanged. One combined-load workspace retry timeout is
+retained; formal promotion, native/source/license review and remaining F3 gates
+are not cleared by the candidate passes.
+The [timeout investigation](experiments/t24-reaper-timeout.md) fixes a reproduced
+lost exit delivery in the guest reaper; corrected guest load/KVM/installed gates
+pass. The historical hardware timeout remains unproven as to cause, and software
+load exposed separate reproducible DNS TCP bind collisions.
 
 Container stdout/stderr now reaches the bounded guest ring and host spool, with
 explicit guest-retention gaps; [real pipeline evidence](experiments/t24-guest-logs.md).
@@ -79,7 +96,7 @@ See [compatibility](compatibility.md) and [console limits](ui.md#explicit-mvp-li
 | T21 | Helm rendering and OCI charts | DONE | Real Helm package/template, local/OCI equivalence, explicit HTTPS fetch, verified atomic cache, stable offline plans, archive/corruption/concurrency/dependency restrictions; `docs/experiments/t21-helm-renderer.md` |
 | T22 | Helm gate and compatibility reporting | DONE | Full direct-runtime scenario C plus actual CLI/daemon chart gate PASS; unsupported provisioning blocked; compiler registry/counts and consumer/PVC semantics verified |
 | T23 | Web console and secure bridge | DONE | React/PatternFly (ADR 0008), metadata-only views, bounded logs/SSE/captured Exec; [interactive Pod Terminal + Chrome/KVM](experiments/t24-browser-terminal-compose-dependencies.md) now PASS; original Firefox evidence remains historical, full terminal emulation/data limits explicit |
-| T24 | F3 MVP gate and hardening | BLOCKED | [100 verified boots](experiments/t24-closure-campaign.md) PASS; [volume/seeded-budget/source evidence](experiments/t24-pinned-cache-block-quota-sources.md), [host budgets](experiments/t24-native-host-write-budgets.md), [opt-in build integration](experiments/t24-opt-in-block-build-workspaces.md); external binary advisory FAIL, workspace/full load/source clearance and hosted/clean-host gates remain |
+| T24 | F3 MVP gate and hardening | BLOCKED | [100 verified boots](experiments/t24-closure-campaign.md) PASS; [volume/seeded-budget/source evidence](experiments/t24-pinned-cache-block-quota-sources.md), [host budgets](experiments/t24-native-host-write-budgets.md), [opt-in build integration](experiments/t24-opt-in-block-build-workspaces.md); original binary advisories FAIL; [candidates](experiments/t24-external-candidates.md) pass bounded local gates; combined-load/crash/source and hosted/clean-host gates remain |
 | T25 | StatefulSet and Job | TODO | T24 |
 | T26 | Extended Tier 1/Tier 2 parity and TLS | TODO | T25 |
 | T27 | Measured optimization and packaging | TODO | T24; T26 for complete F4 |
@@ -106,48 +123,39 @@ subsequent edit or that the whole product is release-ready.
 
 ## Latest delivery
 
-- **Task:** T24 — opt-in per-step block native RUN, guest seed population and snapshot adoption.
-- **Status:** BLOCKED overall; block path wired and software/formatter checks pass,
-  actual workspace ENOSPC/coherence/cleanup KVM acceptance remains unverified.
-- **Dependencies verified:** T06 bounded authenticated protocol, T09 OCI/CAS,
-  T10 ext4/virtio-blk contracts, T18/T18b native builder/runner, T23 daemon and
-  preceding host-budget/export contracts. `/dev/kvm` remains absent.
-- **Files and contracts changed:** Native block runner/boot selection, daemon
-  opt-in flag/admission, guest block seed/root metadata, OCI metadata/mode
-  callbacks, COPY/RUN and publication cleanup; unit/failure/protocol tests,
-  fail-closed hardware target and documentation. Includes the preceding
-  host-budget/export deliveries; the user authorized commit and push of these
-  changes. Recorded checks ran before that commit.
-- **Decisions/ADRs:** [ADR 0017](adr/0017-opt-in-block-build-workspaces.md) Proposed;
-  `--build-workspace-bytes N` (zero retains legacy virtiofs), reviewed existing
-  mke2fs formats empty images; agent imports read-only tar seed. The actual
-  formatter tar-population probe failed without libarchive; no new dependency
-  or silent fallback was introduced.
-- **Tests run:** Focused build/guest/protocol/OCI/daemon tests PASS, including
-  actual formatter, COPY/RUN/owner/root-mode contracts, failure cleanup/retention,
-  output bounds and native admission. Final `make check` PASS, hardware-tagged
-  test compilation PASS with no execution, `make fmt`, Markdown fences/214 local
-  links and `git diff --check` PASS. See
-  [evidence](experiments/t24-opt-in-block-build-workspaces.md).
-  Initial selected-backend compile failure was corrected and retained.
-  `make test-t24-build-workspace` FAIL/BLOCKED (exit 2): readable/writable KVM
-  unavailable; stopped before guest rebuild.
-- **Tests NOT run and why:** Real guest rebuild and workspace VM body: missing
-  `/dev/kvm`. No KVM pass/skip, benchmark, fresh advisory scan,
-  runc/Helm replacement or clean-host receipt is claimed.
-- **Integration/benchmark evidence:** Software orchestration and real formatting
-  only; prior [volume/budget/source evidence](experiments/t24-pinned-cache-block-quota-sources.md)
-  remains historical and does not prove the new workspace path.
-- **Known limitations:** Default RUN remains unbounded virtiofs; opt-in block
-  mode lacks real hardware, crash/repair/recovery, full metadata/load/performance
-  acceptance. Images are sparse/no-journal, geometry is not usable payload or
-  physical free-space reservation. Per-daemon admission is not host-wide policy;
-  custom flags are not persisted by CLI on-demand startup. Retained state needs
-  explicit operator review; prior external binary/source/release gates remain open.
-- **Next task:** Rebuild agent guest and run `make test-t24-build-workspace` on a
-  provisioned KVM host; resolve real failures before quota acceptance, then
-  crash/load/metadata gates and reviewed runc/Helm rebuild/lineage/advisories.
-  No T25 or release publication.
+- **Task:** T24 — guest reaper race and combined-load workspace timeout investigation.
+- **Status:** BLOCKED overall; reproduced lost exit delivery fixed. Historical
+  hardware timeout is not conclusively attributed; separate DNS bind failures remain.
+- **Dependencies verified:** T06 protocol, T07 guest, T18/T18b build runtime and
+  candidate portable-guest/installed gates; actual host KVM API 12/vsock as UID
+  1000 outside the sandbox, with SELinux already Permissive.
+- **Files and contracts changed:** Atomic waiter lookup/retained exit insertion,
+  concurrent regression, bounded private phase/guest log retention before owned
+  hardware-test cleanup, diagnostic regression and evidence/testing docs. No
+  timeout, protocol, dependency or normal guest selection changes.
+- **Decisions/ADRs:** No architectural change; existing candidate and opt-in
+  workspace ADRs remain Proposed.
+- **Tests run:** Regression FAIL before fix (stranded waiter at PID 117); ten
+  reaper/race repetitions PASS after fix (200,000 synthetic races). Tagged
+  diagnostics/compilation PASS; actual rebuilt old and corrected portable guests
+  each pass initial plus ten KVM/race workspace runs during software load.
+  T07 and corrected installed runtime KVM PASS. Final `make check` PASS.
+  First full ten-repeat software/race load PASS; second FAIL on three network
+  bind collisions. Focused network repeat also FAIL on two bind collisions.
+  Commands, hashes and timings are in the [report](experiments/t24-reaper-timeout.md).
+- **Tests NOT run and why:** New fuzz/advisory campaigns, independent-host,
+  persistent-volume/daemon crash and release/source/license promotion gates are
+  outside this bounded fix; dependencies were unchanged.
+- **Integration/benchmark evidence:** Actual corrected guest rebuilt and verified
+  by immutable inventory; fault/retry and installed Compose/Helm gates PASS.
+  Old guest also passed, so no exclusive cause for the historical timeout or
+  whole-host saturation performance is claimed.
+- **Known limitations:** DNS UDP-selected ephemeral ports can collide on TCP;
+  that separate issue remains reproducible. Original artifact advisories and
+  candidate promotion/F3/release gates remain. No commit or publication.
+- **Next task:** Separate DNS dual-protocol port allocation correction; inspect
+  retained phase/guest logs if the historical workspace timeout recurs. Remaining
+  crash/source/clean-host gates follow; no T25 start.
 
 ## Updating progress
 

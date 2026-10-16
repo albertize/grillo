@@ -6,6 +6,161 @@ superseded summaries. They are not current support claims; use
 [current progress](../progress.md) and [compatibility](../compatibility.md).
 
 
+## Archived T24 isolated external candidates (2026-10-16)
+
+- **Task:** T24 — isolated dependency-patched runc/Helm candidates and explicit
+  reviewed guest selection.
+- **Status:** BLOCKED overall; candidate source/binary symbol scans, renderer,
+  installed KVM, isolated workspace/race and 30-cycle resource budgets PASS.
+  A combined-load workspace retry timeout remains unresolved.
+- **Dependencies verified:** T09/T10, T18/T18b, T21, D0 local installed contracts
+  and real workspace gates. Native inputs were prepared in a private tree;
+  host hardware tests used UID 1000 with SELinux already Permissive.
+- **Files and contracts changed:** Paired reviewed runc version/hash in the guest
+  builder and Make, immutable inventory/selection tests, portable-guest selection
+  in the workspace KVM gate, phase-wrapped block RUN errors preserving causes,
+  failure regressions, ADR/docs, external-module patches and artifact/resource
+  lock records. No Grillo Go module, system tool or normal guest selection change.
+- **Decisions/ADRs:** [ADR 0018](../adr/0018-reviewed-external-artifact-candidates.md)
+  Proposed; patched candidates are explicitly identified and selected. Defaults
+  retain existing pins. Native seccomp/libpathrs retained; no automatic fetch or
+  replacement in runtime/build selection.
+- **Tests run:** Focused guest/build tests and hardware-tagged compilation PASS;
+  candidate Helm local/OCI regressions PASS. Candidate runc source/binary scans
+  PASS; Helm source/binary PASS at called/imported-package scope with one explicit
+  module-only OpenPGP advisory. Installed Compose/Helm/exec/DNS/UI KVM PASS;
+  isolated ten-repeat workspace/race PASS; candidate 30/30 seeded resource budget
+  PASS without threshold changes. Final `make check vulncheck` PASS. Exact
+  commands, hashes and earlier failures are in
+  [evidence](../experiments/t24-external-candidates.md).
+- **Tests NOT run and why:** Full upstream tool suites, new fuzz/native-advisory
+  campaign, persistent-volume repair, daemon/host crash, independent rebuild/host,
+  hosted CI and package-manager lifecycle are outside this bounded acceptance.
+- **Integration/benchmark evidence:** Actual candidate guest/renderer on KVM,
+  seeded installed acceptance and sampled local budgets only. Combined-load
+  workspace batch FAIL (retry context deadline); isolated rerun PASS. No root
+  cause or combined-load clearance claimed; failed owned state retained.
+- **Known limitations:** Original runc/Helm still have their recorded advisories.
+  Candidate promotion, complete native/compiler/source/notices/provenance review
+  and release/default-policy gates remain. The libpathrs archive/tag v0.2.6
+  declares internal version 0.2.5+dev, accurately retained. Default RUN remains
+  unbounded virtiofs; no supported release, publication or commit.
+- **Next task:** Retain phase/boot diagnostics and reproduce the combined-load
+  timeout; persistent-volume/daemon crash gates follow. Formal candidate adoption
+  and source/license review remain independent requirements. No T25 start.
+
+## Archived T24 workspace faults and artifact diagnosis (2026-10-16)
+
+- **Task:** T24 — real block-workspace fault/retry repetitions and external
+  artifact/source blocker review.
+- **Status:** BLOCKED overall; bounded KVM interruption/load gate PASS.
+- **Dependencies verified:** T06, T09, T10, T18/T18b and the preceding real
+  workspace gate; host KVM/vsock accessible outside the session sandbox.
+- **Files and contracts changed:** Hardware test tracks only its private backend
+  handles and captures verified VMM identity. Cancellation, VMM SIGKILL and output
+  exhaustion must preserve the prior image, stop the VMM, clean scratch and allow
+  a fresh successful build. New Make load target and testing/evidence docs.
+- **Decisions/ADRs:** [ADR 0017](../adr/0017-opt-in-block-build-workspaces.md)
+  remains Proposed; no runtime default, tool replacement or dependency pin change.
+- **Tests run:** Hardware-tagged compilation PASS; rebuilt
+  `make test-t24-build-workspace` PASS; `make test-t24-build-workspace-load` PASS
+  (initial gate plus ten sequential race-detector repetitions); `make check`
+  PASS outside sandbox. Fresh runc/Helm binary scans FAIL with 14/15 advisories;
+  Helm source scan FAIL with eight called advisories from three modules.
+  See [commands/failures/evidence](../experiments/t24-workspace-faults-advisory-review.md).
+- **Tests NOT run and why:** No persistent-volume repair, daemon/host crash,
+  interrupted export/adoption, concurrent saturation/peak budgets, independent
+  clean-host, hosted CI or replacement-artifact acceptance in this bounded task.
+- **Integration/benchmark evidence:** Actual guest interruption and fresh-disk
+  retries; ten sequential KVM/race repetitions, not a scalability benchmark or
+  recovery of the interrupted filesystem. VMM liveness and scratch checked for
+  each fault; prior host-wide process inspection remains unverified.
+- **Known limitations:** Default native RUN remains unbounded virtiofs. runc's
+  native libpathrs prerequisite is unavailable through pkg-config; static native
+  lineage remains incomplete. Both binary scanners remain conservative on
+  stripped artifacts; source analysis does not clear those originals. Existing
+  source/license, standard-policy, clean-host and release gates remain open.
+- **Next task:** Isolated reviewed runc native build/dependency updates and Helm
+  dependency rebuild; persistent-volume crash acceptance and daemon interruption
+  remain separate. No T25 or publication.
+
+## Archived T24 initial block workspace KVM gate (2026-10-16)
+
+- **Task:** T24 — real KVM acceptance of opt-in block build workspaces.
+- **Status:** BLOCKED overall; the bounded workspace hardware gate now PASS.
+- **Dependencies verified:** T06 protocol, T09 OCI/CAS, T10 ext4/virtio-blk,
+  T18/T18b native builder and agent. Host KVM API 12 and read/write vsock
+  verified as UID 1000 outside the session sandbox.
+- **Files and contracts changed:** Hardware test fixture now includes the pinned
+  BusyBox guest libraries, correct ENOSPC shell quoting, progress diagnostics
+  and explicit published-layer UID/GID/mode assertions. Runtime defaults unchanged.
+- **Decisions/ADRs:** [ADR 0017](../adr/0017-opt-in-block-build-workspaces.md)
+  remains Proposed; block workspaces remain opt-in.
+- **Tests run:** Final `make test-t24-build-workspace` PASS on actual KVM after
+  guest rebuild, including ENOSPC/delete/retry, COPY/RUN, deletion, published
+  root mode and output UID/GID/setuid mode, and empty successful scratch.
+  `make check` PASS outside sandbox. Earlier hardware fixture failures and
+  sandbox check failures are preserved in
+  [evidence](../experiments/t24-block-workspace-kvm.md).
+- **Tests NOT run and why:** No crash/fsck/recovery, sustained load, benchmarks,
+  independent-host or hosted CI campaign in this bounded task. No new advisory
+  scans or runc/Helm replacements. Host-wide process inspection was interrupted
+  twice; absence of residual processes is not independently verified.
+- **Integration/benchmark evidence:** Actual QEMU/KVM workspace gate, not a
+  benchmark. Successful test-owned scratch cleanup asserted; failed test
+  directories retained for operator review.
+- **Known limitations:** Default native RUN still uses unbounded virtiofs;
+  sparse/no-journal geometry is not physical reservation. Existing external
+  binary advisory, source/license, release and broader hardening gates remain.
+- **Next task:** Crash/recovery and load acceptance for block workspaces;
+  reviewed runc/Helm replacements and advisory scans remain independent work.
+  No T25 or release publication.
+
+## Archived T24 opt-in block integration (2026-10-14)
+
+- **Task:** T24 — opt-in per-step block native RUN, guest seed population and snapshot adoption.
+- **Status:** BLOCKED overall; block path wired and software/formatter checks pass,
+  actual workspace ENOSPC/coherence/cleanup KVM acceptance remains unverified.
+- **Dependencies verified:** T06 bounded authenticated protocol, T09 OCI/CAS,
+  T10 ext4/virtio-blk contracts, T18/T18b native builder/runner, T23 daemon and
+  preceding host-budget/export contracts. `/dev/kvm` remains absent.
+- **Files and contracts changed:** Native block runner/boot selection, daemon
+  opt-in flag/admission, guest block seed/root metadata, OCI metadata/mode
+  callbacks, COPY/RUN and publication cleanup; unit/failure/protocol tests,
+  fail-closed hardware target and documentation. Includes the preceding
+  host-budget/export deliveries; the user authorized commit and push of these
+  changes. Recorded checks ran before that commit.
+- **Decisions/ADRs:** [ADR 0017](../adr/0017-opt-in-block-build-workspaces.md) Proposed;
+  `--build-workspace-bytes N` (zero retains legacy virtiofs), reviewed existing
+  mke2fs formats empty images; agent imports read-only tar seed. The actual
+  formatter tar-population probe failed without libarchive; no new dependency
+  or silent fallback was introduced.
+- **Tests run:** Focused build/guest/protocol/OCI/daemon tests PASS, including
+  actual formatter, COPY/RUN/owner/root-mode contracts, failure cleanup/retention,
+  output bounds and native admission. Final `make check` PASS, hardware-tagged
+  test compilation PASS with no execution, `make fmt`, Markdown fences/214 local
+  links and `git diff --check` PASS. See
+  [evidence](../experiments/t24-opt-in-block-build-workspaces.md).
+  Initial selected-backend compile failure was corrected and retained.
+  `make test-t24-build-workspace` FAIL/BLOCKED (exit 2): readable/writable KVM
+  unavailable; stopped before guest rebuild.
+- **Tests NOT run and why:** Real guest rebuild and workspace VM body: missing
+  `/dev/kvm`. No KVM pass/skip, benchmark, fresh advisory scan,
+  runc/Helm replacement or clean-host receipt is claimed.
+- **Integration/benchmark evidence:** Software orchestration and real formatting
+  only; prior [volume/budget/source evidence](../experiments/t24-pinned-cache-block-quota-sources.md)
+  remains historical and does not prove the new workspace path.
+- **Known limitations:** Default RUN remains unbounded virtiofs; opt-in block
+  mode lacks real hardware, crash/repair/recovery, full metadata/load/performance
+  acceptance. Images are sparse/no-journal, geometry is not usable payload or
+  physical free-space reservation. Per-daemon admission is not host-wide policy;
+  custom flags are not persisted by CLI on-demand startup. Retained state needs
+  explicit operator review; prior external binary/source/release gates remain open.
+- **Next task:** Rebuild agent guest and run `make test-t24-build-workspace` on a
+  provisioned KVM host; resolve real failures before quota acceptance, then
+  crash/load/metadata gates and reviewed runc/Helm rebuild/lineage/advisories.
+  No T25 or release publication.
+
 ## Archived T24 agent-owned build export (2026-10-14)
 
 - **Task:** T24 — agent-owned bounded build export and private host snapshot extraction.

@@ -1,0 +1,99 @@
+{
+  "schema_version": 1,
+  "status": "local candidates; not promoted or redistribution-cleared",
+  "toolchains": {
+    "go": "go1.27.2",
+    "gcc": "16.2.1-2.fc44",
+    "rust": "1.98.1-1.fc44",
+    "cargo": "1.98.1-1.fc44"
+  },
+  "source_inputs": [
+    {
+      "file": "helm-srpm/helm-4.2.2.tar.gz",
+      "sha256": "2208572edb814bf481bf4657a73009e5155c83967ba1f514083b476de95f948f",
+      "omitted_unsafe_test_links": [
+        "helm-4.2.2/internal/chart/v3/loader/testdata/frobnitz_with_dev_null/null",
+        "helm-4.2.2/internal/third_party/dep/fs/testdata/symlinks/invalid-symlink",
+        "helm-4.2.2/pkg/chart/v2/loader/testdata/frobnitz_with_dev_null/null"
+      ]
+    },
+    {
+      "file": "helm-srpm/helm-4.2.2-vendor.tar.bz2",
+      "sha256": "2efc2a826e4762fb7b9da36e1b385192c3efa33d5205ad5f2a7c74bfbce99309",
+      "omitted_unsafe_test_links": []
+    },
+    {
+      "file": "runc-29dd3dc2b13b4123162e5fe132504bb4b15569f1.tar.gz",
+      "sha256": "5386e1968f70cc1482b4b2a93dc1a88ea7fa5517fba49b9e0fafe614d5a4c97a",
+      "omitted_unsafe_test_links": []
+    },
+    {
+      "file": "libpathrs-0.2.6.tar.gz",
+      "sha256": "ae274cd296b863d538e28ee42e612f40723f9f0b2601a41c5b796ac074e5eb9c",
+      "omitted_unsafe_test_links": []
+    }
+  ],
+  "outputs": [
+    {
+      "file": "runc-candidate",
+      "bytes": 18119864,
+      "sha256": "5bca7accb4a212f748899ac54dee87a470be9af5b8f34a84110c7cc425c045fb"
+    },
+    {
+      "file": "helm-candidate",
+      "bytes": 90798977,
+      "sha256": "b82ff5240c4a1385a2ebc4e967fc497593bfe0bfdb98835aea19fb573ea444b9"
+    },
+    {
+      "file": "native/lib/libpathrs.a",
+      "bytes": 15702202,
+      "sha256": "9fe283ff25fd73fddc37cfec941a2ae7b5436ecde752f3daae3690679835fdc3"
+    },
+    {
+      "file": "native/include/pathrs.h",
+      "bytes": 34704,
+      "sha256": "565045a93395cdeecab5bd44b83fc5b20c2e35e965f14e4ead62283c4944126a"
+    }
+  ],
+  "native_rpms": [
+    {
+      "file": "glibc-static-2.43-9.fc44.x86_64.rpm",
+      "sha256": "da8cb4c4f5997845be035445d28413754e2eefd97d1d1240b90ee04f49d3cbe8",
+      "signature_check": "rpmkeys --checksig: digests signatures OK using existing Fedora keys"
+    },
+    {
+      "file": "libseccomp-static-2.6.1-2.fc44.x86_64.rpm",
+      "sha256": "fa939a73513ceb14d6853084b9d029e878b9a2c1b0ac373ea61d0b19f19a5f8c",
+      "signature_check": "rpmkeys --checksig: digests signatures OK using existing Fedora keys"
+    },
+    {
+      "file": "glibc-2.43-9.fc44.src.rpm",
+      "sha256": "c87e0ed253803f10c10344d34308da4e5efc4bd76e6061f2a53e833165e0b5af",
+      "signature_check": "rpmkeys --checksig: digests signatures OK using existing Fedora keys"
+    },
+    {
+      "file": "libseccomp-2.6.1-2.fc44.src.rpm",
+      "sha256": "08c6fec2013b3f94e6df1d23df2b9ed89ec9032e01c5bf472cc94204023c0c0c",
+      "signature_check": "rpmkeys --checksig: digests signatures OK using existing Fedora keys"
+    }
+  ],
+  "patches": {
+    "t24-runc-candidate-module.patch": "7aa3badb8be3e825790ecdf7621b5b94b4e9df093cb08e718a40dc40e8e48bb4",
+    "t24-helm-candidate-module.patch": "c47af4391edc6842a1849a95072d003d8075ec794fa531f888fbbf34499cf035"
+  },
+  "source_clearance": "Pending: source inputs and signatures are not legal clearance, native advisory coverage, publisher authentication or independent build reproduction.",
+  "host_source": {
+    "base_revision": "1bda63156002a6862a028a303468d484c23d9019",
+    "status": "dirty source; code patch retained in local candidate receipts, matching tracked code changes",
+    "code_patch_sha256": "3d7a38f23eb5707228ec537c909f2eb39b21ca0862ec5d94d4041b3104713e87",
+    "files": [
+      "Makefile",
+      "guest/runtime-image/main.go",
+      "internal/guest/runtime_image_linux.go",
+      "internal/guest/runtime_image_linux_test.go",
+      "internal/build/block_kvm_test.go",
+      "internal/build/block_linux.go",
+      "internal/build/block_linux_test.go"
+    ]
+  }
+}

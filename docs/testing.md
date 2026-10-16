@@ -142,15 +142,35 @@ do not replace `make test-builder-kvm` or prove a quota on guest RUN writes.
 [agent export prerequisite](experiments/t24-agent-owned-build-export.md), including
 actual authenticated in-memory framing, non-reading-peer cancellation, failed
 RUN cleanup and private bounded snapshot extraction. The opt-in integration adds
-software coverage; rebuilt guest/KVM evidence remains a separate incomplete gate.
+software coverage; rebuilt guest/KVM execution is checked separately below.
 
 `make test-t24-build-workspace` checks accessible KVM before rebuilding the guest,
 then runs the opt-in native block test. It fails on missing hardware/artifacts or
-formatter rather than skipping. The intended real gate checks ext4 ENOSPC/retry,
-COPY/RUN coherence, metadata and owned cleanup; it has not passed here.
+formatter rather than skipping. The real gate checks ext4 ENOSPC/retry,
+COPY/RUN coherence, metadata, owned cleanup, RUN cancellation, owned VMM SIGKILL
+and excessive output. Faults must preserve the prior image reference and allow
+a fresh successful build afterward.
+`make test-t24-build-workspace-load` first rebuilds/runs that gate, then performs
+ten sequential repetitions with the race detector. This does not establish
+persistent-volume crash repair, daemon-crash recovery or whole-host saturation.
+To evaluate an explicitly reviewed runtime guest instead of the legacy fixture,
+set `GRILLO_TEST_BUILD_GUEST_SELECTION` to its selection file. The test verifies
+the portable manifest and uses boot snapshots with fresh keys; invalid explicit
+selection fails without falling back. The Make target still rebuilds the legacy
+fixture, but its hash is not evidence for the selected portable guest; retain the
+selected guest's inventory/hashes separately. See the
+[candidate report](experiments/t24-external-candidates.md), including a retained
+combined-load timeout and the separate isolated pass.
+The [reaper investigation](experiments/t24-reaper-timeout.md) fixes a confirmed
+lost exit delivery and records subsequent old/new-guest load runs, including
+separate DNS bind failures. Failed workspace gates now retain private phase
+metadata (64 KiB total) and the first 64 KiB of serial/helper logs per owned guest
+before cleanup, with at most 32 unique guest handles. Boot keys and sandbox state
+are excluded; retained serial logs remain untrusted private diagnostic material.
 `go test -tags kvm -run '^$' ./internal/build` compiles it without running it.
-[Current evidence](experiments/t24-opt-in-block-build-workspaces.md) separates real
-formatter calls, software fixtures and the missing KVM gate.
+[Hardware evidence](experiments/t24-block-workspace-kvm.md) and the
+[fault/load continuation](experiments/t24-workspace-faults-advisory-review.md)
+record actual passes, earlier failures and remaining gates.
 The read-only `scripts/source-inventory.py` (Python 3.11+) hashes deliberately
 provisioned sources/crates, not legal clearance or a fetch/build step.
 

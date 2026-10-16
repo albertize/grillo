@@ -33,6 +33,9 @@ const maxRuntimeArchive = 128 << 20
 type RuntimeImageConfig struct {
 	Agent, Kernel, Inputs, Store   string
 	Version, Commit, KernelVersion string
+	// Both fields are required to select an explicitly reviewed runc build.
+	// Empty fields retain the repository pin; no input is executed or fetched.
+	RuncVersion, RuncSHA256 string
 }
 
 type RuntimeBuild struct {
@@ -118,6 +121,26 @@ func readRuntimeFile(ctx context.Context, file *os.File) ([]byte, error) {
 }
 
 func buildRuntimeImage(ctx context.Context, cfg RuntimeImageConfig, pins []runtimeInput) (string, error) {
+	if cfg.RuncVersion != "" || cfg.RuncSHA256 != "" {
+		if len(cfg.RuncVersion) == 0 || len(cfg.RuncVersion) > 64 || len(cfg.RuncSHA256) != 64 || strings.ToLower(cfg.RuncSHA256) != cfg.RuncSHA256 {
+			return "", fmt.Errorf("guest: reviewed runc requires a bounded version and lowercase SHA-256")
+		}
+		for _, c := range cfg.RuncVersion {
+			if !(c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || strings.ContainsRune(".+_-", c)) {
+				return "", fmt.Errorf("guest: invalid reviewed runc version")
+			}
+		}
+		if _, err := hex.DecodeString(cfg.RuncSHA256); err != nil {
+			return "", fmt.Errorf("guest: invalid reviewed runc SHA-256")
+		}
+		pins = append([]runtimeInput(nil), pins...)
+		for i := range pins {
+			if pins[i].target == "runc" {
+				pins[i].version = "runc/" + cfg.RuncVersion
+				pins[i].digest = cfg.RuncSHA256
+			}
+		}
+	}
 	if cfg.Version == "" || cfg.Commit == "" || cfg.KernelVersion == "" || cfg.Store == "" {
 		return "", fmt.Errorf("guest: explicit runtime build identity/store required")
 	}

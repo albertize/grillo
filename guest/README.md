@@ -22,6 +22,18 @@ unknown embedded secrets. Build/source trust and redistribution review remain
 required. See [runtime layout](../docs/runtime-layout.md) and
 [actual installed-prefix KVM evidence](../docs/experiments/d0-installed-runtime.md).
 
+For an explicitly reviewed runc rebuild, the runtime-image command accepts the
+paired `-runc-version` and `-runc-sha256` options. The Make equivalents are
+`RUNTIME_RUNC_VERSION` and `RUNTIME_RUNC_SHA256`; select its separate provisioned
+input tree with `GUEST_INPUTS`, and use a separate store/selection for evaluation.
+Both identity fields are mandatory for an override. The builder verifies actual
+bytes, records the version/hash and gives the guest a distinct immutable identity.
+Empty fields retain the repository pin; there is no automatic replacement or
+download. This build-time choice is not an option in workload manifests or the
+daemon API. See [ADR 0018](../docs/adr/0018-reviewed-external-artifact-candidates.md)
+and [local candidate evidence](../docs/experiments/t24-external-candidates.md)
+for provenance, licensing and acceptance limits.
+
 ## Layout of a development fixture
 
 ```

@@ -85,3 +85,44 @@ func TestReaperConcurrentChildren(t *testing.T) {
 		t.Fatalf("codes = %v", codes)
 	}
 }
+
+func TestReaperConcurrentWaitAndDeliveryNeverLosesExit(t *testing.T) {
+	r := NewReaper()
+	deadline := time.NewTimer(10 * time.Second)
+	defer deadline.Stop()
+	for pid := 1; pid <= 20000; pid++ {
+		start := make(chan struct{})
+		delivered := make(chan struct{})
+		waited := make(chan ExitStatus, 1)
+		want := ExitStatus{PID: pid, ExitCode: pid % 127}
+		go func() { <-start; waited <- r.Wait(want.PID) }()
+		go func() { <-start; r.deliver(want.PID, want); close(delivered) }()
+		close(start)
+		select {
+		case <-delivered:
+		case <-deadline.C:
+			t.Fatalf("exit delivery itself timed out at pid %d", pid)
+		}
+		// Delivery must atomically choose the existing waiter or retained status.
+		// If both exist after delivery, Wait has been stranded. Rescue only that
+		// failed fixture's goroutine so reporting a regression does not leak it.
+		r.mu.Lock()
+		ch := r.waiters[pid]
+		_, retained := r.retained[pid]
+		lost := ch != nil && retained
+		if lost {
+			delete(r.waiters, pid)
+			delete(r.retained, pid)
+			ch <- want
+		}
+		r.mu.Unlock()
+		select {
+		case got := <-waited:
+			if lost || got != want {
+				t.Fatalf("exit delivery lost to concurrent Wait: pid=%d stranded=%v got=%+v", pid, lost, got)
+			}
+		case <-deadline.C:
+			t.Fatalf("concurrent exit delivery timed out at pid %d", pid)
+		}
+	}
+}

@@ -143,7 +143,7 @@ func (r *BlockRunner) Run(ctx context.Context, step RunStep, progress Progress) 
 		}
 	}()
 	if bootErr != nil {
-		return bootErr
+		return fmt.Errorf("build: boot block workspace: %w", bootErr)
 	}
 	if client == nil || cleanup == nil {
 		preserve = true
@@ -165,14 +165,14 @@ func (r *BlockRunner) Run(ctx context.Context, step RunStep, progress Progress) 
 	result, err := client.Run(ctx, guestproto.RunRequest{Share: "build", Args: step.Command, Env: step.Env, WorkDir: step.WorkDir, User: user}, stdout, stdout)
 	if err != nil {
 		_ = client.Close()
-		return err
+		return fmt.Errorf("build: execute block RUN: %w", err)
 	}
 	if result.ExitCode != 0 {
 		return fmt.Errorf("build: block RUN exited with code %d", result.ExitCode)
 	}
 	root, owners, metadata, err := exportBuildSnapshotWithMetadata(ctx, exporter, "build", work, step.budget)
 	if err != nil {
-		return err
+		return fmt.Errorf("build: export block workspace: %w", err)
 	}
 	if metadata == nil {
 		return errors.New("build: block export lacks root metadata; rebuild guest")

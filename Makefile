@@ -154,10 +154,12 @@ RUNTIME_STORE ?= experiments/artifacts/runtime
 RUNTIME_SELECTION ?= experiments/artifacts/runtime-selected.txt
 GUEST_KERNEL ?= experiments/artifacts/qemu/bzImage
 GUEST_INPUTS ?= experiments/artifacts/t02
+RUNTIME_RUNC_VERSION ?=
+RUNTIME_RUNC_SHA256 ?=
 .PHONY: runtime-guest
 runtime-guest: build
 	@mkdir -p "$$(dirname '$(RUNTIME_SELECTION)')"
-	$(GO) run ./guest/runtime-image -agent bin/grillo-agent -kernel '$(GUEST_KERNEL)' -kernel-version 6.1.188 -inputs '$(GUEST_INPUTS)' -store '$(RUNTIME_STORE)' -version '$(VERSION)' -commit '$(COMMIT)' -selection '$(RUNTIME_SELECTION)'
+	$(GO) run ./guest/runtime-image -agent bin/grillo-agent -kernel '$(GUEST_KERNEL)' -kernel-version 6.1.188 -inputs '$(GUEST_INPUTS)' -runc-version '$(RUNTIME_RUNC_VERSION)' -runc-sha256 '$(RUNTIME_RUNC_SHA256)' -store '$(RUNTIME_STORE)' -version '$(VERSION)' -commit '$(COMMIT)' -selection '$(RUNTIME_SELECTION)'
 
 # One local experimental payload, not redistribution-cleared release packaging.
 STAGE_PREFIX ?= experiments/artifacts/stage
@@ -291,6 +293,12 @@ test-t24-build-workspace: check-go
 	@test -r /dev/kvm -a -w /dev/kvm || { echo 'BLOCKED: readable/writable /dev/kvm required'; exit 1; }
 	$(MAKE) t07-guest
 	$(GO) test -tags kvm -count=1 -v -timeout 300s -run '^TestKVMNativeBlockWorkspace$$' ./internal/build/
+
+# Sequential real workspace fault/retry repetitions, with host race detection.
+# This is not whole-host saturation or persistent-volume crash repair.
+.PHONY: test-t24-build-workspace-load
+test-t24-build-workspace-load: test-t24-build-workspace
+	CGO_ENABLED=1 $(GO) test -race -tags kvm -count=10 -v -timeout 300s -run '^TestKVMNativeBlockWorkspace$$' ./internal/build/
 
 # Full T02/T03 real hardware evidence. No downloads or preexisting volume deletion.
 .PHONY: f0-guest test-f0 t07-guest test-t07 test-t08 test-t10 test-netns test-executor test-netreg test-bridged test-builder test-builder-kvm test-f2 test-k8s test-helm

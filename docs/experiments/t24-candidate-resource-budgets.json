@@ -1,0 +1,76 @@
+{
+  "phases": {
+    "seeded-cas-fresh-rootfs-compose": {
+      "metrics": {
+        "allocated_bytes": {
+          "budget": 734003200,
+          "maximum": 603684864,
+          "median": 603684864.0,
+          "p95": 603684864
+        },
+        "idle_cpu_user_hz_ticks": {
+          "budget": 8,
+          "maximum": 4,
+          "median": 3.0,
+          "p95": 4
+        },
+        "logical_bytes": {
+          "budget": 734003200,
+          "maximum": 602523790,
+          "median": 602523789.0,
+          "p95": 602523790
+        },
+        "ready_us": {
+          "budget": 2000000,
+          "maximum": 841274,
+          "median": 835578.5,
+          "p95": 839913
+        },
+        "sampled_peak_rss_bytes": {
+          "budget": 268435456,
+          "maximum": 253423616,
+          "median": 243505152.0,
+          "p95": 252788736
+        }
+      },
+      "samples": 30
+    },
+    "seeded-cas-warm-rootfs-compose": {
+      "metrics": {
+        "allocated_bytes": {
+          "budget": 734003200,
+          "maximum": 603684864,
+          "median": 603684864.0,
+          "p95": 603684864
+        },
+        "idle_cpu_user_hz_ticks": {
+          "budget": 8,
+          "maximum": 4,
+          "median": 3.0,
+          "p95": 4
+        },
+        "logical_bytes": {
+          "budget": 734003200,
+          "maximum": 602523791,
+          "median": 602523788.5,
+          "p95": 602523790
+        },
+        "ready_us": {
+          "budget": 1800000,
+          "maximum": 739222,
+          "median": 733798.0,
+          "p95": 736763
+        },
+        "sampled_peak_rss_bytes": {
+          "budget": 268435456,
+          "maximum": 254988288,
+          "median": 249241600.0,
+          "p95": 254468096
+        }
+      },
+      "samples": 30
+    }
+  },
+  "profile": "candidate local seeded-CAS regression budget",
+  "status": "PASS"
+}

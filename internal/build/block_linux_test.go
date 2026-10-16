@@ -17,6 +17,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"sort"
+	"strings"
 	"testing"
 
 	"github.com/albertize/grillo/internal/guestproto"
@@ -49,6 +50,7 @@ type blockFixtureClient struct {
 	root      guestproto.BuildRootMetadata
 	exit      int
 	exportErr error
+	runErr    error
 }
 
 func (c *blockFixtureClient) Start(context.Context, guestproto.StartRequest) (guestproto.StartResult, error) {
@@ -56,6 +58,9 @@ func (c *blockFixtureClient) Start(context.Context, guestproto.StartRequest) (gu
 }
 func (c *blockFixtureClient) Close() error { return nil }
 func (c *blockFixtureClient) Run(_ context.Context, req guestproto.RunRequest, _, _ io.Writer) (guestproto.RunResult, error) {
+	if c.runErr != nil {
+		return guestproto.RunResult{}, c.runErr
+	}
 	if req.Args[0] == "first" {
 		delete(c.files, "first")
 		c.files["generated"] = logicalBuildFile{"made", 1234, 1235, 0750}
@@ -213,22 +218,26 @@ func TestNativeBlockRunInterleavesCopyAndAdoptsMetadata(t *testing.T) {
 }
 
 func TestBlockRunFailureCannotPublishAndRetainsLiveDisk(t *testing.T) {
-	for _, scenario := range []string{"boot", "run", "export", "cleanup"} {
+	for _, scenario := range []string{"boot", "run", "run-transport", "export", "cleanup"} {
 		t.Run(scenario, func(t *testing.T) {
+			cause := errors.New("injected failure")
 			b, _, _ := newNativeBuilder(t, nil)
 			runner := &BlockRunner{Formatter: blockFormatter(t), ImageBytes: 32 << 20}
 			var diskPath string
 			runner.Boot = func(_ context.Context, disk, input string, seed *guestproto.BuildSeedSpec, _ bool) (SandboxClient, func() error, error) {
 				diskPath = disk
 				if scenario == "boot" {
-					return nil, nil, errors.New("boot failed before ownership")
+					return nil, nil, cause
 				}
 				c := readBlockFixture(t, input, seed)
 				if scenario == "run" {
 					c.exit = 1
 				}
+				if scenario == "run-transport" {
+					c.runErr = cause
+				}
 				if scenario == "export" {
-					c.exportErr = io.ErrUnexpectedEOF
+					c.exportErr = cause
 				}
 				cleanup := func() error {
 					if scenario == "cleanup" {
@@ -244,8 +253,15 @@ func TestBlockRunFailureCannotPublishAndRetainsLiveDisk(t *testing.T) {
 			b.Runner = runner
 			root := writeContext(t, map[string]string{"Dockerfile": "FROM scratch\nRUN [\"first\"]\n"})
 			ref := "grillo.local/failure:1"
-			if _, err := b.Build(context.Background(), Request{ContextDir: root, Reference: ref, Network: "none"}, nil); err == nil {
+			_, err := b.Build(context.Background(), Request{ContextDir: root, Reference: ref, Network: "none"}, nil)
+			if err == nil {
 				t.Fatal("failure reported success")
+			}
+			if scenario == "boot" || scenario == "run-transport" || scenario == "export" {
+				phase := map[string]string{"boot": "boot block workspace", "run-transport": "execute block RUN", "export": "export block workspace"}[scenario]
+				if !errors.Is(err, cause) || !strings.Contains(err.Error(), phase) {
+					t.Fatal("failure lost phase/cause", err)
+				}
 			}
 			if _, ok, err := b.Store.Get(ref); err != nil || ok {
 				t.Fatal("failed build published", err)
